@@ -20,6 +20,22 @@
 		AB00000000000000000000C3 /* FinderSelectionContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000072 /* FinderSelectionContext.swift */; };
 		AB00000000000000000000C4 /* FinderMenuBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000073 /* FinderMenuBuilder.swift */; };
 		AB00000000000000000000D5 /* MenuRightFinder.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000052 /* MenuRightFinder.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AB00000000000000000000E1 /* FileOperationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* FileOperationService.swift */; };
+		AB00000000000000000000E2 /* FileOperationResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A2 /* FileOperationResult.swift */; };
+		AB00000000000000000000E3 /* FileNameResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A3 /* FileNameResolver.swift */; };
+		AB00000000000000000000E4 /* FileMovePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A4 /* FileMovePlanner.swift */; };
+		AB00000000000000000000E5 /* CutPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A5 /* CutPayload.swift */; };
+		AB00000000000000000000E6 /* CutPasteboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* CutPasteboard.swift */; };
+		AB00000000000000000000E7 /* OperationPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* OperationPresenter.swift */; };
+		AB00000000000000000000F1 /* FileNameResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B1 /* FileNameResolverTests.swift */; };
+		AB00000000000000000000F2 /* CutPayloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B2 /* CutPayloadTests.swift */; };
+		AB00000000000000000000F3 /* FileMovePlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B3 /* FileMovePlannerTests.swift */; };
+		AB00000000000000000000F4 /* FinderMenuPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B4 /* FinderMenuPlanTests.swift */; };
+		AB00000000000000000000F5 /* FileOperationResultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B5 /* FileOperationResultTests.swift */; };
+		AB00000000000000000000F6 /* FileOperationResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A2 /* FileOperationResult.swift */; };
+		AB00000000000000000000F7 /* FileNameResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A3 /* FileNameResolver.swift */; };
+		AB00000000000000000000F8 /* FileMovePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A4 /* FileMovePlanner.swift */; };
+		AB00000000000000000000F9 /* CutPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A5 /* CutPayload.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,6 +86,18 @@
 		AA0000000000000000000081 /* FinderSelectionContextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSelectionContextTests.swift; sourceTree = "<group>"; };
 		AA0000000000000000000082 /* FinderMenuBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderMenuBuilderTests.swift; sourceTree = "<group>"; };
 		AA0000000000000000000090 /* FinderSync.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FinderSync.framework; path = System/Library/Frameworks/FinderSync.framework; sourceTree = SDKROOT; };
+		AA00000000000000000000A1 /* FileOperationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationService.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A2 /* FileOperationResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationResult.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A3 /* FileNameResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNameResolver.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A4 /* FileMovePlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileMovePlanner.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A5 /* CutPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CutPayload.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A6 /* CutPasteboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CutPasteboard.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A7 /* OperationPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperationPresenter.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B1 /* FileNameResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNameResolverTests.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B2 /* CutPayloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CutPayloadTests.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B3 /* FileMovePlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileMovePlannerTests.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B4 /* FinderMenuPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderMenuPlanTests.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B5 /* FileOperationResultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationResultTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -146,10 +174,26 @@
 				AA0000000000000000000072 /* FinderSelectionContext.swift */,
 				AA0000000000000000000073 /* FinderMenuBuilder.swift */,
 				AA0000000000000000000074 /* PasteboardWriter.swift */,
+				AA0000000000000000000041 /* FileOperations */,
 				AA0000000000000000000075 /* Info.plist */,
 				AA0000000000000000000076 /* MenuRightFinder.entitlements */,
 			);
 			path = MenuRightFinder;
+			sourceTree = "<group>";
+		};
+
+		AA0000000000000000000041 /* FileOperations */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000000000000000000A1 /* FileOperationService.swift */,
+				AA00000000000000000000A2 /* FileOperationResult.swift */,
+				AA00000000000000000000A3 /* FileNameResolver.swift */,
+				AA00000000000000000000A4 /* FileMovePlanner.swift */,
+				AA00000000000000000000A5 /* CutPayload.swift */,
+				AA00000000000000000000A6 /* CutPasteboard.swift */,
+				AA00000000000000000000A7 /* OperationPresenter.swift */,
+			);
+			path = FileOperations;
 			sourceTree = "<group>";
 		};
 		AA0000000000000000000030 /* MenuRightTests */ = {
@@ -157,6 +201,11 @@
 			children = (
 				AA0000000000000000000081 /* FinderSelectionContextTests.swift */,
 				AA0000000000000000000082 /* FinderMenuBuilderTests.swift */,
+				AA00000000000000000000B1 /* FileNameResolverTests.swift */,
+				AA00000000000000000000B2 /* CutPayloadTests.swift */,
+				AA00000000000000000000B3 /* FileMovePlannerTests.swift */,
+				AA00000000000000000000B4 /* FinderMenuPlanTests.swift */,
+				AA00000000000000000000B5 /* FileOperationResultTests.swift */,
 			);
 			path = MenuRightTests;
 			sourceTree = "<group>";
@@ -309,6 +358,13 @@
 				AB00000000000000000000B2 /* FinderSelectionContext.swift in Sources */,
 				AB00000000000000000000B3 /* FinderMenuBuilder.swift in Sources */,
 				AB00000000000000000000B4 /* PasteboardWriter.swift in Sources */,
+				AB00000000000000000000E1 /* FileOperationService.swift in Sources */,
+				AB00000000000000000000E2 /* FileOperationResult.swift in Sources */,
+				AB00000000000000000000E3 /* FileNameResolver.swift in Sources */,
+				AB00000000000000000000E4 /* FileMovePlanner.swift in Sources */,
+				AB00000000000000000000E5 /* CutPayload.swift in Sources */,
+				AB00000000000000000000E6 /* CutPasteboard.swift in Sources */,
+				AB00000000000000000000E7 /* OperationPresenter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -320,6 +376,15 @@
 				AB00000000000000000000C2 /* FinderMenuBuilderTests.swift in Sources */,
 				AB00000000000000000000C3 /* FinderSelectionContext.swift in Sources */,
 				AB00000000000000000000C4 /* FinderMenuBuilder.swift in Sources */,
+				AB00000000000000000000F1 /* FileNameResolverTests.swift in Sources */,
+				AB00000000000000000000F2 /* CutPayloadTests.swift in Sources */,
+				AB00000000000000000000F3 /* FileMovePlannerTests.swift in Sources */,
+				AB00000000000000000000F4 /* FinderMenuPlanTests.swift in Sources */,
+				AB00000000000000000000F5 /* FileOperationResultTests.swift in Sources */,
+				AB00000000000000000000F6 /* FileOperationResult.swift in Sources */,
+				AB00000000000000000000F7 /* FileNameResolver.swift in Sources */,
+				AB00000000000000000000F8 /* FileMovePlanner.swift in Sources */,
+				AB00000000000000000000F9 /* CutPayload.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
