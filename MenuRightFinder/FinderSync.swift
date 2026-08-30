@@ -116,25 +116,43 @@ final class FinderSync: FIFinderSync {
 
     @objc private func performNewFile(_ sender: NSMenuItem) {
         guard let request = sender.representedObject as? NewFileRequest else { return }
-        switch FileOperationService.createFile(
-            in: request.directory,
-            preferredName: request.kind.defaultName,
-            contents: request.kind.contents
-        ) {
-        case .success:
-            break
-        case .failure(let error):
-            OperationPresenter.presentCreationFailure(name: request.kind.defaultName, in: request.directory, error: error)
+        do {
+            try FolderAuthorizationAccess.withAccess(
+                to: request.directory,
+                folders: authorizedFolders,
+                persistRefreshedBookmark: persistRefreshedBookmark
+            ) { directory in
+                if case .failure(let error) = FileOperationService.createFile(
+                    in: directory,
+                    preferredName: request.kind.defaultName,
+                    contents: request.kind.contents
+                ) {
+                    OperationPresenter.presentCreationFailure(name: request.kind.defaultName, in: directory, error: error)
+                }
+            }
+        } catch let error as FolderAuthorizationError {
+            OperationPresenter.presentAuthorizationError(error)
+        } catch {
+            OperationPresenter.presentTitle("Couldn’t create “" + request.kind.defaultName + "”.", message: (error as NSError).localizedDescription)
         }
     }
 
     @objc private func performNewFolder(_ sender: NSMenuItem) {
         guard let directory = sender.representedObject as? URL else { return }
-        switch FileOperationService.createDirectory(in: directory, preferredName: "New Folder") {
-        case .success:
-            break
-        case .failure(let error):
-            OperationPresenter.presentCreationFailure(name: "New Folder", in: directory, error: error)
+        do {
+            try FolderAuthorizationAccess.withAccess(
+                to: directory,
+                folders: authorizedFolders,
+                persistRefreshedBookmark: persistRefreshedBookmark
+            ) { accessibleDirectory in
+                if case .failure(let error) = FileOperationService.createDirectory(in: accessibleDirectory, preferredName: "New Folder") {
+                    OperationPresenter.presentCreationFailure(name: "New Folder", in: accessibleDirectory, error: error)
+                }
+            }
+        } catch let error as FolderAuthorizationError {
+            OperationPresenter.presentAuthorizationError(error)
+        } catch {
+            OperationPresenter.presentTitle("Couldn’t create “New Folder”.", message: (error as NSError).localizedDescription)
         }
     }
 
@@ -142,14 +160,45 @@ final class FinderSync: FIFinderSync {
         guard let destination = sender.representedObject as? URL else { return }
         guard let payload = CutPasteboard.read() else { return }
 
-        let results = FileOperationService.moveItems(payload.urls, to: destination)
-        applyPasteLifecycle(for: results)
+        // Access may be needed on the destination AND every source parent.
+        let scopeTargets = [destination] + payload.urls.map { $0.deletingLastPathComponent() }
+        var results: [FileOperationItemResult] = []
 
-        switch FileOperationBatchSummary.summarize(results) {
-        case .allSucceeded:
-            break
-        case .allFailed, .partial:
-            OperationPresenter.presentPasteResults(results)
+        do {
+            try FolderAuthorizationAccess.withAccesses(to: scopeTargets, folders: authorizedFolders) {
+                results = FileOperationService.moveItems(payload.urls, to: destination)
+            }
+            applyPasteLifecycle(for: results)
+            switch FileOperationBatchSummary.summarize(results) {
+            case .allSucceeded:
+                break
+            case .allFailed, .partial:
+                OperationPresenter.presentPasteResults(results)
+            }
+        } catch let error as FolderAuthorizationError {
+            OperationPresenter.presentAuthorizationError(error)
+        } catch {
+            OperationPresenter.presentTitle("Couldn’t paste items.", message: (error as NSError).localizedDescription)
+        }
+    }
+
+    // MARK: - Folder authorization
+
+    /// App-Group shared store; nil means no container is reachable, which is
+    /// treated as "no authorizations" (every write asks for authorization).
+    private var authorizationStore: FolderAuthorizationStore? {
+        FolderAuthorizationStore.appGroupDefault()
+    }
+
+    private var authorizedFolders: [AuthorizedFolder] {
+        authorizationStore?.loadFolders() ?? []
+    }
+
+    private var persistRefreshedBookmark: (AuthorizedFolder, Data) throws -> Void {
+        { folder, freshData in
+            var refreshed = folder
+            refreshed.bookmarkData = freshData
+            try? self.authorizationStore?.update(refreshed)
         }
     }
 

@@ -1,8 +1,8 @@
 import SwiftUI
 import FinderSync
 
-/// Phase A1 status page: shows whether the Finder Sync Extension is enabled
-/// and offers the system management UI. Deliberately minimal.
+/// Phase A1 + A2.5 status page: extension status, management UI, and the
+/// Folder Access settings section. Deliberately minimal.
 struct ContentView: View {
     @State private var isExtensionEnabled = false
 
@@ -32,9 +32,13 @@ struct ContentView: View {
             Button("Manage Finder Extension") {
                 FIFinderSyncController.showExtensionManagementInterface()
             }
+
+            Divider()
+
+            FolderAccessView()
         }
         .padding(28)
-        .frame(width: 440)
+        .frame(width: 480)
         .onAppear {
             refreshExtensionStatus()
         }

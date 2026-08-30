@@ -58,6 +58,18 @@ enum OperationPresenter {
         }
     }
 
+    /// Phase A2.5: authorization errors surface as the Folder Access Required
+    /// message instead of a raw Cocoa 513.
+    static func presentAuthorizationError(_ error: FolderAuthorizationError) {
+        presentFolderAccessRequired()
+    }
+
+    static func presentFolderAccessRequired() {
+        let line1 = "Menu Right needs access to this folder before it can modify files here."
+        let line2 = "Open Menu Right → Folder Access and authorize this folder or one of its parent folders."
+        presentTitle("Folder Access Required", message: line1 + String(UnicodeScalar(10)) + String(UnicodeScalar(10)) + line2)
+    }
+
     // MARK: - Logging (development only, low frequency)
 
     private static func firstFailureDescription(of failures: [FileOperationItemResult]) -> String? {

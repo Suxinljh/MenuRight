@@ -8,7 +8,20 @@ Native macOS Finder productivity utility.
 
 ## Current phase
 
-**Phase A2 - File Operations Foundation**
+**Phase A2.5 - Folder Authorization Foundation**
+
+Goal: the smallest supported authorization architecture that lets the sandboxed
+Finder Sync extension write inside directories the user explicitly authorized.
+
+Flow: Menu Right app -> Add Folder (NSOpenPanel) -> app-scope security-scoped
+bookmark -> persisted in the App Group container -> Finder Sync extension
+resolves the bookmark -> startAccessingSecurityScopedResource() -> existing
+FileOperationService actions -> stopAccessingSecurityScopedResource().
+
+Status: automated builds/tests PASS; cross-process bookmark access requires the
+manual gate (real NSOpenPanel selection) to be confirmed in Finder.
+
+## Phase A2 (previous phase)
 
 Goal: reliable Finder file-write operations while preserving App Sandbox.
 
@@ -41,9 +54,22 @@ survives extension restarts.
 
 ### Security model
 
-- App Sandbox stays enabled for the app and the extension; no Full Disk
-  Access, no temporary exceptions, no App Group, no Security Scoped Bookmarks.
+- App Sandbox stays enabled for the app and the extension.
+- App Group `group.xin.ljhsu.MenuRight` added ONLY for folder-authorization
+  metadata + bookmark data.
+- Main app: `com.apple.security.files.user-selected.read-write` +
+  `com.apple.security.files.bookmarks.app-scope` (NSOpenPanel grant origin).
+- Extension: same bookmark/user-selected entitlements so it can resolve and
+  consume bookmarks created by the containing app.
+- No Full Disk Access, no temporary exceptions, no shell/AppleScript bypass.
 - Monitored scope remains the user home directory only.
+
+### Folder Access (A2.5)
+
+Authorize folders (e.g. Home once) via Menu Right -> Folder Access -> Add
+Folder. Authorized entries persist as security-scoped bookmarks in the shared
+App Group store; the extension resolves the nearest authorized ancestor before
+New File / New Folder / Paste Here and balances start/stop scoped access.
 
 ### Phase A2 verified constraint
 
