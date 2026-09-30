@@ -41,7 +41,6 @@ enum AuthorizedURLResolver {
     /// target (see `FolderAuthorizationAccess`).
     static func folderMatching(_ targetURL: URL, folders: [AuthorizedFolder]) -> AuthorizedFolder? {
         let targetURL = targetURL.standardizedFileURL
-        let targetComponents = targetURL.pathComponents
         var best: AuthorizedFolder?
         var bestDepth = -1
         for folder in folders {
@@ -65,14 +64,16 @@ enum AuthorizedURLResolver {
         switch SecurityScopedBookmark.resolve(folder.bookmarkData) {
         case .failure:
             return .needsReauthorization
-        case .success(let resolved, let isStale):
-            if isStale { return .needsReauthorization }
-            if !FileManager.default.fileExists(atPath: resolved.path) {
+        case .success(let resolved):
+            // `resolved` is the (url:isStale:) tuple; destructured explicitly so
+            // the pattern does not rely on tuple splatting (a Swift 6 note).
+            if resolved.isStale { return .needsReauthorization }
+            if !FileManager.default.fileExists(atPath: resolved.url.path) {
                 return .unavailable
             }
-            let started = resolved.startAccessingSecurityScopedResource()
+            let started = resolved.url.startAccessingSecurityScopedResource()
             defer {
-                if started { resolved.stopAccessingSecurityScopedResource() }
+                if started { resolved.url.stopAccessingSecurityScopedResource() }
             }
             return started ? .authorized : .needsReauthorization
         }

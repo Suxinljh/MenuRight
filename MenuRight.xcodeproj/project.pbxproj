@@ -735,6 +735,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = MenuRight/MenuRight.entitlements;
+				/* Release must not grant task_for_pid: the Xcode-injected base
+				   entitlements include get-task-allow, which blocks notarization
+				   and lets any same-user debugger attach. Debug keeps the default
+				   so Xcode can still attach. */
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -784,6 +789,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = MenuRightFinder/MenuRightFinder.entitlements;
+				/* See the app target: no get-task-allow in Release. */
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 92X76S5UFL;

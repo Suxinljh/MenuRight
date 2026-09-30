@@ -175,6 +175,36 @@ That variant runs the full suite (159 tests at the time of writing) but produces
 an unsigned app — it is useless for actually loading the extension in Finder.
 Real Finder verification needs the signed build.
 
+### Signing and hardening
+
+- Hardened runtime is enabled for the app and the extension in every
+  configuration.
+- **Release is signed without `get-task-allow`** (`CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO`
+  on the Release configs). Debug keeps the Xcode-injected base entitlements so a
+  debugger can attach. Verified: Release app/appex entitlements contain only
+  sandbox + App Group (+ the app's file entitlements), and the appex still passes
+  embedded-binary validation.
+- Distribution/notarization is still out of reach with a Personal Team: the
+  development provisioning profile is what makes the build installable, and a
+  Developer ID / Apple Distribution profile (paid Apple Developer Program) is
+  required to ship. `codesign` reports the hardened-runtime flag
+  (`flags=0x10000(runtime)`) on the Release products.
+
+### Swift concurrency status
+
+The targets build in Swift 5 language mode. With
+`SWIFT_STRICT_CONCURRENCY=complete` there are **0 errors** and 7 remaining
+warnings, all one design decision: `NSAlert` is main-actor-isolated but
+`OperationPresenter` is not annotated, and `FinderSync`'s outcome-handler
+closure is not `Sendable` (FinderSync.swift:400). Fixing them means deciding
+FinderSync's isolation model (`@MainActor` on the subclass vs
+`@unchecked Sendable`), which can only be verified in the same Finder gate that
+is still pending — so it is deliberately deferred. The mechanically safe subset
+already landed: the wire-contract types, `ExtensionIPCClient` outcomes,
+`ScopedAccessConfiguration`, `FolderAuthorizationStore`, `FileOperationDispatcher`
+and `MainAppIPCServer` are `Sendable` (with `@unchecked` + justification where a
+lock or queue provides the synchronization).
+
 ### Reproducible IPC gate verification
 
 The peer-identity gate needs a real signed peer, so the unit tests inject a stub

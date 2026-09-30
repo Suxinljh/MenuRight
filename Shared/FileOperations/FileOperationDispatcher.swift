@@ -23,7 +23,10 @@ import os
 /// This file deliberately has NO AppKit dependency so it is unit-testable
 /// headlessly. The test target injects an in-memory `FolderAuthorizationStore`
 /// and a `ScopedAccessConfiguration` that bypasses real bookmarks.
-public final class FileOperationDispatcher {
+/// `@unchecked Sendable`: the stored dependencies are immutable `let`s and the
+/// dispatcher holds no per-request state; each `dispatch(payload:)` call is
+/// independent. It is called from the server's concurrent connection queue.
+public final class FileOperationDispatcher: @unchecked Sendable {
 
     public static let log = Logger(subsystem: "xin.ljhsu.MenuRight", category: "main-file-op")
 

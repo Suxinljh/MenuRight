@@ -14,7 +14,9 @@ struct FolderAuthorizationPayload: Codable, Equatable {
 /// <App Group container>/FolderAuthorization.json, written atomically.
 /// Corrupt or unknown-version payloads load as an empty list rather than
 /// crashing or migrating.
-final class FolderAuthorizationStore {
+/// `@unchecked Sendable`: every read-modify-write cycle runs under `lock`, and
+/// the only stored property is an immutable URL.
+final class FolderAuthorizationStore: @unchecked Sendable {
     /// Single source of truth for the App Group identifier (shared with the IPC
     /// layer, which places the socket in the same container).
     static let appGroupIdentifier = MenuRightIPC.appGroupIdentifier

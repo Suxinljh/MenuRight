@@ -10,13 +10,18 @@ import Foundation
 /// This contract is intentionally narrow — only the file operations migrated
 /// in P5-1 are represented here. New operations extend `OperationKind`; we
 /// never expose a generic "execute this path" RPC.
+///
+/// Every type is `Sendable`: requests and responses cross from the FinderSync
+/// extension's `ipcQueue` to the main queue (and from the accept queue to a
+/// connection queue in the main app), so they must be safely transferable
+/// between isolation domains. They are immutable value types.
 public enum FileOperationContract {
 
     /// The kind of file operation being requested. Each case carries only the
     /// data the Main App needs to validate and execute the request. Paths
     /// are always transmitted as raw POSIX strings (`URL.path`); the Main App
     /// canonicalises them before any filesystem or authorization check.
-    public enum OperationKind: String, Codable, Equatable {
+    public enum OperationKind: String, Codable, Equatable, Sendable {
         case createFile
         case createDirectory
         case moveItems
@@ -24,7 +29,7 @@ public enum FileOperationContract {
 
     /// Per-operation arguments. Exactly one field is meaningful for any given
     /// `kind`; the others are ignored.
-    public struct OperationArgs: Codable, Equatable {
+    public struct OperationArgs: Codable, Equatable, Sendable {
         /// Required for `createFile`. The parent directory (folder) path.
         public var directory: String?
         /// Required for `createFile`/`createDirectory`. User-facing preferred
@@ -54,7 +59,7 @@ public enum FileOperationContract {
     }
 
     /// Wire payload sent by the extension in `IPCRequest.payload`.
-    public struct Request: Codable, Equatable {
+    public struct Request: Codable, Equatable, Sendable {
         public let kind: OperationKind
         public let args: OperationArgs
         /// Optional request id echoed back by the Main App for log
@@ -74,7 +79,7 @@ public enum FileOperationContract {
     /// server-supplied `message`), but the codes are stable and must not be
     /// reshuffled. Anything the extension needs to distinguish at the UI
     /// layer should be a code here, not a string match.
-    public enum ErrorCode: String, Codable, Equatable {
+    public enum ErrorCode: String, Codable, Equatable, Sendable {
         /// Main App rejected the request structurally (bad shape, missing
         /// fields, unknown kind).
         case invalidRequest = "invalid_request"
@@ -106,7 +111,7 @@ public enum FileOperationContract {
     }
 
     /// Batch item outcome for `moveItems` responses.
-    public struct ItemResult: Codable, Equatable {
+    public struct ItemResult: Codable, Equatable, Sendable {
         public let sourcePath: String
         public let destinationPath: String?
         public let success: Bool
@@ -132,7 +137,7 @@ public enum FileOperationContract {
     /// path for create*; `batchSuccess` carries per-item results for
     /// `moveItems`. `failure` carries a stable error code and a
     /// developer-facing message.
-    public enum Response: Codable, Equatable {
+    public enum Response: Codable, Equatable, Sendable {
         case success(createdPath: String?)
         case batchSuccess(items: [ItemResult])
         case failure(code: ErrorCode, message: String)

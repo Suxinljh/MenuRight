@@ -33,7 +33,7 @@ final class ExtensionIPCClient {
     private static let log = Logger(subsystem: MenuRightIPC.subsystem, category: "finder-sync-ipc")
 
     /// Legacy P5-0.6 ping result.
-    public enum PingOutcome {
+    public enum PingOutcome: Sendable {
         case pong(reply: String)
         case unavailable(reason: String)
     }
@@ -42,7 +42,7 @@ final class ExtensionIPCClient {
     /// (for single-target ops) or per-item results (for batch ops). `failure`
     /// carries a stable error code. `unavailable` covers every transport /
     /// protocol failure with a human-readable reason.
-    public enum FileOperationOutcome {
+    public enum FileOperationOutcome: Sendable {
         case success(createdPath: String?)
         case batchSuccess(items: [FileOperationContract.ItemResult])
         case failure(code: FileOperationContract.ErrorCode, message: String)

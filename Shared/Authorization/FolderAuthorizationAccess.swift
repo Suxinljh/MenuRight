@@ -16,7 +16,11 @@ enum FolderAuthorizationError: Equatable, Error {
 
 /// Thin seam so scoped-access lifecycle stays unit-testable without the real
 /// security-scoped bookmark machinery.
-struct ScopedAccessConfiguration {
+/// `@unchecked Sendable`: an immutable value type holding four stored
+/// closures. There is no mutable state to race on; the closures themselves are
+/// pure functions in production. Callers that pass stateful test doubles are
+/// responsible for synchronizing them.
+struct ScopedAccessConfiguration: @unchecked Sendable {
     var resolveBookmark: (Data) throws -> (url: URL, isStale: Bool)
     var startAccess: (URL) -> Bool
     var stopAccess: (URL) -> Void

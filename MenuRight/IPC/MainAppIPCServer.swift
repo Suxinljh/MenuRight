@@ -32,7 +32,11 @@ import os
 ///     `FileOperationContract.Request`; dispatched to a
 ///     `FileOperationDispatcher`. Response is wrapped in
 ///     `IPCProtocol.Response.result` (or `.error`).
-final class MainAppIPCServer: NSObject {
+/// `@unchecked Sendable`: mutable lifecycle state (`listenSource`, `listenFD`,
+/// `isRunning`) is confined to `acceptQueue`, and `start()`/`stop()` are
+/// synchronous with respect to that queue. The remaining stored properties are
+/// immutable `let`s.
+final class MainAppIPCServer: NSObject, @unchecked Sendable {
     private static let log = Logger(subsystem: MenuRightIPC.subsystem, category: "main-app-ipc")
 
     private let socketURL: URL?
