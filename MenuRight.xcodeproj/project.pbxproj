@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		185BBB7E304466B6009F934F /* MenuRight.icon in Resources */ = {isa = PBXBuildFile; fileRef = 185BBB7B30445FAE009F934F /* MenuRight.icon */; };
 		AB00000000000000000000A1 /* MenuRightApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000061 /* MenuRightApp.swift */; };
 		AB00000000000000000000A2 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000062 /* ContentView.swift */; };
 		AB00000000000000000000A3 /* FinderSync.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000090 /* FinderSync.framework */; };
@@ -20,7 +19,7 @@
 		AB00000000000000000000C2 /* FinderMenuBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000082 /* FinderMenuBuilderTests.swift */; };
 		AB00000000000000000000C3 /* FinderSelectionContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000072 /* FinderSelectionContext.swift */; };
 		AB00000000000000000000C4 /* FinderMenuBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000073 /* FinderMenuBuilder.swift */; };
-		AB00000000000000000000D5 /* MenuRightFinder.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000052 /* MenuRightFinder.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AB00000000000000000000D5 /* MenuRightFinder.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000052 /* MenuRightFinder.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AB00000000000000000000E5 /* CutPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A5 /* CutPayload.swift */; };
 		AB00000000000000000000E6 /* CutPasteboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* CutPasteboard.swift */; };
 		AB00000000000000000000E7 /* OperationPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* OperationPresenter.swift */; };
@@ -47,6 +46,21 @@
 		AB00000000000000000000M6 /* AuthorizedURLResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C4 /* AuthorizedURLResolver.swift */; };
 		AB00000000000000000000M7 /* FolderAuthorizationAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C5 /* FolderAuthorizationAccess.swift */; };
 		AB00000000000000000000M8 /* SecurityScopedBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C3 /* SecurityScopedBookmark.swift */; };
+		AB00000000000000000005C1 /* FileOperationContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005C1 /* FileOperationContract.swift */; };
+		AB00000000000000000005C2 /* FileOperationContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005C1 /* FileOperationContract.swift */; };
+		AB00000000000000000005C3 /* FileOperationContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005C1 /* FileOperationContract.swift */; };
+		AB00000000000000000005F1 /* FileOperationDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005F1 /* FileOperationDispatcher.swift */; };
+		AB00000000000000000005F3 /* FileOperationDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005F1 /* FileOperationDispatcher.swift */; };
+		AB0000000000000000000AF1 /* FileOperationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* FileOperationService.swift */; };
+		AB0000000000000000000AF2 /* FileOperationResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A2 /* FileOperationResult.swift */; };
+		AB0000000000000000000AF3 /* FileNameResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A3 /* FileNameResolver.swift */; };
+		AB0000000000000000000AF4 /* FileMovePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A4 /* FileMovePlanner.swift */; };
+		AB0000000000000000000AF5 /* CutPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A5 /* CutPayload.swift */; };
+		AB0000000000000000000AF6 /* CutPasteboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* CutPasteboard.swift */; };
+		AB0000000000000000000AF7 /* OperationPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* OperationPresenter.swift */; };
+		AB0000000000000000000AF8 /* FileOperationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* FileOperationService.swift */; };
+		AB0000000000000000000AF9 /* CutPasteboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* CutPasteboard.swift */; };
+		AB0000000000000000000AFA /* OperationPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* OperationPresenter.swift */; };
 		AB0000000000000000IPC1 /* MainAppIPCServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC1 /* MainAppIPCServer.swift */; };
 		AB0000000000000000IPC2 /* ExtensionIPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC2 /* ExtensionIPCClient.swift */; };
 		AB0000000000000000IPC3 /* MenuRightIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC3 /* MenuRightIPC.swift */; };
@@ -57,33 +71,18 @@
 		AB0000000000000000IPCB /* UnixSocketTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC8 /* UnixSocketTransport.swift */; };
 		AB0000000000000000IPCC /* PeerIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC9 /* PeerIdentity.swift */; };
 		AB0000000000000000IPCD /* IPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPCA /* IPCProtocol.swift */; };
-		AB00000000000000000005C1 /* FileOperationContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005C1 /* FileOperationContract.swift */; };
-		AB00000000000000000005C2 /* FileOperationContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005C1 /* FileOperationContract.swift */; };
-		AB00000000000000000005C3 /* FileOperationContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005C1 /* FileOperationContract.swift */; };
-		AB00000000000000000005F1 /* FileOperationDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005F1 /* FileOperationDispatcher.swift */; };
-		AB00000000000000000005F3 /* FileOperationDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005F1 /* FileOperationDispatcher.swift */; };
-		AB0000000000000000000AF8 /* FileOperationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* FileOperationService.swift */; };
-		AB0000000000000000000AF9 /* CutPasteboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* CutPasteboard.swift */; };
-		AB0000000000000000000AFA /* OperationPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* OperationPresenter.swift */; };
-		AB0000000000000000000AF1 /* FileOperationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* FileOperationService.swift */; };
-		AB0000000000000000000AF2 /* FileOperationResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A2 /* FileOperationResult.swift */; };
-		AB0000000000000000000AF3 /* FileNameResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A3 /* FileNameResolver.swift */; };
-		AB0000000000000000000AF4 /* FileMovePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A4 /* FileMovePlanner.swift */; };
-		AB0000000000000000000AF5 /* CutPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A5 /* CutPayload.swift */; };
-		AB0000000000000000000AF6 /* CutPasteboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* CutPasteboard.swift */; };
-		AB0000000000000000000AF7 /* OperationPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* OperationPresenter.swift */; };
-		AB0000000000000000TST1 /* MainAppIPCServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC1 /* MainAppIPCServer.swift */; };
-		AB0000000000000000TST2 /* ExtensionIPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC2 /* ExtensionIPCClient.swift */; };
-		AB0000000000000000TST3 /* MenuRightIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC3 /* MenuRightIPC.swift */; };
-		AB0000000000000000TST8 /* UnixSocketTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC8 /* UnixSocketTransport.swift */; };
-		AB0000000000000000TST9 /* PeerIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC9 /* PeerIdentity.swift */; };
-		AB0000000000000000TSTA /* IPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPCA /* IPCProtocol.swift */; };
 		AB0000000000000000TES1 /* UnixSocketTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000TES1 /* UnixSocketTransportTests.swift */; };
 		AB0000000000000000TES2 /* FileOperationDispatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000TES2 /* FileOperationDispatcherTests.swift */; };
 		AB0000000000000000TES3 /* IPCProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000TES3 /* IPCProtocolTests.swift */; };
 		AB0000000000000000TES4 /* FileOperationContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000TES4 /* FileOperationContractTests.swift */; };
 		AB0000000000000000TES5 /* PeerIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000TES5 /* PeerIdentityTests.swift */; };
 		AB0000000000000000TES6 /* IPCIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000TES6 /* IPCIntegrationTests.swift */; };
+		AB0000000000000000TST1 /* MainAppIPCServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC1 /* MainAppIPCServer.swift */; };
+		AB0000000000000000TST2 /* ExtensionIPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC2 /* ExtensionIPCClient.swift */; };
+		AB0000000000000000TST3 /* MenuRightIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC3 /* MenuRightIPC.swift */; };
+		AB0000000000000000TST8 /* UnixSocketTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC8 /* UnixSocketTransport.swift */; };
+		AB0000000000000000TST9 /* PeerIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC9 /* PeerIdentity.swift */; };
+		AB0000000000000000TSTA /* IPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPCA /* IPCProtocol.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -104,15 +103,15 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		AC00000000000000000000D4 /* Embed App Extensions */ = {
+		AC00000000000000000000D4 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				AB00000000000000000000D5 /* MenuRightFinder.appex in Embed App Extensions */,
+				AB00000000000000000000D5 /* MenuRightFinder.appex in Embed Foundation Extensions */,
 			);
-			name = "Embed App Extensions";
+			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -142,8 +141,6 @@
 		AA00000000000000000000A5 /* CutPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CutPayload.swift; sourceTree = "<group>"; };
 		AA00000000000000000000A6 /* CutPasteboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CutPasteboard.swift; sourceTree = "<group>"; };
 		AA00000000000000000000A7 /* OperationPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperationPresenter.swift; sourceTree = "<group>"; };
-		AA00000000000000000005C1 /* FileOperationContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationContract.swift; sourceTree = "<group>"; };
-		AA00000000000000000005F1 /* FileOperationDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationDispatcher.swift; sourceTree = "<group>"; };
 		AA00000000000000000000B1 /* FileNameResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNameResolverTests.swift; sourceTree = "<group>"; };
 		AA00000000000000000000B2 /* CutPayloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CutPayloadTests.swift; sourceTree = "<group>"; };
 		AA00000000000000000000B3 /* FileMovePlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileMovePlannerTests.swift; sourceTree = "<group>"; };
@@ -158,6 +155,8 @@
 		AA00000000000000000000D1 /* FolderAuthorizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderAuthorizationTests.swift; sourceTree = "<group>"; };
 		AA00000000000000000000D2 /* AuthorizedURLResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorizedURLResolverTests.swift; sourceTree = "<group>"; };
 		AA00000000000000000000D3 /* FolderAuthorizationAccessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderAuthorizationAccessTests.swift; sourceTree = "<group>"; };
+		AA00000000000000000005C1 /* FileOperationContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationContract.swift; sourceTree = "<group>"; };
+		AA00000000000000000005F1 /* FileOperationDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationDispatcher.swift; sourceTree = "<group>"; };
 		AA0000000000000000IPC1 /* MainAppIPCServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainAppIPCServer.swift; sourceTree = "<group>"; };
 		AA0000000000000000IPC2 /* ExtensionIPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionIPCClient.swift; sourceTree = "<group>"; };
 		AA0000000000000000IPC3 /* MenuRightIPC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuRightIPC.swift; sourceTree = "<group>"; };
@@ -211,6 +210,16 @@
 			);
 			sourceTree = "<group>";
 		};
+		AA0000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000051 /* MenuRight.app */,
+				AA0000000000000000000052 /* MenuRightFinder.appex */,
+				AA0000000000000000000053 /* MenuRightTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 		AA0000000000000000000010 /* MenuRight */ = {
 			isa = PBXGroup;
 			children = (
@@ -218,8 +227,6 @@
 				AA0000000000000000000063 /* Info.plist */,
 				AA0000000000000000000064 /* MenuRight.entitlements */,
 				AA0000000000000000IPC5 /* IPC */,
-				AA0000000000000000000040 /* Frameworks */,
-				AA0000000000000000000051 /* MenuRight.app */,
 				185BBB7B30445FAE009F934F /* MenuRight.icon */,
 			);
 			path = MenuRight;
@@ -245,8 +252,6 @@
 				AA0000000000000000000075 /* Info.plist */,
 				AA0000000000000000000076 /* MenuRightFinder.entitlements */,
 				AA0000000000000000IPC6 /* IPC */,
-				AA0000000000000000000040 /* Frameworks */,
-				AA0000000000000000000052 /* MenuRightFinder.appex */,
 			);
 			path = MenuRightFinder;
 			sourceTree = "<group>";
@@ -295,16 +300,6 @@
 				AA00000000000000000005F1 /* FileOperationDispatcher.swift */,
 			);
 			path = FileOperations;
-			sourceTree = "<group>";
-		};
-		AA0000000000000000000003 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				AA0000000000000000000051 /* MenuRight.app */,
-				AA0000000000000000000052 /* MenuRightFinder.appex */,
-				AA0000000000000000000053 /* MenuRightTests.xctest */,
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 		AA0000000000000000000042 /* Shared */ = {
@@ -367,7 +362,7 @@
 				AC00000000000000000000D1 /* Sources */,
 				AC00000000000000000000D2 /* Frameworks */,
 				AC00000000000000000000D3 /* Resources */,
-				AC00000000000000000000D4 /* Embed App Extensions */,
+				AC00000000000000000000D4 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
@@ -422,7 +417,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1600;
-				LastUpgradeCheck = 1600;
+				LastUpgradeCheck = 2610;
 				TargetAttributes = {
 					AD0000000000000000000001 = {
 						CreatedOnToolsVersion = 16.0;
@@ -623,7 +618,9 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 92X76S5UFL;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -647,6 +644,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -685,7 +683,9 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 92X76S5UFL;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -702,6 +702,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 			};
@@ -710,13 +711,16 @@
 		B10000000000000000000011 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = MenuRight;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = MenuRight/MenuRight.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 92X76S5UFL;
+				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = MenuRight/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -726,6 +730,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = xin.ljhsu.MenuRight;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -734,18 +739,17 @@
 		B10000000000000000000012 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = MenuRight;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = MenuRight/MenuRight.entitlements;
-				/* Release must not grant task_for_pid: the Xcode-injected base
-				   entitlements include get-task-allow, which blocks notarization
-				   and lets any same-user debugger attach. Debug keeps the default
-				   so Xcode can still attach. */
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 92X76S5UFL;
+				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = MenuRight/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -755,6 +759,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = xin.ljhsu.MenuRight;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -766,7 +771,7 @@
 				CODE_SIGN_ENTITLEMENTS = MenuRightFinder/MenuRightFinder.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 92X76S5UFL;
+				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -779,6 +784,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = xin.ljhsu.MenuRight.FinderSync;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -789,11 +795,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = MenuRightFinder/MenuRightFinder.entitlements;
-				/* See the app target: no get-task-allow in Release. */
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 92X76S5UFL;
+				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -806,6 +811,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = xin.ljhsu.MenuRight.FinderSync;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -817,7 +823,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 92X76S5UFL;
+				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
@@ -832,7 +838,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 92X76S5UFL;
+				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
