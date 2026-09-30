@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		185BBB7E304466B6009F934F /* MenuRight.icon in Resources */ = {isa = PBXBuildFile; fileRef = 185BBB7B30445FAE009F934F /* MenuRight.icon */; };
 		AB00000000000000000000A1 /* MenuRightApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000061 /* MenuRightApp.swift */; };
 		AB00000000000000000000A2 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000062 /* ContentView.swift */; };
 		AB00000000000000000000A3 /* FinderSync.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000090 /* FinderSync.framework */; };
@@ -20,29 +21,6 @@
 		AB00000000000000000000C3 /* FinderSelectionContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000072 /* FinderSelectionContext.swift */; };
 		AB00000000000000000000C4 /* FinderMenuBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000073 /* FinderMenuBuilder.swift */; };
 		AB00000000000000000000D5 /* MenuRightFinder.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000052 /* MenuRightFinder.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		AB00000000000000000000M8 /* SecurityScopedBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C3 /* SecurityScopedBookmark.swift */; };
-		AB00000000000000000000K1 /* AuthorizedFolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C1 /* AuthorizedFolder.swift */; };
-		AB00000000000000000000K2 /* FolderAuthorizationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C2 /* FolderAuthorizationStore.swift */; };
-		AB00000000000000000000K3 /* SecurityScopedBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C3 /* SecurityScopedBookmark.swift */; };
-		AB00000000000000000000K4 /* AuthorizedURLResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C4 /* AuthorizedURLResolver.swift */; };
-		AB00000000000000000000K5 /* FolderAuthorizationAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C5 /* FolderAuthorizationAccess.swift */; };
-		AB00000000000000000000K6 /* FolderAccessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C6 /* FolderAccessView.swift */; };
-		AB00000000000000000000L1 /* AuthorizedFolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C1 /* AuthorizedFolder.swift */; };
-		AB00000000000000000000L2 /* FolderAuthorizationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C2 /* FolderAuthorizationStore.swift */; };
-		AB00000000000000000000L3 /* SecurityScopedBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C3 /* SecurityScopedBookmark.swift */; };
-		AB00000000000000000000L4 /* AuthorizedURLResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C4 /* AuthorizedURLResolver.swift */; };
-		AB00000000000000000000L5 /* FolderAuthorizationAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C5 /* FolderAuthorizationAccess.swift */; };
-		AB00000000000000000000M1 /* FolderAuthorizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000D1 /* FolderAuthorizationTests.swift */; };
-		AB00000000000000000000M2 /* AuthorizedURLResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000D2 /* AuthorizedURLResolverTests.swift */; };
-		AB00000000000000000000M3 /* FolderAuthorizationAccessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000D3 /* FolderAuthorizationAccessTests.swift */; };
-		AB00000000000000000000M4 /* AuthorizedFolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C1 /* AuthorizedFolder.swift */; };
-		AB00000000000000000000M5 /* FolderAuthorizationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C2 /* FolderAuthorizationStore.swift */; };
-		AB00000000000000000000M6 /* AuthorizedURLResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C4 /* AuthorizedURLResolver.swift */; };
-		AB00000000000000000000M7 /* FolderAuthorizationAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C5 /* FolderAuthorizationAccess.swift */; };
-		AB00000000000000000000E1 /* FileOperationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* FileOperationService.swift */; };
-		AB00000000000000000000E2 /* FileOperationResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A2 /* FileOperationResult.swift */; };
-		AB00000000000000000000E3 /* FileNameResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A3 /* FileNameResolver.swift */; };
-		AB00000000000000000000E4 /* FileMovePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A4 /* FileMovePlanner.swift */; };
 		AB00000000000000000000E5 /* CutPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A5 /* CutPayload.swift */; };
 		AB00000000000000000000E6 /* CutPasteboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* CutPasteboard.swift */; };
 		AB00000000000000000000E7 /* OperationPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* OperationPresenter.swift */; };
@@ -55,6 +33,57 @@
 		AB00000000000000000000F7 /* FileNameResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A3 /* FileNameResolver.swift */; };
 		AB00000000000000000000F8 /* FileMovePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A4 /* FileMovePlanner.swift */; };
 		AB00000000000000000000F9 /* CutPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A5 /* CutPayload.swift */; };
+		AB00000000000000000000K1 /* AuthorizedFolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C1 /* AuthorizedFolder.swift */; };
+		AB00000000000000000000K2 /* FolderAuthorizationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C2 /* FolderAuthorizationStore.swift */; };
+		AB00000000000000000000K3 /* SecurityScopedBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C3 /* SecurityScopedBookmark.swift */; };
+		AB00000000000000000000K4 /* AuthorizedURLResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C4 /* AuthorizedURLResolver.swift */; };
+		AB00000000000000000000K5 /* FolderAuthorizationAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C5 /* FolderAuthorizationAccess.swift */; };
+		AB00000000000000000000K6 /* FolderAccessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C6 /* FolderAccessView.swift */; };
+		AB00000000000000000000M1 /* FolderAuthorizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000D1 /* FolderAuthorizationTests.swift */; };
+		AB00000000000000000000M2 /* AuthorizedURLResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000D2 /* AuthorizedURLResolverTests.swift */; };
+		AB00000000000000000000M3 /* FolderAuthorizationAccessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000D3 /* FolderAuthorizationAccessTests.swift */; };
+		AB00000000000000000000M4 /* AuthorizedFolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C1 /* AuthorizedFolder.swift */; };
+		AB00000000000000000000M5 /* FolderAuthorizationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C2 /* FolderAuthorizationStore.swift */; };
+		AB00000000000000000000M6 /* AuthorizedURLResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C4 /* AuthorizedURLResolver.swift */; };
+		AB00000000000000000000M7 /* FolderAuthorizationAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C5 /* FolderAuthorizationAccess.swift */; };
+		AB00000000000000000000M8 /* SecurityScopedBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000C3 /* SecurityScopedBookmark.swift */; };
+		AB0000000000000000IPC1 /* MainAppIPCServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC1 /* MainAppIPCServer.swift */; };
+		AB0000000000000000IPC2 /* ExtensionIPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC2 /* ExtensionIPCClient.swift */; };
+		AB0000000000000000IPC3 /* MenuRightIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC3 /* MenuRightIPC.swift */; };
+		AB0000000000000000IPC4 /* MenuRightIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC3 /* MenuRightIPC.swift */; };
+		AB0000000000000000IPC8 /* UnixSocketTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC8 /* UnixSocketTransport.swift */; };
+		AB0000000000000000IPC9 /* PeerIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC9 /* PeerIdentity.swift */; };
+		AB0000000000000000IPCA /* IPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPCA /* IPCProtocol.swift */; };
+		AB0000000000000000IPCB /* UnixSocketTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC8 /* UnixSocketTransport.swift */; };
+		AB0000000000000000IPCC /* PeerIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC9 /* PeerIdentity.swift */; };
+		AB0000000000000000IPCD /* IPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPCA /* IPCProtocol.swift */; };
+		AB00000000000000000005C1 /* FileOperationContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005C1 /* FileOperationContract.swift */; };
+		AB00000000000000000005C2 /* FileOperationContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005C1 /* FileOperationContract.swift */; };
+		AB00000000000000000005C3 /* FileOperationContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005C1 /* FileOperationContract.swift */; };
+		AB00000000000000000005F1 /* FileOperationDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005F1 /* FileOperationDispatcher.swift */; };
+		AB00000000000000000005F3 /* FileOperationDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005F1 /* FileOperationDispatcher.swift */; };
+		AB0000000000000000000AF8 /* FileOperationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* FileOperationService.swift */; };
+		AB0000000000000000000AF9 /* CutPasteboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* CutPasteboard.swift */; };
+		AB0000000000000000000AFA /* OperationPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* OperationPresenter.swift */; };
+		AB0000000000000000000AF1 /* FileOperationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* FileOperationService.swift */; };
+		AB0000000000000000000AF2 /* FileOperationResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A2 /* FileOperationResult.swift */; };
+		AB0000000000000000000AF3 /* FileNameResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A3 /* FileNameResolver.swift */; };
+		AB0000000000000000000AF4 /* FileMovePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A4 /* FileMovePlanner.swift */; };
+		AB0000000000000000000AF5 /* CutPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A5 /* CutPayload.swift */; };
+		AB0000000000000000000AF6 /* CutPasteboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* CutPasteboard.swift */; };
+		AB0000000000000000000AF7 /* OperationPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* OperationPresenter.swift */; };
+		AB0000000000000000TST1 /* MainAppIPCServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC1 /* MainAppIPCServer.swift */; };
+		AB0000000000000000TST2 /* ExtensionIPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC2 /* ExtensionIPCClient.swift */; };
+		AB0000000000000000TST3 /* MenuRightIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC3 /* MenuRightIPC.swift */; };
+		AB0000000000000000TST8 /* UnixSocketTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC8 /* UnixSocketTransport.swift */; };
+		AB0000000000000000TST9 /* PeerIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC9 /* PeerIdentity.swift */; };
+		AB0000000000000000TSTA /* IPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPCA /* IPCProtocol.swift */; };
+		AB0000000000000000TES1 /* UnixSocketTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000TES1 /* UnixSocketTransportTests.swift */; };
+		AB0000000000000000TES2 /* FileOperationDispatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000TES2 /* FileOperationDispatcherTests.swift */; };
+		AB0000000000000000TES3 /* IPCProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000TES3 /* IPCProtocolTests.swift */; };
+		AB0000000000000000TES4 /* FileOperationContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000TES4 /* FileOperationContractTests.swift */; };
+		AB0000000000000000TES5 /* PeerIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000TES5 /* PeerIdentityTests.swift */; };
+		AB0000000000000000TES6 /* IPCIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000TES6 /* IPCIntegrationTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -89,6 +118,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		185BBB7B30445FAE009F934F /* MenuRight.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.icon; path = MenuRight.icon; sourceTree = "<group>"; };
 		AA0000000000000000000051 /* MenuRight.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MenuRight.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000000000000000000052 /* MenuRightFinder.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MenuRightFinder.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000000000000000000053 /* MenuRightTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MenuRightTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -105,6 +135,20 @@
 		AA0000000000000000000081 /* FinderSelectionContextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSelectionContextTests.swift; sourceTree = "<group>"; };
 		AA0000000000000000000082 /* FinderMenuBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderMenuBuilderTests.swift; sourceTree = "<group>"; };
 		AA0000000000000000000090 /* FinderSync.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FinderSync.framework; path = System/Library/Frameworks/FinderSync.framework; sourceTree = SDKROOT; };
+		AA00000000000000000000A1 /* FileOperationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationService.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A2 /* FileOperationResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationResult.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A3 /* FileNameResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNameResolver.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A4 /* FileMovePlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileMovePlanner.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A5 /* CutPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CutPayload.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A6 /* CutPasteboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CutPasteboard.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A7 /* OperationPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperationPresenter.swift; sourceTree = "<group>"; };
+		AA00000000000000000005C1 /* FileOperationContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationContract.swift; sourceTree = "<group>"; };
+		AA00000000000000000005F1 /* FileOperationDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationDispatcher.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B1 /* FileNameResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNameResolverTests.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B2 /* CutPayloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CutPayloadTests.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B3 /* FileMovePlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileMovePlannerTests.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B4 /* FinderMenuPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderMenuPlanTests.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B5 /* FileOperationResultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationResultTests.swift; sourceTree = "<group>"; };
 		AA00000000000000000000C1 /* AuthorizedFolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorizedFolder.swift; sourceTree = "<group>"; };
 		AA00000000000000000000C2 /* FolderAuthorizationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderAuthorizationStore.swift; sourceTree = "<group>"; };
 		AA00000000000000000000C3 /* SecurityScopedBookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScopedBookmark.swift; sourceTree = "<group>"; };
@@ -114,18 +158,18 @@
 		AA00000000000000000000D1 /* FolderAuthorizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderAuthorizationTests.swift; sourceTree = "<group>"; };
 		AA00000000000000000000D2 /* AuthorizedURLResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorizedURLResolverTests.swift; sourceTree = "<group>"; };
 		AA00000000000000000000D3 /* FolderAuthorizationAccessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderAuthorizationAccessTests.swift; sourceTree = "<group>"; };
-		AA00000000000000000000A1 /* FileOperationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationService.swift; sourceTree = "<group>"; };
-		AA00000000000000000000A2 /* FileOperationResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationResult.swift; sourceTree = "<group>"; };
-		AA00000000000000000000A3 /* FileNameResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNameResolver.swift; sourceTree = "<group>"; };
-		AA00000000000000000000A4 /* FileMovePlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileMovePlanner.swift; sourceTree = "<group>"; };
-		AA00000000000000000000A5 /* CutPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CutPayload.swift; sourceTree = "<group>"; };
-		AA00000000000000000000A6 /* CutPasteboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CutPasteboard.swift; sourceTree = "<group>"; };
-		AA00000000000000000000A7 /* OperationPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperationPresenter.swift; sourceTree = "<group>"; };
-		AA00000000000000000000B1 /* FileNameResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNameResolverTests.swift; sourceTree = "<group>"; };
-		AA00000000000000000000B2 /* CutPayloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CutPayloadTests.swift; sourceTree = "<group>"; };
-		AA00000000000000000000B3 /* FileMovePlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileMovePlannerTests.swift; sourceTree = "<group>"; };
-		AA00000000000000000000B4 /* FinderMenuPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderMenuPlanTests.swift; sourceTree = "<group>"; };
-		AA00000000000000000000B5 /* FileOperationResultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationResultTests.swift; sourceTree = "<group>"; };
+		AA0000000000000000IPC1 /* MainAppIPCServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainAppIPCServer.swift; sourceTree = "<group>"; };
+		AA0000000000000000IPC2 /* ExtensionIPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionIPCClient.swift; sourceTree = "<group>"; };
+		AA0000000000000000IPC3 /* MenuRightIPC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuRightIPC.swift; sourceTree = "<group>"; };
+		AA0000000000000000IPC8 /* UnixSocketTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnixSocketTransport.swift; sourceTree = "<group>"; };
+		AA0000000000000000IPC9 /* PeerIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerIdentity.swift; sourceTree = "<group>"; };
+		AA0000000000000000IPCA /* IPCProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPCProtocol.swift; sourceTree = "<group>"; };
+		AA0000000000000000TES1 /* UnixSocketTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnixSocketTransportTests.swift; sourceTree = "<group>"; };
+		AA0000000000000000TES2 /* FileOperationDispatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationDispatcherTests.swift; sourceTree = "<group>"; };
+		AA0000000000000000TES3 /* IPCProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPCProtocolTests.swift; sourceTree = "<group>"; };
+		AA0000000000000000TES4 /* FileOperationContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationContractTests.swift; sourceTree = "<group>"; };
+		AA0000000000000000TES5 /* PeerIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerIdentityTests.swift; sourceTree = "<group>"; };
+		AA0000000000000000TES6 /* IPCIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPCIntegrationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -167,22 +211,16 @@
 			);
 			sourceTree = "<group>";
 		};
-		AA0000000000000000000003 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				AA0000000000000000000051 /* MenuRight.app */,
-				AA0000000000000000000052 /* MenuRightFinder.appex */,
-				AA0000000000000000000053 /* MenuRightTests.xctest */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
 		AA0000000000000000000010 /* MenuRight */ = {
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000011 /* App */,
 				AA0000000000000000000063 /* Info.plist */,
 				AA0000000000000000000064 /* MenuRight.entitlements */,
+				AA0000000000000000IPC5 /* IPC */,
+				AA0000000000000000000040 /* Frameworks */,
+				AA0000000000000000000051 /* MenuRight.app */,
+				185BBB7B30445FAE009F934F /* MenuRight.icon */,
 			);
 			path = MenuRight;
 			sourceTree = "<group>";
@@ -204,26 +242,13 @@
 				AA0000000000000000000072 /* FinderSelectionContext.swift */,
 				AA0000000000000000000073 /* FinderMenuBuilder.swift */,
 				AA0000000000000000000074 /* PasteboardWriter.swift */,
-				AA0000000000000000000041 /* FileOperations */,
 				AA0000000000000000000075 /* Info.plist */,
 				AA0000000000000000000076 /* MenuRightFinder.entitlements */,
+				AA0000000000000000IPC6 /* IPC */,
+				AA0000000000000000000040 /* Frameworks */,
+				AA0000000000000000000052 /* MenuRightFinder.appex */,
 			);
 			path = MenuRightFinder;
-			sourceTree = "<group>";
-		};
-
-		AA0000000000000000000041 /* FileOperations */ = {
-			isa = PBXGroup;
-			children = (
-				AA00000000000000000000A1 /* FileOperationService.swift */,
-				AA00000000000000000000A2 /* FileOperationResult.swift */,
-				AA00000000000000000000A3 /* FileNameResolver.swift */,
-				AA00000000000000000000A4 /* FileMovePlanner.swift */,
-				AA00000000000000000000A5 /* CutPayload.swift */,
-				AA00000000000000000000A6 /* CutPasteboard.swift */,
-				AA00000000000000000000A7 /* OperationPresenter.swift */,
-			);
-			path = FileOperations;
 			sourceTree = "<group>";
 		};
 		AA0000000000000000000030 /* MenuRightTests */ = {
@@ -239,15 +264,55 @@
 				AA00000000000000000000D1 /* FolderAuthorizationTests.swift */,
 				AA00000000000000000000D2 /* AuthorizedURLResolverTests.swift */,
 				AA00000000000000000000D3 /* FolderAuthorizationAccessTests.swift */,
+				AA0000000000000000TES1 /* UnixSocketTransportTests.swift */,
+				AA0000000000000000TES2 /* FileOperationDispatcherTests.swift */,
+				AA0000000000000000TES3 /* IPCProtocolTests.swift */,
+				AA0000000000000000TES4 /* FileOperationContractTests.swift */,
+				AA0000000000000000TES5 /* PeerIdentityTests.swift */,
+				AA0000000000000000TES6 /* IPCIntegrationTests.swift */,
 			);
 			path = MenuRightTests;
 			sourceTree = "<group>";
 		};
-
+		AA0000000000000000000040 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000090 /* FinderSync.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000041 /* FileOperations */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000000000000000000A1 /* FileOperationService.swift */,
+				AA00000000000000000000A2 /* FileOperationResult.swift */,
+				AA00000000000000000000A3 /* FileNameResolver.swift */,
+				AA00000000000000000000A4 /* FileMovePlanner.swift */,
+				AA00000000000000000000A5 /* CutPayload.swift */,
+				AA00000000000000000000A6 /* CutPasteboard.swift */,
+				AA00000000000000000000A7 /* OperationPresenter.swift */,
+				AA00000000000000000005F1 /* FileOperationDispatcher.swift */,
+			);
+			path = FileOperations;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000051 /* MenuRight.app */,
+				AA0000000000000000000052 /* MenuRightFinder.appex */,
+				AA0000000000000000000053 /* MenuRightTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 		AA0000000000000000000042 /* Shared */ = {
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000043 /* Authorization */,
+				AA0000000000000000000041 /* FileOperations */,
+				AA0000000000000000IPC7 /* IPC */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -264,12 +329,32 @@
 			path = Authorization;
 			sourceTree = "<group>";
 		};
-		AA0000000000000000000040 /* Frameworks */ = {
+		AA0000000000000000IPC5 /* IPC */ = {
 			isa = PBXGroup;
 			children = (
-				AA0000000000000000000090 /* FinderSync.framework */,
+				AA0000000000000000IPC1 /* MainAppIPCServer.swift */,
 			);
-			name = Frameworks;
+			path = IPC;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000IPC6 /* IPC */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000IPC2 /* ExtensionIPCClient.swift */,
+			);
+			path = IPC;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000IPC7 /* IPC */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000IPC3 /* MenuRightIPC.swift */,
+				AA0000000000000000IPC8 /* UnixSocketTransport.swift */,
+				AA0000000000000000IPC9 /* PeerIdentity.swift */,
+				AA0000000000000000IPCA /* IPCProtocol.swift */,
+				AA00000000000000000005C1 /* FileOperationContract.swift */,
+			);
+			path = IPC;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -407,6 +492,20 @@
 				AB00000000000000000000K4 /* AuthorizedURLResolver.swift in Sources */,
 				AB00000000000000000000K5 /* FolderAuthorizationAccess.swift in Sources */,
 				AB00000000000000000000K6 /* FolderAccessView.swift in Sources */,
+				AB0000000000000000IPC1 /* MainAppIPCServer.swift in Sources */,
+				AB0000000000000000IPC3 /* MenuRightIPC.swift in Sources */,
+				AB0000000000000000IPC8 /* UnixSocketTransport.swift in Sources */,
+				AB0000000000000000IPC9 /* PeerIdentity.swift in Sources */,
+				AB0000000000000000IPCA /* IPCProtocol.swift in Sources */,
+				AB00000000000000000005C1 /* FileOperationContract.swift in Sources */,
+				AB00000000000000000005F1 /* FileOperationDispatcher.swift in Sources */,
+				AB0000000000000000000AF1 /* FileOperationService.swift in Sources */,
+				AB0000000000000000000AF2 /* FileOperationResult.swift in Sources */,
+				AB0000000000000000000AF3 /* FileNameResolver.swift in Sources */,
+				AB0000000000000000000AF4 /* FileMovePlanner.swift in Sources */,
+				AB0000000000000000000AF5 /* CutPayload.swift in Sources */,
+				AB0000000000000000000AF6 /* CutPasteboard.swift in Sources */,
+				AB0000000000000000000AF7 /* OperationPresenter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -418,18 +517,15 @@
 				AB00000000000000000000B2 /* FinderSelectionContext.swift in Sources */,
 				AB00000000000000000000B3 /* FinderMenuBuilder.swift in Sources */,
 				AB00000000000000000000B4 /* PasteboardWriter.swift in Sources */,
-				AB00000000000000000000E1 /* FileOperationService.swift in Sources */,
-				AB00000000000000000000E2 /* FileOperationResult.swift in Sources */,
-				AB00000000000000000000E3 /* FileNameResolver.swift in Sources */,
-				AB00000000000000000000E4 /* FileMovePlanner.swift in Sources */,
 				AB00000000000000000000E5 /* CutPayload.swift in Sources */,
 				AB00000000000000000000E6 /* CutPasteboard.swift in Sources */,
 				AB00000000000000000000E7 /* OperationPresenter.swift in Sources */,
-				AB00000000000000000000L1 /* AuthorizedFolder.swift in Sources */,
-				AB00000000000000000000L2 /* FolderAuthorizationStore.swift in Sources */,
-				AB00000000000000000000L3 /* SecurityScopedBookmark.swift in Sources */,
-				AB00000000000000000000L4 /* AuthorizedURLResolver.swift in Sources */,
-				AB00000000000000000000L5 /* FolderAuthorizationAccess.swift in Sources */,
+				AB0000000000000000IPC2 /* ExtensionIPCClient.swift in Sources */,
+				AB0000000000000000IPC4 /* MenuRightIPC.swift in Sources */,
+				AB0000000000000000IPCB /* UnixSocketTransport.swift in Sources */,
+				AB0000000000000000IPCC /* PeerIdentity.swift in Sources */,
+				AB0000000000000000IPCD /* IPCProtocol.swift in Sources */,
+				AB00000000000000000005C2 /* FileOperationContract.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -458,6 +554,23 @@
 				AB00000000000000000000M6 /* AuthorizedURLResolver.swift in Sources */,
 				AB00000000000000000000M7 /* FolderAuthorizationAccess.swift in Sources */,
 				AB00000000000000000000M8 /* SecurityScopedBookmark.swift in Sources */,
+				AB00000000000000000005C3 /* FileOperationContract.swift in Sources */,
+				AB00000000000000000005F3 /* FileOperationDispatcher.swift in Sources */,
+				AB0000000000000000000AF8 /* FileOperationService.swift in Sources */,
+				AB0000000000000000000AF9 /* CutPasteboard.swift in Sources */,
+				AB0000000000000000000AFA /* OperationPresenter.swift in Sources */,
+				AB0000000000000000TST1 /* MainAppIPCServer.swift in Sources */,
+				AB0000000000000000TST2 /* ExtensionIPCClient.swift in Sources */,
+				AB0000000000000000TST3 /* MenuRightIPC.swift in Sources */,
+				AB0000000000000000TST8 /* UnixSocketTransport.swift in Sources */,
+				AB0000000000000000TST9 /* PeerIdentity.swift in Sources */,
+				AB0000000000000000TSTA /* IPCProtocol.swift in Sources */,
+				AB0000000000000000TES1 /* UnixSocketTransportTests.swift in Sources */,
+				AB0000000000000000TES2 /* FileOperationDispatcherTests.swift in Sources */,
+				AB0000000000000000TES3 /* IPCProtocolTests.swift in Sources */,
+				AB0000000000000000TES4 /* FileOperationContractTests.swift in Sources */,
+				AB0000000000000000TES5 /* PeerIdentityTests.swift in Sources */,
+				AB0000000000000000TES6 /* IPCIntegrationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

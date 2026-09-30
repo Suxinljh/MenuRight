@@ -50,15 +50,24 @@ enum FinderMenuPlanItem: Equatable {
     case submenu(title: String, actions: [FinderMenuAction])
 }
 
-/// Pure mapping from selection snapshot to the Phase A1 + A2 menu structure.
+/// Pure mapping from the right-click context to the Phase A1 + A2 menu structure.
 ///
-/// Item selection:
+/// The branch is decided by the *actual* menu kind (container background vs
+/// item selection), NOT by selection.hasSelection: on a container right-click
+/// Finder may still report a stale selectedItemURLs() from the window, and
+/// selection must never be conflated with the target.
+///
+/// Item selection (itemMenu == false, non-empty selection):
 ///   Copy Name / Copy Path / Copy File URL ─ Cut
-/// Container background:
+/// Container background (itemMenu == false + empty selection, or itemMenu == true):
 ///   New File ▸ Text / Markdown / JSON; New Folder ─ Paste Here ─ Copy Folder Path
 enum FinderMenuBuilder {
-    static func plan(for selection: FinderSelectionContext, hasCutPayload: Bool) -> [FinderMenuPlanItem] {
-        if selection.hasSelection {
+    static func plan(
+        for selection: FinderSelectionContext,
+        containerMenu: Bool = false,
+        hasCutPayload: Bool
+    ) -> [FinderMenuPlanItem] {
+        if !containerMenu && selection.hasSelection {
             return [
                 .action(.copyName(payload: selection.formattedNames)),
                 .action(.copyPath(payload: selection.formattedPaths)),

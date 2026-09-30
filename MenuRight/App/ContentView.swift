@@ -40,6 +40,7 @@ struct ContentView: View {
         .padding(28)
         .frame(width: 480)
         .onAppear {
+            LifecycleDiagnostics.record("ContentView.onAppear", from: "main-app")
             refreshExtensionStatus()
         }
     }

@@ -51,7 +51,7 @@ enum FileOperationError: Equatable, Error {
 
     /// Wraps an arbitrary Error (typically NSError from FileManager) while
     /// keeping the original domain/code/POSIX details for logging.
-    static func from(_ error: Error, context: URL) -> FileOperationError {
+    static func from(_ error: Error) -> FileOperationError {
         let nsError = error as NSError
         var posixCode: Int32?
         if nsError.domain == NSPOSIXErrorDomain {

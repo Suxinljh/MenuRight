@@ -10,11 +10,17 @@ enum FileOperationService {
         }
         let name = FileNameResolver.uniqueName(preferred: preferredName, existing: existingNames(in: directory))
         let url = directory.appendingPathComponent(name)
+        // Defence in depth: the dispatcher validates `name` at the IPC trust
+        // boundary, but never write outside the requested directory even if a
+        // caller skipped that validation.
+        guard AuthorizedURLResolver.isDirectChild(url, of: directory) else {
+            return .failure(.invalidMove("refusing to write outside “\(directory.path)”: \(name)"))
+        }
         do {
             try (contents ?? Data()).write(to: url, options: [.withoutOverwriting])
             return .success(url)
         } catch {
-            return .failure(FileOperationError.from(error, context: url))
+            return .failure(FileOperationError.from(error))
         }
     }
 
@@ -24,11 +30,14 @@ enum FileOperationService {
         }
         let name = FileNameResolver.uniqueName(preferred: preferredName, existing: existingNames(in: directory))
         let url = directory.appendingPathComponent(name)
+        guard AuthorizedURLResolver.isDirectChild(url, of: directory) else {
+            return .failure(.invalidMove("refusing to create outside “\(directory.path)”: \(name)"))
+        }
         do {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
             return .success(url)
         } catch {
-            return .failure(FileOperationError.from(error, context: url))
+            return .failure(FileOperationError.from(error))
         }
     }
 
@@ -69,7 +78,7 @@ enum FileOperationService {
                 try FileManager.default.moveItem(at: plan.sourceURL, to: destinationURL)
                 return FileOperationItemResult(sourceURL: plan.sourceURL, destinationURL: destinationURL, status: .success)
             } catch {
-                return FileOperationItemResult(sourceURL: plan.sourceURL, destinationURL: destinationURL, status: .failed(FileOperationError.from(error, context: destinationURL)))
+                return FileOperationItemResult(sourceURL: plan.sourceURL, destinationURL: destinationURL, status: .failed(FileOperationError.from(error)))
             }
         }
     }

@@ -37,6 +37,26 @@ final class FinderMenuBuilderTests: XCTestCase {
         XCTAssertEqual(actions(plan).last, .copyFolderPath(payload: "/Users/foo/My Project"))
     }
 
+    func testContainerMenuWithStaleSelectionStillBuildsContainerActions() {
+        // A container right-click may report a stale selectedItemURLs() from the
+        // window; the menu must follow the menu *kind*, not selection.hasSelection.
+        let selection = FinderSelectionContext(
+            itemURLs: [URL(fileURLWithPath: "/Users/suxin/Suxin")],
+            targetedURL: URL(fileURLWithPath: "/Users/suxin/Suxin/code", isDirectory: true)
+        )
+        let plan = FinderMenuBuilder.plan(for: selection, containerMenu: true, hasCutPayload: false)
+
+        XCTAssertFalse(
+            actions(plan).contains(.cut(items: selection.itemURLs)),
+            "container menu must not offer the item-cut action even with a stale selection"
+        )
+        XCTAssertEqual(actions(plan).last, .copyFolderPath(payload: "/Users/suxin/Suxin/code"))
+        XCTAssertNotNil(plan.first(where: { item in
+            if case .submenu(let title, _) = item { return title == "New File" }
+            return false
+        }))
+    }
+
     func testEmptySelectionWithoutTargetProducesNoActions() {
         let selection = FinderSelectionContext(itemURLs: [], targetedURL: nil)
         XCTAssertTrue(FinderMenuBuilder.plan(for: selection, hasCutPayload: false).isEmpty)

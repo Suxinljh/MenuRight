@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let bookmarkDiag = Logger(subsystem: "xin.ljhsu.MenuRight", category: "bookmark-diag")
 
 enum SecurityScopedBookmarkError: Equatable, Error {
     case creationFailed(URL, message: String)
@@ -37,9 +40,48 @@ enum SecurityScopedBookmark {
             return .success((url, isStale))
         } catch {
             let nsError = error as NSError
+            SecurityScopedBookmark.diagnoseFailure(nsError, data: data)
             return .failure(.resolutionFailed(
                 nsError.localizedDescription + " (domain=" + nsError.domain + " code=" + String(nsError.code) + ")"
             ))
         }
+    }
+
+    /// TEMPORARY DIAGNOSTICS: dump full NSError + attempt a plain (no-security-scope)
+    /// resolve to isolate whether the failure is the security-scope identity check
+    /// or the bookmark data itself. Pure logging, no behavior change.
+    private static func diagnoseFailure(_ nsError: NSError, data: Data) {
+        bookmarkDiag.log("BOOKMARK resolve(withSecurityScope) FAILED outer domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) desc=\(nsError.localizedDescription, privacy: .public)")
+
+        var uiPairs: [String] = []
+        for (k, v) in nsError.userInfo {
+            uiPairs.append(Self.describeKeyValue(k, v))
+        }
+        let uiJoined: String = uiPairs.joined(separator: " | ")
+        bookmarkDiag.log("BOOKMARK userInfo=[\(uiJoined, privacy: .public)]")
+
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+            var uPairs: [String] = []
+            for (k, v) in underlying.userInfo {
+                uPairs.append(Self.describeKeyValue(k, v))
+            }
+            let uJoined: String = uPairs.joined(separator: " | ")
+            bookmarkDiag.log("BOOKMARK underlying domain=\(underlying.domain, privacy: .public) code=\(underlying.code, privacy: .public) desc=\(underlying.localizedDescription, privacy: .public) userInfo=[\(uJoined, privacy: .public)]")
+        } else {
+            bookmarkDiag.log("BOOKMARK underlying: none")
+        }
+
+        // Fallback: resolve WITHOUT .withSecurityScope to test bookmark data validity.
+        var plainIsStale = false
+        do {
+            _ = try URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &plainIsStale)
+            bookmarkDiag.log("BOOKMARK resolve(plain, no security scope) SUCCEEDED — bookmark data is valid; the .withSecurityScope path is being rejected by the OS for this process")
+        } catch let plainError as NSError {
+            bookmarkDiag.log("BOOKMARK resolve(plain) FAILED domain=\(plainError.domain, privacy: .public) code=\(plainError.code, privacy: .public) desc=\(plainError.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private static func describeKeyValue(_ k: Any, _ v: Any) -> String {
+        return String(describing: k) + "=" + String(describing: v)
     }
 }

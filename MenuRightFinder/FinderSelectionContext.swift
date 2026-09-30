@@ -6,6 +6,12 @@ import Foundation
 /// formatting logic is unit-testable without mocking Finder APIs. FinderSync
 /// reads selectedItemURLs() / targetedURL() inside the legitimate menu(for:)
 /// context and hands the raw URLs to this type.
+///
+/// IMPORTANT: on a real Finder, selectedItemURLs() and targetedURL() are NOT
+/// guaranteed to describe the same location (e.g. the right-clicked item lives
+/// in one window while targetedURL() reports the frontmost window's folder).
+/// Future file operations must choose by operation semantics and never assume
+/// selection and target are equal.
 struct FinderSelectionContext {
     let itemURLs: [URL]
     let targetedURL: URL?

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import os
 
 /// Folder Access settings section (Phase A2.5).
 ///
@@ -7,8 +8,18 @@ import AppKit
 /// created from the NSOpenPanel user selection, then persisted in the shared
 /// App Group store so the Finder Sync extension can resolve them.
 struct FolderAccessView: View {
+    /// Low-frequency diagnostics for the authorization entry point.
+    private static let diag = Logger(subsystem: "xin.ljhsu.MenuRight", category: "main-app")
+
     @State private var folders: [AuthorizedFolder] = []
     @State private var store: FolderAuthorizationStore? = FolderAuthorizationStore.appGroupDefault()
+    /// Cached authorization status per folder id.
+    ///
+    /// `AuthorizedURLResolver.status(for:)` resolves a bookmark and starts/stops
+    /// scoped access, so it must never run inside `body` (it would repeat on
+    /// every render, scroll, or window activation). It is computed on explicit
+    /// reloads instead.
+    @State private var statuses: [UUID: AuthorizationStatus] = [:]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -54,7 +65,11 @@ struct FolderAccessView: View {
     // MARK: - Actions
 
     private func addFolder() {
-        guard let store else { return }
+        guard let store else {
+            Self.diag.log("APP addFolder: store is nil, aborting")
+            return
+        }
+        Self.diag.log("APP addFolder: store ok, presenting NSOpenPanel")
 
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -63,8 +78,17 @@ struct FolderAccessView: View {
         panel.canCreateDirectories = false
         panel.prompt = "Authorize"
         panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser
+        // Ensure the modal panel actually comes to front.
+        panel.level = .modalPanel
+        NSApp.activate(ignoringOtherApps: true)
 
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let response = panel.runModal()
+        Self.diag.log("APP addFolder: runModal returned \(response.rawValue, privacy: .public)")
+        guard response == .OK, let url = panel.url else {
+            Self.diag.log("APP addFolder: no selection (cancelled or empty), url=\(String(describing: panel.url?.path), privacy: .public)")
+            return
+        }
+        Self.diag.log("APP addFolder: selected \(url.path, privacy: .public), creating bookmark")
 
         do {
             let bookmarkData = try SecurityScopedBookmark.create(for: url)
@@ -95,7 +119,14 @@ struct FolderAccessView: View {
     // MARK: - State
 
     private func reload() {
-        folders = store?.loadFolders() ?? []
+        let loaded = store?.loadFolders() ?? []
+        folders = loaded
+        var resolved: [UUID: AuthorizationStatus] = [:]
+        resolved.reserveCapacity(loaded.count)
+        for folder in loaded {
+            resolved[folder.id] = AuthorizedURLResolver.status(for: folder)
+        }
+        statuses = resolved
     }
 
     private func displayName(for url: URL) -> String {
@@ -108,7 +139,8 @@ struct FolderAccessView: View {
 
     @ViewBuilder
     private func statusBadge(for folder: AuthorizedFolder) -> some View {
-        switch AuthorizedURLResolver.status(for: folder) {
+        // Read-only: the badge renders the value computed by `reload()`.
+        switch statuses[folder.id] ?? .needsReauthorization {
         case .authorized:
             Text("Authorized").foregroundColor(.green)
         case .needsReauthorization:

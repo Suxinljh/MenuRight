@@ -62,4 +62,39 @@ final class AuthorizedURLResolverTests: XCTestCase {
         // /Users/foo/Desktop must not cover /Users/foo/Desktop2.
         XCTAssertNil(match([folder("/Users/foo/Desktop")], "/Users/foo/Desktop2/a.txt"))
     }
+
+    // MARK: - contains / isDirectChild (M1 + M6 shared containment)
+
+    func testContainsIsComponentWise() {
+        let home = URL(fileURLWithPath: "/Users/foo")
+        XCTAssertTrue(AuthorizedURLResolver.contains(home, URL(fileURLWithPath: "/Users/foo/barista")))
+        XCTAssertTrue(AuthorizedURLResolver.contains(home, home), "a root contains itself")
+        XCTAssertFalse(AuthorizedURLResolver.contains(URL(fileURLWithPath: "/Users/foo/bar"), URL(fileURLWithPath: "/Users/foo/barista/x")))
+        XCTAssertFalse(AuthorizedURLResolver.contains(home, URL(fileURLWithPath: "/Users/foobar/x")))
+    }
+
+    func testContainsNormalizesTrailingSlashAndDotDot() {
+        XCTAssertTrue(AuthorizedURLResolver.contains(
+            URL(fileURLWithPath: "/Users/foo/"),
+            URL(fileURLWithPath: "/Users/foo/Desktop/../Desktop/a.txt")
+        ))
+    }
+
+    func testIsDirectChildAcceptsOnlyOneComponentBelow() {
+        let dir = URL(fileURLWithPath: "/tmp/menuright-dir")
+        XCTAssertTrue(AuthorizedURLResolver.isDirectChild(URL(fileURLWithPath: "/tmp/menuright-dir/Untitled.txt"), of: dir))
+        XCTAssertTrue(AuthorizedURLResolver.isDirectChild(URL(fileURLWithPath: "/tmp/menuright-dir/sub/deep.txt"), of: URL(fileURLWithPath: "/tmp/menuright-dir/sub")))
+
+        // Escape attempts must be rejected.
+        XCTAssertFalse(AuthorizedURLResolver.isDirectChild(URL(fileURLWithPath: "/tmp/elsewhere.txt"), of: dir))
+        XCTAssertFalse(AuthorizedURLResolver.isDirectChild(dir, of: dir), "the directory is not its own child")
+        XCTAssertFalse(AuthorizedURLResolver.isDirectChild(URL(fileURLWithPath: "/tmp/menuright-dir2/x.txt"), of: dir))
+    }
+
+    func testIsDirectChildIsInsensitiveToTrailingSlash() {
+        XCTAssertTrue(AuthorizedURLResolver.isDirectChild(
+            URL(fileURLWithPath: "/tmp/menuright-dir/x.txt"),
+            of: URL(fileURLWithPath: "/tmp/menuright-dir/")
+        ))
+    }
 }

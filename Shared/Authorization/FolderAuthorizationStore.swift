@@ -15,10 +15,19 @@ struct FolderAuthorizationPayload: Codable, Equatable {
 /// Corrupt or unknown-version payloads load as an empty list rather than
 /// crashing or migrating.
 final class FolderAuthorizationStore {
-    static let appGroupIdentifier = "group.xin.ljhsu.MenuRight"
+    /// Single source of truth for the App Group identifier (shared with the IPC
+    /// layer, which places the socket in the same container).
+    static let appGroupIdentifier = MenuRightIPC.appGroupIdentifier
     static let fileName = "FolderAuthorization.json"
 
     private let fileURL: URL
+
+    /// Serializes read-modify-write cycles. The dispatcher runs on a concurrent
+    /// connection queue, so two concurrent `update`/`add` calls would otherwise
+    /// drop one another's changes. Cross-process atomicity is provided by the
+    /// atomic write plus the architecture rule that the Main App is the only
+    /// writer (the extension no longer resolves or writes bookmarks).
+    private let lock = NSLock()
 
     init(fileURL: URL) {
         self.fileURL = fileURL
@@ -35,19 +44,18 @@ final class FolderAuthorizationStore {
     }
 
     func loadFolders() -> [AuthorizedFolder] {
-        guard let data = try? Data(contentsOf: fileURL) else { return [] }
-        guard let payload = try? JSONDecoder().decode(FolderAuthorizationPayload.self, from: data) else {
-            return []
-        }
-        guard payload.version == FolderAuthorizationPayload.currentVersion else { return [] }
-        return payload.folders
+        lock.lock()
+        defer { lock.unlock() }
+        return loadUnlocked()
     }
 
     /// Adds a folder, replacing an existing row with the same normalized path
     /// (reauthorization) instead of creating a duplicate. The original row id
     /// is kept; bookmark data and metadata are refreshed.
     func add(_ folder: AuthorizedFolder) throws {
-        var folders = loadFolders()
+        lock.lock()
+        defer { lock.unlock() }
+        var folders = loadUnlocked()
         let normalized = folder.normalizedPath
         if let index = folders.firstIndex(where: { $0.normalizedPath == normalized }) {
             let existing = folders[index]
@@ -64,17 +72,30 @@ final class FolderAuthorizationStore {
     }
 
     func remove(id: UUID) throws {
-        var folders = loadFolders()
+        lock.lock()
+        defer { lock.unlock() }
+        var folders = loadUnlocked()
         folders.removeAll { $0.id == id }
         try save(folders)
     }
 
     func update(_ folder: AuthorizedFolder) throws {
-        var folders = loadFolders()
+        lock.lock()
+        defer { lock.unlock() }
+        var folders = loadUnlocked()
         if let index = folders.firstIndex(where: { $0.id == folder.id }) {
             folders[index] = folder
         }
         try save(folders)
+    }
+
+    private func loadUnlocked() -> [AuthorizedFolder] {
+        guard let data = try? Data(contentsOf: fileURL) else { return [] }
+        guard let payload = try? JSONDecoder().decode(FolderAuthorizationPayload.self, from: data) else {
+            return []
+        }
+        guard payload.version == FolderAuthorizationPayload.currentVersion else { return [] }
+        return payload.folders
     }
 
     private func save(_ folders: [AuthorizedFolder]) throws {

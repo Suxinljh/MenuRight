@@ -13,16 +13,42 @@ enum AuthorizationStatus: Equatable {
 /// Comparisons use normalized URL path components: trailing slashes are
 /// ignored and "/foo/bar" never matches "/foo/barista".
 enum AuthorizedURLResolver {
+    /// True when `descendant` is `ancestor` itself or lives below it.
+    ///
+    /// Component-wise comparison, so "/foo/barista" is NOT inside "/foo/bar".
+    /// Both sides are standardized first (`..` and repeated separators are
+    /// resolved lexically — no filesystem access, no symlink resolution).
+    static func contains(_ ancestor: URL, _ descendant: URL) -> Bool {
+        let ancestorComponents = ancestor.standardizedFileURL.pathComponents
+        let descendantComponents = descendant.standardizedFileURL.pathComponents
+        guard ancestorComponents.count <= descendantComponents.count else { return false }
+        return Array(descendantComponents.prefix(ancestorComponents.count)) == ancestorComponents
+    }
+
+    /// True when `url` is a **direct** child of `directory` (exactly one extra
+    /// path component). Used as the last containment check before a write, so a
+    /// name that survived validation can never place the file elsewhere.
+    static func isDirectChild(_ url: URL, of directory: URL) -> Bool {
+        let parent = url.standardizedFileURL.deletingLastPathComponent()
+        return parent.pathComponents == directory.standardizedFileURL.pathComponents
+    }
+
     /// Returns the most specific authorized ancestor of targetURL, or nil.
+    ///
+    /// This is a *pre-filter* over the stored metadata (`originalPath`). The
+    /// authoritative capability is the security-scoped bookmark; callers must
+    /// still confirm that the resolved bookmark root actually contains the
+    /// target (see `FolderAuthorizationAccess`).
     static func folderMatching(_ targetURL: URL, folders: [AuthorizedFolder]) -> AuthorizedFolder? {
-        let targetComponents = targetURL.standardizedFileURL.pathComponents
+        let targetURL = targetURL.standardizedFileURL
+        let targetComponents = targetURL.pathComponents
         var best: AuthorizedFolder?
         var bestDepth = -1
         for folder in folders {
-            let folderComponents = normalizedComponents(of: folder.originalPath)
+            let folderURL = URL(fileURLWithPath: folder.originalPath).standardizedFileURL
+            let folderComponents = folderURL.pathComponents
             guard folderComponents.count > bestDepth else { continue }
-            guard folderComponents.count <= targetComponents.count else { continue }
-            guard Array(targetComponents.prefix(folderComponents.count)) == folderComponents else { continue }
+            guard contains(folderURL, targetURL) else { continue }
             best = folder
             bestDepth = folderComponents.count
         }
@@ -32,6 +58,9 @@ enum AuthorizedURLResolver {
     /// Resolves whether a stored authorization is currently usable.
     /// Unavailable = the folder itself no longer exists.
     /// NeedsReauthorization = bookmark cannot resolve or access cannot start.
+    ///
+    /// NOTE: this starts/stops scoped access. Call it on an explicit refresh
+    /// (view reload), never from a SwiftUI `body`.
     static func status(for folder: AuthorizedFolder) -> AuthorizationStatus {
         switch SecurityScopedBookmark.resolve(folder.bookmarkData) {
         case .failure:
@@ -47,9 +76,5 @@ enum AuthorizedURLResolver {
             }
             return started ? .authorized : .needsReauthorization
         }
-    }
-
-    private static func normalizedComponents(of path: String) -> [String] {
-        URL(fileURLWithPath: path).standardizedFileURL.pathComponents
     }
 }
