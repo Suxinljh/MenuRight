@@ -8,18 +8,57 @@ Native macOS Finder productivity utility.
 
 ## Current phase
 
-**Phase A2.5 - Folder Authorization Foundation**
+**Phase P5-1 - Main App is the single writer (over App-Group IPC)**
 
-Goal: the smallest supported authorization architecture that lets the sandboxed
-Finder Sync extension write inside directories the user explicitly authorized.
+Goal: the sandboxed Finder Sync extension never writes to disk itself. It asks
+the main app to perform the operation, and the main app re-establishes the
+user's authorization (security-scoped bookmark) before every mutation.
 
 Flow: Menu Right app -> Add Folder (NSOpenPanel) -> app-scope security-scoped
-bookmark -> persisted in the App Group container -> Finder Sync extension
-resolves the bookmark -> startAccessingSecurityScopedResource() -> existing
-FileOperationService actions -> stopAccessingSecurityScopedResource().
+bookmark -> persisted in the App Group container -> Finder Sync extension sends
+a `fileOperation` request over an App-Group Unix socket -> **main app** resolves
+the bookmark, matches the requested path against the authorized roots ->
+`startAccessingSecurityScopedResource()` -> `FileOperationService` ->
+`stopAccessingSecurityScopedResource()`.
 
-Status: automated builds/tests PASS; cross-process bookmark access requires the
-manual gate (real NSOpenPanel selection) to be confirmed in Finder.
+The extension holds no bookmark capability: it transmits paths only.
+
+Status: automated builds/tests PASS; the Finder integration (extension loading,
+real NSOpenPanel selection, cross-process bookmark access) requires the manual
+gate below.
+
+### IPC transport (P5-0.6 / P5-1)
+
+- App-Group Unix domain socket `<App Group>/ipc.sock`; length-prefixed JSON
+  frames, 64 KiB cap; `ping` + `fileOperation`.
+- **Deadlines**: every read/write waits with `poll()` against a wall-clock
+  deadline; `SO_RCVTIMEO`/`SO_SNDTIMEO` are additional defence in depth. A peer
+  that connects and then goes silent cannot block a caller.
+- **Both sides verify the peer** by code signature (audit token +
+  `SecCodeCheckValidity`) against a designated requirement that pins the bundle
+  identifier *and* the team OU. Either side can refuse a socket it did not
+  expect, so a same-user process cannot impersonate the main app.
+- The socket file is `chmod 0600` after `bind()`; a pre-existing path that is not
+  our own socket, or a socket that still has a live listener, is never removed.
+- `SO_NOSIGPIPE` is set on every socket, so writing to a closed peer fails with
+  `EPIPE` instead of killing the process with SIGPIPE.
+- The extension runs all IPC on a private serial queue and only touches the main
+  thread to present an alert (Finder menu actions must never block).
+
+### Swift language mode
+
+The toolchain is Swift 6.2.1 (Xcode 26.1) but every target builds in
+**Swift 5 language mode** (`SWIFT_VERSION = 5.0`), so strict concurrency
+diagnostics are *not* compile-time enforced. Concurrency-critical state is
+therefore synchronized explicitly (serial queues for the IPC lifecycle, an
+`NSLock` for the authorization store) rather than relying on the compiler.
+
+## Phase A2.5 (previous phase)
+
+Folder Authorization Foundation: the smallest supported authorization
+architecture that lets the extension write inside directories the user
+explicitly authorized. Superseded by P5-1 for *who performs the write*; the
+bookmark model itself is unchanged.
 
 ## Phase A2 (previous phase)
 
@@ -56,20 +95,34 @@ survives extension restarts.
 
 - App Sandbox stays enabled for the app and the extension.
 - App Group `group.xin.ljhsu.MenuRight` added ONLY for folder-authorization
-  metadata + bookmark data.
+  metadata + bookmark data + the IPC socket.
 - Main app: `com.apple.security.files.user-selected.read-write` +
   `com.apple.security.files.bookmarks.app-scope` (NSOpenPanel grant origin).
-- Extension: same bookmark/user-selected entitlements so it can resolve and
-  consume bookmarks created by the containing app.
+- Extension: **no file entitlements at all** — it does not resolve bookmarks and
+  does not write. Every mutation is requested over IPC and executed by the main
+  app after it re-establishes authorization. The shared write/authorization
+  sources are deliberately not compiled into the extension target, so the
+  architecture is enforced by the build graph rather than by convention.
 - No Full Disk Access, no temporary exceptions, no shell/AppleScript bypass.
 - Monitored scope remains the user home directory only.
+- Every requested path is re-validated by the main app: it is canonicalized,
+  matched against the authorized roots by path *components*, and the bookmark
+  resolution result must still contain the target. A wire-supplied `name` is
+  rejected unless it is a single, representable path component, and the final
+  write URL is checked again immediately before the write.
 
-### Folder Access (A2.5)
+### Folder Access (A2.5, unchanged)
 
 Authorize folders (e.g. Home once) via Menu Right -> Folder Access -> Add
 Folder. Authorized entries persist as security-scoped bookmarks in the shared
-App Group store; the extension resolves the nearest authorized ancestor before
-New File / New Folder / Paste Here and balances start/stop scoped access.
+App Group store. New File / New Folder / Paste Here require the nearest
+authorized ancestor; start/stop scoped access is balanced by `defer`.
+
+Stale bookmarks are **renewed transparently**: the refreshed bookmark is created
+from the still-resolving stale bookmark and written back to the App Group store
+under a lock. Only if the renewal itself fails does the operation report
+`stale_bookmark_needs_reauthorization` and ask the user to re-authorize. The
+single-target and multi-target paths use the same policy.
 
 ### Phase A2 verified constraint
 
@@ -94,14 +147,80 @@ xcodebuild -project MenuRight.xcodeproj -scheme MenuRight -configuration Debug b
 xcodebuild -project MenuRight.xcodeproj -scheme MenuRight -configuration Debug test
 ```
 
-### Manual verification (Phase A2)
+Both targets (`MenuRight` and `MenuRightFinder`) must build; the scheme's test
+action builds both before running `MenuRightTests`.
 
-A build passing is NOT enough — the sandboxed extension's write access must be
-verified in the real Finder:
+**Signing (this machine, verified):** a plain `xcodebuild ... build` fails with
+`No profiles for 'xin.ljhsu.MenuRight.FinderSync' were found` because no
+provisioning profiles are installed yet. Let Xcode create them once:
+
+```sh
+xcodebuild -project MenuRight.xcodeproj -scheme MenuRight -configuration Debug build \
+  -allowProvisioningUpdates
+```
+
+That produced a fully signed Debug build (Apple Development, team `92X76S5UFL`,
+leaf certificate `OU=92X76S5UFL`) and is the prerequisite for loading the
+extension in Finder.
+
+For a headless run where signing is irrelevant (CI-style verification of the
+unit tests only):
+
+```sh
+xcodebuild -project MenuRight.xcodeproj -scheme MenuRight -configuration Debug test \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+```
+
+That variant runs the full suite (159 tests at the time of writing) but produces
+an unsigned app — it is useless for actually loading the extension in Finder.
+Real Finder verification needs the signed build.
+
+### Reproducible IPC gate verification
+
+The peer-identity gate needs a real signed peer, so the unit tests inject a stub
+verifier. `Scripts/verify-ipc-peer.swift` closes that gap without Finder: it
+connects to the **running** main app and runs the exact requirement strings the
+extension ships.
+
+```sh
+swiftc -O Scripts/verify-ipc-peer.swift Shared/IPC/MenuRightIPC.swift \
+  Shared/IPC/PeerIdentity.swift Shared/IPC/UnixSocketTransport.swift \
+  -o /tmp/verify-ipc-peer && /tmp/verify-ipc-peer
+```
+
+Checked (all PASS on 2026-09-30, signed Debug build, team `92X76S5UFL`):
+
+- `mainAppRequirementString` VERIFIES the live main app
+  (`bundleId=xin.ljhsu.MenuRight team=92X76S5UFL`) — this is the check the
+  extension runs after `connect()`;
+- the extension's own requirement does NOT match the main app;
+- a wrong `certificate leaf[subject.OU]` is rejected, so the M2 team binding is
+  real (`SecCodeCheckValidity` returns `-67050` = `errSecCSReqFailed`).
+
+Observed live behaviour of the signed app:
+
+- `<App Group>/ipc.sock` is created `srw-------` (0600) **after** `bind()`;
+- a non-extension client that sends a valid `ping` frame gets its connection
+  closed with **no response** (~10 ms), and the app logs
+  `MAIN-IPC peer REJECTED: SecCodeCheckValidity failed OSStatus=-67050`;
+- the second `start()` call is a no-op (`already running`), confirming the
+  lifecycle is serialized;
+- `bootstrap-diagnostics.log` is appended to (existing history preserved — the
+  old `Data.write` fallback used to truncate it).
+
+Still `Manual: PENDING` — everything that needs Finder itself: extension
+loading, the extension's own client-side check from inside its sandbox, New
+File / New Folder / Cut / Paste, stale-bookmark renewal, and the least-privilege
+regression.
+
+### Manual verification (P5-1 + A2 integration)
+
+A build passing is NOT enough — the sandboxed extension's behaviour must be
+verified in the real Finder. Automated tests do not and cannot cover this.
 
 1. Enable the extension (MenuRight app -> Manage Finder Extension).
-2. **Test A - New File**: in ~/Desktop/MenuRight-A2-Test/ (or any Home
-   subfolder), right-click background -> New File -> Text File. Expect
+2. **Test A - New File**: in ~/Desktop/MenuRight-A2-Test/ (or any authorized
+   Home subfolder), right-click background -> New File -> Text File. Expect
    Untitled.txt; repeat, expect Untitled 2.txt.
 3. **Test B - New Folder**: repeat New Folder twice; expect New Folder,
    New Folder 2.
@@ -112,6 +231,27 @@ verified in the real Finder:
 6. **Test E - Collision**: destination already contains the same filename;
    expect the existing file untouched, source kept, and an error alert.
 7. **Test F - Folder guard**: attempt FolderA -> FolderA/Sub; expect rejection.
+8. **Test G - no hang (H1)**: quit MenuRight, then occupy the socket with a
+   foreign listener (`nc -lU "<App Group>/ipc.sock"`). Trigger New File: expect
+   the "Menu Right not running" alert within a few seconds and a responsive
+   Finder menu — never a spinning/blocked extension.
+9. **Test H - impostor rejected (H2)**: same setup as G with a listener that is
+   *not* MenuRight. The extension must refuse (no bogus success) and report that
+   Menu Right is unavailable.
+10. **Test I - transparent renewal (H3)**: authorize ~/Desktop/t, rename it to
+    t2 in Finder, then New File inside t2. Expect success (not "Folder Access
+    Required"), and the bookmark row in `FolderAuthorization.json` refreshed.
+11. **Test J - least privilege regression (L5)**: with the extension's file
+    entitlements removed, Copy Name / Copy Path / Copy File URL / Copy Folder
+    Path / Cut / New File / New Folder / Paste Here all still work.
+
+Evidence commands:
+
+```sh
+log stream --predicate 'subsystem == "xin.ljhsu.MenuRight"'
+ls -le@ "$(getconf DARWIN_USER_DIR)../"   # inspect the App Group container
+stat -f "%p %Su %N" "<App Group>/ipc.sock"   # expect 600 <owner>
+```
 
 If Test A fails with a sandbox/permission error, record the exact NSError
 domain/code/POSIX and do NOT disable the sandbox — report it.
@@ -129,4 +269,14 @@ domain/code/POSIX and do NOT disable the sandbox — report it.
 - Image handling, Git detection, scripts, destination favorites,
   Copy To / Move To — later phases
 
-None of the roadmap items are shipped in Phase A2.
+None of the roadmap items are shipped in Phase P5-1.
+
+### Out of scope (deliberately not addressed)
+
+- Swift 6 language mode / strict-concurrency migration (see the language-mode
+  note above); concurrency is synchronized by hand instead.
+- Release/notarization/hardened-runtime verification (`get-task-allow` is
+  expected in Debug only).
+- Full TOCTOU hardening against symlink swaps; containment is enforced by
+  component-wise comparison plus a final check before the write.
+- os_log payload privacy (several diagnostics are still `.public`).
