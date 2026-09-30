@@ -150,10 +150,26 @@ stat -f "%Lp %Su:%Sg %N" ~/Library/Group\ Containers/group.xin.ljhsu.MenuRight/i
 4. 如果是权限错误:完整的 NSError `domain`/`code` 与 POSIX 码 —— **不要**通过关闭沙箱来绕过,记录下来给我。
 5. 若菜单本身不对:截图右键菜单。
 
-## 6. 结论怎么写
+## 6. 验收记录
+
+### 2026-09-30 — P6-a 人工验收
 
 ```
-Automated: PASS  (184/184 XCTest,两个 target 均构建成功)
+Automated: PASS  (190/190 XCTest,MenuRight 与 MenuRightFinder 均构建成功)
+Manual:
+  P6-1 … P6-11  §3.1 全部 11 项                                    PASS
+  A–J           §3.2 存量回归                                      PENDING
+```
+
+- 通过方式:按 §1 用 `Scripts/install-dev-app.sh` 安装,在真实 Finder 中逐项点击验证(2026-09-30)。
+- 其中 P6-2(`Open Terminal`)的机制已单独复测:沙箱内走 Terminal 的
+  "New Terminal at Folder" 服务,新 shell 的 `cwd` 等于右键目录。
+- **§3.2 的 A–J 尚未做**:这 11 项通过不等于存量回归通过,仍按 PENDING 记。
+
+### 结论怎么写
+
+```
+Automated: PASS  (190/190 XCTest,两个 target 均构建成功)
 Manual:
   P6-1  空白区菜单结构      PASS/FAIL
   P6-2  Open Terminal       PASS/FAIL

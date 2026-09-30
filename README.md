@@ -242,10 +242,15 @@ Observed live behaviour of the signed app:
 - `bootstrap-diagnostics.log` is appended to (existing history preserved — the
   old `Data.write` fallback used to truncate it).
 
-Still `Manual: PENDING` — everything that needs Finder itself: extension
-loading, the extension's own client-side check from inside its sandbox, New
-File / New Folder / Cut / Paste, stale-bookmark renewal, and the least-privilege
-regression.
+**2026-09-30: the P6 menu items (§3.1 of the runbook) are `Manual: PASS`** — all
+eleven were exercised in real Finder on this machine. The older A–J regression
+list is still `Manual: PENDING`.
+
+Still `Manual: PENDING` — the §3.2 regression list (A–J): create/rename
+collisions (`Untitled 2.txt`), Cut → Paste Here across folders, partial and
+conflicting pastes, refusing to move a folder into itself, the
+"Menu Right not running" alert, the impostor-socket control, stale-bookmark
+renewal after a rename, and the least-privilege regression.
 
 ### Manual verification (P5-1 + A2 integration)
 
