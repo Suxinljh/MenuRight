@@ -32,6 +32,53 @@ final class IPCIntegrationTests: XCTestCase {
         return url
     }
 
+    // MARK: - Restart race
+
+    /// Regression: restarting the app while the previous instance is still
+    /// exiting used to leave the new instance alive but *never listening* -
+    /// a single failed bind was permanent, so every Finder action afterwards
+    /// failed with `connect() failed: No such file or directory` and looked
+    /// like "nothing happens".
+    func testSecondInstanceBindsAfterTheFirstReleasesTheSocket() throws {
+        let first = makeServer()
+        first.start()
+        XCTAssertTrue(first.isListening, "first instance should be listening")
+
+        // Second instance starts while the first still owns the socket.
+        let second = makeServer()
+        second.start()
+        XCTAssertFalse(second.isListening, "must not steal a live listener's socket")
+        XCTAssertTrue(second.isWaitingForOtherInstance, "must be retrying, not given up")
+
+        // The previous instance exits and releases the path.
+        first.stop()
+
+        let deadline = Date().addingTimeInterval(10)
+        while !second.isListening && Date() < deadline {
+            usleep(100_000)
+        }
+        XCTAssertTrue(second.isListening, "second instance never recovered the socket")
+
+        // And it is genuinely serving, not merely flipped a flag.
+        XCTAssertNotNil(roundTrip(method: "ping"), "recovered listener must answer requests")
+    }
+
+    func testStopStandsDownAPendingBindRetry() throws {
+        let first = makeServer()
+        first.start()
+        XCTAssertTrue(first.isListening)
+
+        let second = makeServer()
+        second.start()
+        XCTAssertFalse(second.isListening)
+
+        // Stopping the waiter must end the retries rather than rebinding later.
+        second.stop()
+        first.stop()
+        Thread.sleep(forTimeInterval: 1.5)
+        XCTAssertFalse(second.isListening, "a stopped server must not bind later")
+    }
+
     // MARK: - Fixtures
 
     private func scopedConfiguration() -> ScopedAccessConfiguration {

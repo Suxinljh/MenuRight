@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import os
 
 /// **Phase P5-0.6 + P5-1** — App-Group Unix domain socket IPC server running
@@ -32,10 +33,18 @@ import os
 ///     `FileOperationContract.Request`; dispatched to a
 ///     `FileOperationDispatcher`. Response is wrapped in
 ///     `IPCProtocol.Response.result` (or `.error`).
+/// **Restart race** (fixes a real "nothing happens" bug): when the app is
+/// restarted while the previous instance is still exiting, the old process
+/// still owns the socket, so a single bind attempt fails. Giving up there left
+/// the new instance alive but unreachable forever - the extension's requests
+/// then failed with `connect() failed: No such file or directory` and every
+/// action looked dead. Instead, a bind that finds another listener is retried
+/// with a short backoff until the old instance releases the path.
+///
 /// `@unchecked Sendable`: mutable lifecycle state (`listenSource`, `listenFD`,
-/// `isRunning`) is confined to `acceptQueue`, and `start()`/`stop()` are
-/// synchronous with respect to that queue. The remaining stored properties are
-/// immutable `let`s.
+/// `isRunning`, retry bookkeeping) is confined to `acceptQueue`, and
+/// `start()`/`stop()` are synchronous with respect to that queue. The remaining
+/// stored properties are immutable `let`s.
 final class MainAppIPCServer: NSObject, @unchecked Sendable {
     private static let log = Logger(subsystem: MenuRightIPC.subsystem, category: "main-app-ipc")
 
@@ -53,6 +62,22 @@ final class MainAppIPCServer: NSObject, @unchecked Sendable {
     private var listenSource: DispatchSourceRead?
     /// Confined to `acceptQueue`.
     private var listenFD: Int32 = -1
+    /// Confined to `acceptQueue`: attempts made by the current retry loop.
+    private var bindAttempts = 0
+    /// Confined to `acceptQueue`: set by `stop()` so pending retries stand down.
+    private var isStopping = false
+    /// Confined to `acceptQueue`: true while a retry is already scheduled, so a
+    /// second `start()` (the app delegate calls it from both willFinishLaunching
+    /// and didFinishLaunching) cannot spawn a second retry chain. Two chains
+    /// halve the effective interval and burn the attempt budget twice as fast,
+    /// which was observed to succeed only on the very last allowed attempt.
+    private var bindRetryScheduled = false
+
+    /// Retry cadence and budget for a bind that finds another listener. A
+    /// quitting instance releases the socket in well under a second; 30 s is
+    /// generous enough for a slow exit without waiting forever on a leftover.
+    private static let bindRetryInterval: TimeInterval = 0.5
+    private static let maxBindAttempts = 60
 
     private(set) var isRunning: Bool = false
 
@@ -69,6 +94,17 @@ final class MainAppIPCServer: NSObject, @unchecked Sendable {
         self.peerVerifier = peerVerifier
         super.init()
         Self.log.info("MAIN-IPC server instance created socketURL=\(self.socketURL?.path ?? "<nil>", privacy: .public)")
+    }
+
+    /// Thread-safe read of the bind state. (`isRunning` is documented as only
+    /// readable by the thread that just called `start()`/`stop()`.)
+    var isListening: Bool {
+        acceptQueue.sync { isRunning }
+    }
+
+    /// True while a retry is pending, i.e. the app is up but not yet serving.
+    var isWaitingForOtherInstance: Bool {
+        acceptQueue.sync { bindAttempts > 0 && !isRunning }
     }
 
     /// Bring the listener up. Idempotent — second call is a no-op.
@@ -88,6 +124,15 @@ final class MainAppIPCServer: NSObject, @unchecked Sendable {
             Self.log.info("MAIN-IPC start(): already running; no-op")
             return
         }
+        guard !bindRetryScheduled else {
+            Self.log.info("MAIN-IPC start(): bind retry already pending; no-op")
+            return
+        }
+        // An explicit start after an exhausted budget restarts it: a leftover
+        // instance may exit later, and `applicationDidBecomeActive` re-arms us.
+        if bindAttempts >= Self.maxBindAttempts {
+            bindAttempts = 0
+        }
         guard let socketURL else {
             Self.log.error("MAIN-IPC start(): no socket URL; App Group unavailable")
             LifecycleDiagnostics.record("MainAppIPCServer.start: SKIP (no socket URL)", from: "main-app")
@@ -96,8 +141,29 @@ final class MainAppIPCServer: NSObject, @unchecked Sendable {
 
         let r = UnixSocketTransport.listen(on: socketURL)
         guard r.fd >= 0 else {
-            Self.log.error("MAIN-IPC start(): \(r.error ?? "unknown", privacy: .public)")
-            LifecycleDiagnostics.record("MainAppIPCServer.start: FAIL (\(r.error ?? "unknown"))", from: "main-app")
+            let reason = r.error ?? "unknown"
+            // Another instance still owns the socket: this is the ordinary
+            // restart race, so retry rather than failing permanently.
+            if reason.contains("already running"), bindAttempts < Self.maxBindAttempts {
+                bindAttempts += 1
+                bindRetryScheduled = true
+                let attempt = bindAttempts
+                Self.log.notice("MAIN-IPC start(): another instance owns the socket; retry \(attempt, privacy: .public)/\(Self.maxBindAttempts, privacy: .public) in \(Self.bindRetryInterval, privacy: .public)s")
+                IPCStatusCenter.shared.publish(.waitingForOtherInstance(attempt: attempt))
+                acceptQueue.asyncAfter(deadline: .now() + Self.bindRetryInterval) { [weak self] in
+                    guard let self, !self.isStopping else { return }
+                    // This retry *is* the scheduled attempt: clear the flag so
+                    // startLocked() proceeds (and so a later start() can schedule
+                    // a fresh chain if this attempt also finds the socket busy).
+                    self.bindRetryScheduled = false
+                    self.startLocked()
+                }
+                return
+            }
+            Self.log.error("MAIN-IPC start(): \(reason, privacy: .public)")
+            bindRetryScheduled = false
+            LifecycleDiagnostics.record("MainAppIPCServer.start: FAIL (\(reason))", from: "main-app")
+            IPCStatusCenter.shared.publish(.failed(reason))
             return
         }
         let fd = r.fd
@@ -116,12 +182,25 @@ final class MainAppIPCServer: NSObject, @unchecked Sendable {
         listenSource = src
         listenFD = fd
         isRunning = true
+        if bindAttempts > 0 {
+            Self.log.notice("MAIN-IPC listening after \(self.bindAttempts, privacy: .public) retry/retries")
+        }
+        bindAttempts = 0
+        bindRetryScheduled = false
         Self.log.info("MAIN-IPC listening on \(socketURL.path, privacy: .public)")
         LifecycleDiagnostics.record("MainAppIPCServer.start OK fd=\(fd) path=\(socketURL.path)", from: "main-app")
+        IPCStatusCenter.shared.publish(.listening)
     }
 
     private func stopLocked() {
-        guard isRunning else { return }
+        // Stand down any pending bind retry, even if we never got to listen.
+        isStopping = true
+        bindRetryScheduled = false
+        guard isRunning else {
+            bindAttempts = 0
+            IPCStatusCenter.shared.publish(.stopped)
+            return
+        }
         listenSource?.cancel()
         listenSource = nil
         listenFD = -1
@@ -129,8 +208,10 @@ final class MainAppIPCServer: NSObject, @unchecked Sendable {
             try? FileManager.default.removeItem(at: socketURL)
         }
         isRunning = false
+        bindAttempts = 0
         Self.log.info("MAIN-IPC listener stopped")
         LifecycleDiagnostics.record("MainAppIPCServer.stop", from: "main-app")
+        IPCStatusCenter.shared.publish(.stopped)
     }
 
     /// Accept loop: pull all available connections off the listener fd, hand
@@ -237,5 +318,61 @@ final class MainAppIPCServer: NSObject, @unchecked Sendable {
             // can decode both code and message without parsing strings.
             return .fail(id: req.id, error: response.encodedForIPC() ?? message)
         }
+    }
+}
+
+/// Observable state of the main app's IPC listener, shown in the window.
+///
+/// Rationale: "the app is not serving the extension" was only ever visible in
+/// the log, which is indistinguishable from "nothing happened" in the UI. Every
+/// state change here is also logged.
+/// `@unchecked Sendable`: `state` is written only on the main queue (callers
+/// may be on the IPC queues), and reads come from SwiftUI on the main thread.
+final class IPCStatusCenter: ObservableObject, @unchecked Sendable {
+    static let shared = IPCStatusCenter()
+
+    enum State: Equatable {
+        /// Server not started yet (or stopped).
+        case idle
+        /// Bound and accepting connections.
+        case listening
+        /// Another MenuRight instance still owns the socket; retrying.
+        case waitingForOtherInstance(attempt: Int)
+        /// Gave up (a condition retrying cannot fix).
+        case failed(String)
+        case stopped
+    }
+
+    @Published private(set) var state: State = .idle
+
+    private init() {}
+
+    /// Publish a new state. Safe to call from any thread: the mutation is
+    /// marshalled to the main queue, which is also where SwiftUI reads it.
+    func publish(_ newState: State) {
+        if Thread.isMainThread {
+            state = newState
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.state = newState
+            }
+        }
+    }
+
+    /// Short human-readable line for the window.
+    var displayText: String {
+        switch state {
+        case .idle: return "Starting…"
+        case .listening: return "Listening"
+        case .waitingForOtherInstance(let attempt):
+            return "Waiting for the previous instance to exit (attempt \(attempt))"
+        case .failed(let reason): return "Failed: \(reason)"
+        case .stopped: return "Stopped"
+        }
+    }
+
+    var isHealthy: Bool {
+        if case .listening = state { return true }
+        return false
     }
 }

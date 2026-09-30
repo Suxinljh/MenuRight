@@ -5,6 +5,7 @@ import FinderSync
 /// Folder Access settings section. Deliberately minimal.
 struct ContentView: View {
     @State private var isExtensionEnabled = false
+    @StateObject private var ipcStatus = IPCStatusCenter.shared
 
     var body: some View {
         VStack(spacing: 20) {
@@ -50,6 +51,31 @@ struct ContentView: View {
             Button("Manage Finder Extension") {
                 FIFinderSyncController.showExtensionManagementInterface()
             }
+
+            Divider()
+
+            // The app is the extension's IPC server; if it is not listening,
+            // every Finder action silently fails. That state used to be visible
+            // only in the log, so show it here.
+            VStack(alignment: .leading, spacing: 10) {
+                Text("File Operations")
+                    .font(.headline)
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(ipcStatus.isHealthy ? Color.green : Color.orange)
+                        .frame(width: 10, height: 10)
+                    Text(ipcStatus.displayText)
+                        .font(.body)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !ipcStatus.isHealthy {
+                    Text("The Finder extension talks to this app over a socket in the shared App Group. While this is not Listening, Finder actions cannot complete.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Divider()
 

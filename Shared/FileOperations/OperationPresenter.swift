@@ -11,6 +11,17 @@ import AppKit
 /// reachable from `FinderSync`.
 enum OperationPresenter {
     static func presentTitle(_ title: String, message: String) {
+        // NSAlert.runModal() must run on the main thread. Callers today already
+        // hop there, but an API whose correctness depends on every future
+        // caller remembering to do so is a trap: marshal here instead.
+        if Thread.isMainThread {
+            presentTitleOnMain(title: title, message: message)
+        } else {
+            DispatchQueue.main.async { presentTitleOnMain(title: title, message: message) }
+        }
+    }
+
+    private static func presentTitleOnMain(title: String, message: String) {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = title

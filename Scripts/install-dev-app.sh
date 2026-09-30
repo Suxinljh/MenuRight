@@ -52,10 +52,19 @@ echo "    signature valid"
 
 echo "==> 3/6 Installing with ditto (NOT cp -R) into $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
+# Backups go OUTSIDE ~/Applications on purpose: LaunchServices scans that
+# directory, and a second copy carrying the same bundle id makes the extension
+# enablement ambiguous ("Enabled" for one copy, "Disabled" for the other).
+BACKUP_DIR="$HOME/MenuRight-old-copies"
+mkdir -p "$BACKUP_DIR"
 if [ -d "$INSTALLED_APP" ]; then
-  BACKUP="$INSTALLED_APP.previous-$(date +%m%d-%H%M%S)"
+  BACKUP="$BACKUP_DIR/MenuRight.app.previous-$(date +%m%d-%H%M%S)"
   mv "$INSTALLED_APP" "$BACKUP"
   echo "    previous copy moved to $BACKUP"
+  # Prune this script's own backups, keeping the three most recent.
+  ls -1dt "$BACKUP_DIR"/MenuRight.app.previous-* 2>/dev/null | tail -n +4 | while read -r old; do
+    rm -rf "$old"
+  done
 fi
 ditto "$BUILT_APP" "$INSTALLED_APP"
 
