@@ -71,6 +71,20 @@ else
   exit 1
 fi
 
+# Being alive is not enough: the app deliberately refuses to clobber a socket that
+# already has a live listener (the H2 protection). If another MenuRight instance
+# already owns <App Group>/ipc.sock, this new one is up but unreachable, and the
+# extension keeps talking to the other (possibly stale) instance.
+SOCKET="$HOME/Library/Group Containers/group.xin.ljhsu.MenuRight/ipc.sock"
+if lsof -U -a -p "$LAUNCH_PID" 2>/dev/null | grep -q "ipc.sock"; then
+  echo "    this instance owns the IPC socket"
+else
+  echo "    WARNING: this instance does NOT own $SOCKET"
+  echo "    Another MenuRight instance is already listening, so this one is unreachable."
+  echo "    Quit the other instance (in Xcode: press Stop), then run this script again:"
+  pgrep -lf "MenuRight.app/Contents/MacOS/MenuRight" || true
+fi
+
 echo "==> 5/6 Registering and enabling the Finder extension"
 "$LSREGISTER" -f -R -trusted "$INSTALLED_APP"
 pluginkit -a "$INSTALLED_APP/Contents/PlugIns/MenuRightFinder.appex" 2>/dev/null || true
