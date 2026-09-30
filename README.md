@@ -231,8 +231,12 @@ Observed live behaviour of the signed app:
 
 - `<App Group>/ipc.sock` is created `srw-------` (0600) **after** `bind()`;
 - a non-extension client that sends a valid `ping` frame gets its connection
-  closed with **no response** (~10 ms), and the app logs
-  `MAIN-IPC peer REJECTED: SecCodeCheckValidity failed OSStatus=-67050`;
+  closed with **no response** (~10 ms) and a rejection logged. Two observed
+  shapes: an Apple-signed but wrong binary fails the requirement
+  (`SecCodeCheckValidity failed OSStatus=-67050`), while an unsigned/ad-hoc
+  client is rejected even earlier
+  (`SecCodeCopyGuestWithAttributes failed OSStatus=100001`). Both fail closed —
+  neither receives a reply;
 - the second `start()` call is a no-op (`already running`), confirming the
   lifecycle is serialized;
 - `bootstrap-diagnostics.log` is appended to (existing history preserved — the
