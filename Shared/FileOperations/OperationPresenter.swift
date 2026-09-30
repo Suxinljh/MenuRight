@@ -60,6 +60,37 @@ enum OperationPresenter {
         }
     }
 
+    /// **P6** UI bridge for per-item delegated actions (alias creation, locking,
+    /// unlocking). Silent on full success; on failure reports the first message
+    /// plus how many items failed.
+    static func presentDelegatedItemFailures(
+        _ items: [FileOperationContract.ItemResult],
+        action: String
+    ) {
+        let failures = items.filter { !$0.success }
+        guard !failures.isEmpty else { return }
+
+        let firstMessage = failures.first?.message.flatMap { $0.isEmpty ? nil : $0 }
+            ?? "The operation failed."
+        let detail: String
+        if failures.count == 1 {
+            detail = firstMessage
+        } else if failures.count == items.count {
+            detail = "All \(failures.count) items failed. " + firstMessage
+        } else {
+            detail = "\(failures.count) of \(items.count) items failed. " + firstMessage
+        }
+        presentTitle("Couldn't \(action).", message: detail)
+
+        for failure in failures {
+            NSLog("[MenuRight] %@ failed: source=%@ code=%@ message=%@",
+                  action,
+                  failure.sourcePath,
+                  failure.errorCode?.rawValue ?? "<nil>",
+                  failure.message ?? "")
+        }
+    }
+
     /// **P5-1** UI bridge for a single-target delegated create operation.
     /// Shows nothing on success; on failure, displays a concise alert whose
     /// message comes from the Main App's structured response.

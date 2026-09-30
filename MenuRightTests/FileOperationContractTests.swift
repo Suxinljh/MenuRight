@@ -76,6 +76,9 @@ final class FileOperationContractTests: XCTestCase {
             .filesystemPermissionDenied: "filesystem_permission_denied",
             .filesystemError: "filesystem_error",
             .operationFailed: "operation_failed",
+            .aliasFailed: "alias_failed",
+            .lockFailed: "lock_failed",
+            .openFailed: "open_failed",
         ]
         for (code, raw) in expected {
             XCTAssertEqual(code.rawValue, raw)
@@ -86,6 +89,34 @@ final class FileOperationContractTests: XCTestCase {
     func testUnknownErrorCodeDecodesToNil() {
         let json = #"{"failure":{"code":"totally_new_code","message":"x"}}"#
         XCTAssertNil(FileOperationContract.Response.decode(fromIPC: json))
+    }
+
+    /// P6 added operations whose arguments must survive the wire unchanged.
+    func testP6OperationKindsAndArgumentsRoundTrip() throws {
+        let cases: [FileOperationContract.Request] = [
+            FileOperationContract.Request(
+                kind: .createAlias,
+                args: FileOperationContract.OperationArgs(sourcePaths: ["/a/one.txt", "/a/two.txt"])
+            ),
+            FileOperationContract.Request(
+                kind: .setLocked,
+                args: FileOperationContract.OperationArgs(sourcePaths: ["/a/one.txt"], locked: false)
+            ),
+            FileOperationContract.Request(
+                kind: .openTerminal,
+                args: FileOperationContract.OperationArgs(directory: "/a/folder")
+            ),
+        ]
+        for request in cases {
+            let payload = try XCTUnwrap(request.encodedForIPC())
+            XCTAssertEqual(FileOperationContract.Request.decode(fromIPC: payload), request)
+        }
+    }
+
+    func testLockedFlagIsOptionalAndNotRequiredByOtherKinds() throws {
+        let legacy = #"{"kind":"createFile","args":{"directory":"/a","name":"x.txt"}}"#
+        let decoded = try XCTUnwrap(FileOperationContract.Request.decode(fromIPC: legacy))
+        XCTAssertNil(decoded.args.locked, "older payloads without the P6 field must still decode")
     }
 
     func testUnknownMethodKindDecodesToNil() {
@@ -108,7 +139,7 @@ private extension FileOperationContract.ErrorCode {
             .staleBookmarkNeedsReauthorization, .accessStartFailed,
             .pathOutsideAuthorizedScope, .sourceDoesNotExist, .invalidDestination,
             .nameCollision, .filesystemPermissionDenied, .filesystemError,
-            .operationFailed,
+            .operationFailed, .aliasFailed, .lockFailed, .openFailed,
         ]
     }
 }

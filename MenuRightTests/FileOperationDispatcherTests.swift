@@ -29,7 +29,19 @@ final class FileOperationDispatcherTests: XCTestCase {
     override func tearDownWithError() throws {
         // Undo any permission tightening done by a test.
         try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
+        // A locked (UF_IMMUTABLE) item cannot be deleted, so clear the flag
+        // before removing the fixture tree.
+        clearImmutableFlags(in: root)
         try? FileManager.default.removeItem(at: root)
+    }
+
+    private func clearImmutableFlags(in directory: URL) {
+        let manager = FileManager.default
+        try? manager.setAttributes([.immutable: false], ofItemAtPath: directory.path)
+        guard let enumerator = manager.enumerator(atPath: directory.path) else { return }
+        for case let entry as String in enumerator {
+            try? manager.setAttributes([.immutable: false], ofItemAtPath: directory.appendingPathComponent(entry).path)
+        }
     }
 
     // MARK: - Fixtures
@@ -59,10 +71,21 @@ final class FileOperationDispatcherTests: XCTestCase {
         )
     }
 
-    private func dispatcher(store injectedStore: FolderAuthorizationStore? = nil) -> FileOperationDispatcher {
+    /// Records the directories handed to "open terminal" instead of launching
+    /// Terminal, so tests stay headless.
+    private var openedDirectories: [String] = []
+
+    private func dispatcher(
+        store injectedStore: FolderAuthorizationStore? = nil,
+        openTerminalError: Error? = nil
+    ) -> FileOperationDispatcher {
         FileOperationDispatcher(
             store: injectedStore ?? store,
-            scopedConfig: configuration()
+            scopedConfig: configuration(),
+            opener: SystemOpener { url in
+                self.openedDirectories.append(url.path)
+                return openTerminalError
+            }
         )
     }
 
@@ -414,5 +437,217 @@ final class FileOperationDispatcherTests: XCTestCase {
         XCTAssertEqual(FileOperationDispatcher.mapAuthError(.bookmarkResolveFailed(url)), .bookmarkResolveFailed)
         XCTAssertEqual(FileOperationDispatcher.mapAuthError(.staleBookmarkNeedsReauthorization(url)), .staleBookmarkNeedsReauthorization)
         XCTAssertEqual(FileOperationDispatcher.mapAuthError(.accessStartFailed(url)), .accessStartFailed)
+    }
+
+    // MARK: - P6: create alias
+
+    func testCreateAliasCreatesANamedAliasNextToTheSource() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let source = authorized.appendingPathComponent("notes.txt")
+        try Data("hello".utf8).write(to: source)
+
+        let response = dispatcher().dispatch(payload: payload(.createAlias, .init(sourcePaths: [source.path])))
+        guard case .batchSuccess(let items) = response else {
+            return XCTFail("expected batchSuccess, got \(response)")
+        }
+        XCTAssertEqual(items.count, 1)
+        let aliasPath = try XCTUnwrap(items[0].destinationPath)
+        XCTAssertTrue(items[0].success, "alias creation failed: \(items[0].message ?? "")")
+        XCTAssertEqual(aliasPath, authorized.appendingPathComponent("notes.txt alias").path)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: aliasPath))
+        XCTAssertFalse(FileOperationService.isLocked(URL(fileURLWithPath: aliasPath)), "a fresh alias must not be locked")
+        // The alias is a bookmark file, so Finder can resolve it.
+        XCTAssertNoThrow(try URL(resolvingAliasFileAt: URL(fileURLWithPath: aliasPath)))
+    }
+
+    func testCreateAliasNameCollisionGetsAUniqueName() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let source = authorized.appendingPathComponent("a.txt")
+        try Data("x".utf8).write(to: source)
+
+        let d = dispatcher()
+        _ = d.dispatch(payload: payload(.createAlias, .init(sourcePaths: [source.path])))
+        let second = d.dispatch(payload: payload(.createAlias, .init(sourcePaths: [source.path])))
+        guard case .batchSuccess(let items) = second else {
+            return XCTFail("expected batchSuccess, got \(second)")
+        }
+        XCTAssertEqual(items[0].destinationPath, authorized.appendingPathComponent("a.txt alias 2").path)
+    }
+
+    func testCreateAliasOutsideAuthorizedScopeIsRejected() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        let other = root.appendingPathComponent("Other", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let source = other.appendingPathComponent("a.txt")
+        try Data("x".utf8).write(to: source)
+
+        let response = dispatcher().dispatch(payload: payload(.createAlias, .init(sourcePaths: [source.path])))
+        XCTAssertEqual(failureCode(response), .pathOutsideAuthorizedScope)
+        XCTAssertTrue(started.isEmpty, "no scoped access for an unauthorized location")
+    }
+
+    func testCreateAliasOfAMissingSourceReportsAliasFailed() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+
+        let response = dispatcher().dispatch(payload: payload(
+            .createAlias,
+            .init(sourcePaths: [authorized.appendingPathComponent("gone.txt").path])
+        ))
+        guard case .batchSuccess(let items) = response else {
+            return XCTFail("expected batchSuccess, got \(response)")
+        }
+        XCTAssertFalse(items[0].success)
+        XCTAssertEqual(items[0].errorCode, .aliasFailed)
+    }
+
+    func testCreateAliasWithoutSourcesIsInvalidRequest() {
+        XCTAssertEqual(
+            failureCode(dispatcher().dispatch(payload: payload(.createAlias, .init()))),
+            .invalidRequest
+        )
+    }
+
+    // MARK: - P6: lock / unlock
+
+    func testSetLockedAndUnlockRoundTrip() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let item = authorized.appendingPathComponent("keep.txt")
+        try Data("x".utf8).write(to: item)
+        XCTAssertFalse(FileOperationService.isLocked(item))
+
+        let locked = dispatcher().dispatch(payload: payload(.setLocked, .init(sourcePaths: [item.path], locked: true)))
+        guard case .batchSuccess(let lockedItems) = locked else {
+            return XCTFail("expected batchSuccess, got \(locked)")
+        }
+        XCTAssertTrue(lockedItems[0].success, "lock failed: \(lockedItems[0].message ?? "")")
+        XCTAssertTrue(FileOperationService.isLocked(item), "the immutable flag must be set")
+
+        let unlocked = dispatcher().dispatch(payload: payload(.setLocked, .init(sourcePaths: [item.path], locked: false)))
+        guard case .batchSuccess(let unlockedItems) = unlocked else {
+            return XCTFail("expected batchSuccess, got \(unlocked)")
+        }
+        XCTAssertTrue(unlockedItems[0].success, "unlock failed: \(unlockedItems[0].message ?? "")")
+        XCTAssertFalse(FileOperationService.isLocked(item))
+    }
+
+    func testSetLockedHandlesMultipleItemsIndependently() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let a = authorized.appendingPathComponent("a.txt")
+        let b = authorized.appendingPathComponent("b.txt")
+        try Data("a".utf8).write(to: a)
+        try Data("b".utf8).write(to: b)
+
+        let response = dispatcher().dispatch(payload: payload(
+            .setLocked,
+            .init(sourcePaths: [a.path, b.path, authorized.appendingPathComponent("missing.txt").path], locked: true)
+        ))
+        guard case .batchSuccess(let items) = response else {
+            return XCTFail("expected batchSuccess, got \(response)")
+        }
+        XCTAssertEqual(items.count, 3)
+        XCTAssertEqual(items.filter { $0.success }.count, 2)
+        XCTAssertEqual(items.last?.errorCode, .lockFailed)
+        XCTAssertTrue(FileOperationService.isLocked(a))
+        XCTAssertTrue(FileOperationService.isLocked(b))
+    }
+
+    func testSetLockedOutsideAuthorizedScopeIsRejected() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        let other = root.appendingPathComponent("Other", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let outside = other.appendingPathComponent("x.txt")
+        try Data("x".utf8).write(to: outside)
+
+        let response = dispatcher().dispatch(payload: payload(.setLocked, .init(sourcePaths: [outside.path], locked: true)))
+        XCTAssertEqual(failureCode(response), .pathOutsideAuthorizedScope)
+        XCTAssertFalse(FileOperationService.isLocked(outside))
+    }
+
+    func testSetLockedWithoutTheFlagIsInvalidRequest() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let item = authorized.appendingPathComponent("a.txt")
+        try Data("x".utf8).write(to: item)
+
+        XCTAssertEqual(
+            failureCode(dispatcher().dispatch(payload: payload(.setLocked, .init(sourcePaths: [item.path])))),
+            .invalidRequest
+        )
+    }
+
+    // MARK: - P6: open terminal
+
+    func testOpenTerminalHandsTheDirectoryToTheSystemOpener() throws {
+        let directory = root.appendingPathComponent("AnyFolder", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let response = dispatcher().dispatch(payload: payload(.openTerminal, .init(directory: directory.path)))
+        XCTAssertNil(failureCode(response))
+        XCTAssertEqual(openedDirectories, [directory.path])
+    }
+
+    func testOpenTerminalIsDeliberatelyNotGatedOnAuthorization() throws {
+        // Documented decision: the app performs no filesystem work here, it only
+        // hands the path to LaunchServices, so no bookmark is required. Without
+        // this, "Open Terminal" would fail in every un-authorized folder.
+        let directory = root.appendingPathComponent("NotAuthorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        XCTAssertTrue(store.loadFolders().isEmpty, "fixture must have no authorizations")
+
+        let response = dispatcher().dispatch(payload: payload(.openTerminal, .init(directory: directory.path)))
+        XCTAssertNil(failureCode(response))
+        XCTAssertEqual(openedDirectories, [directory.path])
+    }
+
+    func testOpenTerminalRejectsANonDirectory() throws {
+        let file = root.appendingPathComponent("plain.txt")
+        try Data("x".utf8).write(to: file)
+
+        let response = dispatcher().dispatch(payload: payload(.openTerminal, .init(directory: file.path)))
+        XCTAssertEqual(failureCode(response), .invalidDestination)
+        XCTAssertTrue(openedDirectories.isEmpty)
+    }
+
+    func testOpenTerminalPropagatesOpenerFailure() throws {
+        let directory = root.appendingPathComponent("AnyFolder", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let error = NSError(domain: "test", code: 7, userInfo: [NSLocalizedDescriptionKey: "no terminal"])
+
+        let response = dispatcher(openTerminalError: error)
+            .dispatch(payload: payload(.openTerminal, .init(directory: directory.path)))
+        XCTAssertEqual(failureCode(response), .openFailed)
+    }
+
+    func testOpenTerminalRequiresADirectory() {
+        XCTAssertEqual(
+            failureCode(dispatcher().dispatch(payload: payload(.openTerminal, .init()))),
+            .invalidRequest
+        )
+    }
+
+    // MARK: - P6 helpers
+
+    func testAliasNameConvention() {
+        XCTAssertEqual(FileOperationService.aliasName(for: URL(fileURLWithPath: "/a/notes.txt")), "notes.txt alias")
+        XCTAssertEqual(FileOperationService.aliasName(for: URL(fileURLWithPath: "/a/Photos")), "Photos alias")
+    }
+
+    func testIsLockedIsFalseForAMissingPath() {
+        XCTAssertFalse(FileOperationService.isLocked(root.appendingPathComponent("nope.txt")))
     }
 }

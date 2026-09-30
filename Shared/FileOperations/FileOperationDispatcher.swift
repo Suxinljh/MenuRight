@@ -32,13 +32,16 @@ public final class FileOperationDispatcher: @unchecked Sendable {
 
     private let store: FolderAuthorizationStore?
     private let scopedConfig: ScopedAccessConfiguration
+    private let opener: SystemOpener
 
     init(
         store: FolderAuthorizationStore? = FolderAuthorizationStore.appGroupDefault(),
-        scopedConfig: ScopedAccessConfiguration = .system
+        scopedConfig: ScopedAccessConfiguration = .system,
+        opener: SystemOpener = .system
     ) {
         self.store = store
         self.scopedConfig = scopedConfig
+        self.opener = opener
     }
 
     // MARK: - Dispatch entry point
@@ -61,6 +64,12 @@ public final class FileOperationDispatcher: @unchecked Sendable {
             return handleCreateDirectory(request: request)
         case .moveItems:
             return handleMoveItems(request: request)
+        case .createAlias:
+            return handleCreateAlias(request: request)
+        case .setLocked:
+            return handleSetLocked(request: request)
+        case .openTerminal:
+            return handleOpenTerminal(request: request)
         }
     }
 
@@ -201,6 +210,149 @@ public final class FileOperationDispatcher: @unchecked Sendable {
             )
             return FileOperationContract.Response.batchSuccess(items: items)
         }
+    }
+
+    // MARK: - P6: aliases, locking, opening a terminal
+
+    /// Creates one Finder alias per source. The alias is written next to its
+    /// source unless `destinationDirectory` is supplied, so both the sources'
+    /// parents and the destination must be authorized (an alias is a write).
+    private func handleCreateAlias(request: FileOperationContract.Request) -> FileOperationContract.Response {
+        guard let sourceRaws = request.args.sourcePaths, !sourceRaws.isEmpty else {
+            return .failure(code: .invalidRequest, message: "createAlias requires non-empty sourcePaths")
+        }
+        var sources: [URL] = []
+        sources.reserveCapacity(sourceRaws.count)
+        for raw in sourceRaws {
+            guard let url = canonicalize(raw) else {
+                return .failure(code: .invalidRequest, message: "Invalid source path: \(raw)")
+            }
+            sources.append(url)
+        }
+        var destination: URL?
+        if let destRaw = request.args.destinationDirectory {
+            guard let dest = canonicalize(destRaw) else {
+                return .failure(code: .invalidRequest, message: "Invalid destination path")
+            }
+            destination = dest
+        }
+
+        let folders = currentFolders()
+        let aliasDirectories = destination.map { _ in sources.map { _ in destination! } }
+            ?? sources.map { $0.deletingLastPathComponent() }
+        let scopeTargets = Array(Set((aliasDirectories + sources.map { $0.deletingLastPathComponent() }).map(\.path)))
+            .map { URL(fileURLWithPath: $0) }
+        for target in scopeTargets where AuthorizedURLResolver.folderMatching(target, folders: folders) == nil {
+            Self.log.info("DISPATCH createAlias NOT_AUTHORIZED target=\(target.path, privacy: .public)")
+            return .failure(code: .pathOutsideAuthorizedScope, message: "Path outside any authorized folder: \(target.path)")
+        }
+
+        return withAuthorizations(to: scopeTargets, folders: folders, cid: request.clientRequestId) {
+            var items: [FileOperationContract.ItemResult] = []
+            items.reserveCapacity(sources.count)
+            for (index, source) in sources.enumerated() {
+                let directory = aliasDirectories[index]
+                switch FileOperationService.createAlias(for: source, in: directory) {
+                case .success(let aliasURL):
+                    Self.log.info("DISPATCH createAlias SUCCESS source=\(source.path, privacy: .public) alias=\(aliasURL.path, privacy: .public)")
+                    items.append(FileOperationContract.ItemResult(
+                        sourcePath: source.path,
+                        destinationPath: aliasURL.path,
+                        success: true
+                    ))
+                case .failure(let error):
+                    Self.log.info("DISPATCH createAlias FAILURE source=\(source.path, privacy: .public) \(Self.describe(error), privacy: .public)")
+                    items.append(FileOperationContract.ItemResult(
+                        sourcePath: source.path,
+                        destinationPath: nil,
+                        success: false,
+                        errorCode: .aliasFailed,
+                        message: error.userFacingDescription
+                    ))
+                }
+            }
+            return .batchSuccess(items: items)
+        }
+    }
+
+    /// Sets or clears the user-immutable flag on every selected item.
+    /// Per-item results: a single unreadable item must not fail the batch.
+    private func handleSetLocked(request: FileOperationContract.Request) -> FileOperationContract.Response {
+        guard let rawPaths = request.args.sourcePaths, !rawPaths.isEmpty,
+              let locked = request.args.locked else {
+            return .failure(code: .invalidRequest, message: "setLocked requires non-empty sourcePaths and locked")
+        }
+        var targets: [URL] = []
+        targets.reserveCapacity(rawPaths.count)
+        for raw in rawPaths {
+            guard let url = canonicalize(raw) else {
+                return .failure(code: .invalidRequest, message: "Invalid source path: \(raw)")
+            }
+            targets.append(url)
+        }
+        guard !targets.isEmpty else {
+            return .failure(code: .invalidRequest, message: "setLocked requires at least one path")
+        }
+
+        let folders = currentFolders()
+        let scopeTargets = Array(Set(targets.map { $0.deletingLastPathComponent().path }))
+            .map { URL(fileURLWithPath: $0) }
+        for target in scopeTargets where AuthorizedURLResolver.folderMatching(target, folders: folders) == nil {
+            Self.log.info("DISPATCH setLocked NOT_AUTHORIZED target=\(target.path, privacy: .public)")
+            return .failure(code: .pathOutsideAuthorizedScope, message: "Path outside any authorized folder: \(target.path)")
+        }
+
+        return withAuthorizations(to: scopeTargets, folders: folders, cid: request.clientRequestId) {
+            var items: [FileOperationContract.ItemResult] = []
+            items.reserveCapacity(targets.count)
+            for target in targets {
+                switch FileOperationService.setLocked(locked, at: target) {
+                case .success:
+                    Self.log.info("DISPATCH setLocked SUCCESS locked=\(locked, privacy: .public) path=\(target.path, privacy: .public)")
+                    items.append(FileOperationContract.ItemResult(
+                        sourcePath: target.path,
+                        destinationPath: target.path,
+                        success: true
+                    ))
+                case .failure(let error):
+                    Self.log.info("DISPATCH setLocked FAILURE path=\(target.path, privacy: .public) \(Self.describe(error), privacy: .public)")
+                    items.append(FileOperationContract.ItemResult(
+                        sourcePath: target.path,
+                        destinationPath: target.path,
+                        success: false,
+                        errorCode: .lockFailed,
+                        message: error.userFacingDescription
+                    ))
+                }
+            }
+            return .batchSuccess(items: items)
+        }
+    }
+
+    /// Opens a new terminal window at `directory`.
+    ///
+    /// Deliberately NOT gated on the folder-authorization store. The main app
+    /// performs no filesystem work here: it validates that the path is an
+    /// existing directory and hands it to LaunchServices, and Terminal (not
+    /// sandboxed) applies its own access rules. Gating this on an explicit
+    /// bookmark would make "Open Terminal" fail in every folder the user has not
+    /// separately authorized, for no security benefit. Every *mutating*
+    /// operation remains gate-protected.
+    private func handleOpenTerminal(request: FileOperationContract.Request) -> FileOperationContract.Response {
+        guard let raw = request.args.directory, let directory = canonicalize(raw) else {
+            return .failure(code: .invalidRequest, message: "openTerminal requires a directory")
+        }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            return .failure(code: .invalidDestination, message: "“\(directory.path)” is not a folder.")
+        }
+        if let error = opener.openTerminal(directory) {
+            Self.log.error("DISPATCH openTerminal FAILED path=\(directory.path, privacy: .public) error=\(String(describing: error), privacy: .public)")
+            return .failure(code: .openFailed, message: error.localizedDescription)
+        }
+        Self.log.info("DISPATCH openTerminal SUCCESS path=\(directory.path, privacy: .public)")
+        return .success(createdPath: nil)
     }
 
     // MARK: - Authorization wrappers

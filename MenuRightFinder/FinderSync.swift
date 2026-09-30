@@ -162,6 +162,19 @@ final class FinderSync: FIFinderSync {
             )
         case .newFolder(let directory):
             addItem(title: "New Folder", selector: #selector(performNewFolder(_:)), representedObject: directory, to: menu)
+        case .openTerminal(let directory):
+            addItem(title: FinderMenuTitles.openTerminal, selector: #selector(performOpenTerminal(_:)), representedObject: directory, to: menu)
+        case .copyFolderName(let payload):
+            addItem(title: "Copy Folder Name", selector: #selector(performCopy(_:)), representedObject: payload, to: menu)
+        case .createAlias(let items):
+            addItem(title: FinderMenuTitles.createAlias, selector: #selector(performCreateAlias(_:)), representedObject: items, to: menu)
+        case .setLocked(let items, let locked):
+            addItem(
+                title: locked ? FinderMenuTitles.lock : FinderMenuTitles.unlock,
+                selector: #selector(performSetLocked(_:)),
+                representedObject: items,
+                to: menu
+            )
         }
     }
 
@@ -192,6 +205,8 @@ final class FinderSync: FIFinderSync {
             payload = selection.formattedPaths
         case "Copy File URL":
             payload = selection.formattedFileURLs
+        case "Copy Folder Name":
+            payload = selection.containerDirectory?.lastPathComponent
         case "Copy Folder Path":
             payload = selection.containerDirectory?.path
         default:
@@ -398,6 +413,109 @@ final class FinderSync: FIFinderSync {
         ipcQueue.async {
             let outcome = ExtensionIPCClient.sendFileOperation(request)
             DispatchQueue.main.async { handle(outcome) }
+        }
+    }
+
+    // MARK: - P6 actions
+
+    @objc private func performOpenTerminal(_ sender: NSMenuItem) {
+        let controller = FIFinderSyncController.default()
+        let selection = FinderSelectionContext(
+            itemURLs: controller.selectedItemURLs() ?? [],
+            targetedURL: controller.targetedURL()
+        )
+        guard let directory = selection.containerDirectory else {
+            Self.diag.log("ACTION performOpenTerminal: no container directory from controller")
+            return
+        }
+        Self.diag.log("ACTION INVOKED performOpenTerminal target=\(directory.path, privacy: .public) delegating=true")
+        let request = FileOperationContract.Request(
+            kind: .openTerminal,
+            args: FileOperationContract.OperationArgs(directory: directory.path),
+            clientRequestId: UUID().uuidString
+        )
+        sendDelegated(request) { [weak self] outcome in
+            self?.handleOpenTerminalOutcome(outcome, directory: directory)
+        }
+    }
+
+    private func handleOpenTerminalOutcome(_ outcome: ExtensionIPCClient.FileOperationOutcome, directory: URL) {
+        switch outcome {
+        case .success:
+            Self.diag.log("ACTION performOpenTerminal delegated SUCCESS target=\(directory.path, privacy: .public)")
+        case .batchSuccess:
+            Self.diag.log("ACTION performOpenTerminal unexpected batch success")
+        case .failure(let code, let message):
+            Self.diag.log("ACTION performOpenTerminal delegated FAILURE code=\(code.rawValue, privacy: .public) message=\(message, privacy: .public)")
+            OperationPresenter.presentTitle("Couldn't open Terminal.", message: message)
+        case .unavailable(let reason):
+            Self.diag.log("ACTION performOpenTerminal delegated UNAVAILABLE reason=\(reason, privacy: .public)")
+            OperationPresenter.presentMainAppUnavailable(context: reason)
+        }
+    }
+
+    @objc private func performCreateAlias(_ sender: NSMenuItem) {
+        // Re-derive the selection: representedObject does not survive the Finder
+        // action replay.
+        let items = FIFinderSyncController.default().selectedItemURLs() ?? []
+        guard !items.isEmpty else {
+            Self.diag.log("ACTION performCreateAlias: no live selection, ignoring")
+            return
+        }
+        Self.diag.log("ACTION INVOKED performCreateAlias count=\(items.count, privacy: .public) delegating=true")
+        let request = FileOperationContract.Request(
+            kind: .createAlias,
+            args: FileOperationContract.OperationArgs(sourcePaths: items.map(\.path)),
+            clientRequestId: UUID().uuidString
+        )
+        sendDelegated(request) { [weak self] outcome in
+            self?.handleItemResultsOutcome(outcome, action: "create the alias")
+        }
+    }
+
+    @objc private func performSetLocked(_ sender: NSMenuItem) {
+        let items = FIFinderSyncController.default().selectedItemURLs() ?? []
+        guard !items.isEmpty else {
+            Self.diag.log("ACTION performSetLocked: no live selection, ignoring")
+            return
+        }
+        // Title-based dispatch, because representedObject is lost; hence the
+        // shared FinderMenuTitles constants.
+        let locked = sender.title != FinderMenuTitles.unlock
+        Self.diag.log("ACTION INVOKED performSetLocked locked=\(locked, privacy: .public) count=\(items.count, privacy: .public) delegating=true")
+        let request = FileOperationContract.Request(
+            kind: .setLocked,
+            args: FileOperationContract.OperationArgs(sourcePaths: items.map(\.path), locked: locked),
+            clientRequestId: UUID().uuidString
+        )
+        sendDelegated(request) { [weak self] outcome in
+            self?.handleItemResultsOutcome(outcome, action: locked ? "lock the item" : "unlock the item")
+        }
+    }
+
+    /// Shared handler for the per-item operations (alias creation, locking).
+    /// Success stays silent; failures are reported once, per item count.
+    private func handleItemResultsOutcome(
+        _ outcome: ExtensionIPCClient.FileOperationOutcome,
+        action: String
+    ) {
+        switch outcome {
+        case .success:
+            Self.diag.log("ACTION \(action, privacy: .public) delegated SUCCESS")
+        case .batchSuccess(let items):
+            let failures = items.filter { !$0.success }
+            Self.diag.log("ACTION \(action, privacy: .public) delegated DONE count=\(items.count, privacy: .public) failures=\(failures.count, privacy: .public)")
+            OperationPresenter.presentDelegatedItemFailures(items, action: action)
+        case .failure(let code, let message):
+            Self.diag.log("ACTION \(action, privacy: .public) delegated FAILURE code=\(code.rawValue, privacy: .public) message=\(message, privacy: .public)")
+            if code == .notAuthorized || code == .pathOutsideAuthorizedScope {
+                OperationPresenter.presentFolderAccessRequired()
+            } else {
+                OperationPresenter.presentTitle("Couldn't \(action).", message: message)
+            }
+        case .unavailable(let reason):
+            Self.diag.log("ACTION \(action, privacy: .public) delegated UNAVAILABLE reason=\(reason, privacy: .public)")
+            OperationPresenter.presentMainAppUnavailable(context: reason)
         }
     }
 

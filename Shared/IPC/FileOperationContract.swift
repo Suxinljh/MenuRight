@@ -25,6 +25,12 @@ public enum FileOperationContract {
         case createFile
         case createDirectory
         case moveItems
+        /// P6: create a Finder alias next to (or beside) each source.
+        case createAlias
+        /// P6: set/clear the user-immutable flag (Finder "Locked").
+        case setLocked
+        /// P6: hand a directory to Terminal. Non-mutating, see `handleOpenTerminal`.
+        case openTerminal
     }
 
     /// Per-operation arguments. Exactly one field is meaningful for any given
@@ -39,22 +45,29 @@ public enum FileOperationContract {
         /// means an empty file.
         public var contentsBase64: String?
         /// Required for `moveItems`. Source item paths (NOT parent dirs).
+        /// Also used by `createAlias`/`setLocked` to carry the selection.
         public var sourcePaths: [String]?
         /// Required for `moveItems`. Destination folder path.
+        /// Optional for `createAlias`: where the alias is created; nil means
+        /// "next to each source".
         public var destinationDirectory: String?
+        /// Required for `setLocked`. true = lock (undeletable), false = unlock.
+        public var locked: Bool?
 
         public init(
             directory: String? = nil,
             name: String? = nil,
             contentsBase64: String? = nil,
             sourcePaths: [String]? = nil,
-            destinationDirectory: String? = nil
+            destinationDirectory: String? = nil,
+            locked: Bool? = nil
         ) {
             self.directory = directory
             self.name = name
             self.contentsBase64 = contentsBase64
             self.sourcePaths = sourcePaths
             self.destinationDirectory = destinationDirectory
+            self.locked = locked
         }
     }
 
@@ -108,6 +121,12 @@ public enum FileOperationContract {
         case filesystemError = "filesystem_error"
         /// Anything not otherwise classified.
         case operationFailed = "operation_failed"
+        /// P6: creating a Finder alias failed (bookmark creation or write).
+        case aliasFailed = "alias_failed"
+        /// P6: setting/clearing the immutable flag failed.
+        case lockFailed = "lock_failed"
+        /// P6: opening Terminal for the given directory failed.
+        case openFailed = "open_failed"
     }
 
     /// Batch item outcome for `moveItems` responses.

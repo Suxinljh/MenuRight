@@ -58,6 +58,8 @@
 		AB0000000000000000000AF5 /* CutPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A5 /* CutPayload.swift */; };
 		AB0000000000000000000AF6 /* CutPasteboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* CutPasteboard.swift */; };
 		AB0000000000000000000AF7 /* OperationPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* OperationPresenter.swift */; };
+		AB0000000000000000000S01 /* SystemOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000S01 /* SystemOpener.swift */; };
+		AB0000000000000000000S02 /* SystemOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000S01 /* SystemOpener.swift */; };
 		AB0000000000000000000AF8 /* FileOperationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* FileOperationService.swift */; };
 		AB0000000000000000000AF9 /* CutPasteboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* CutPasteboard.swift */; };
 		AB0000000000000000000AFA /* OperationPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* OperationPresenter.swift */; };
@@ -157,6 +159,7 @@
 		AA00000000000000000000D3 /* FolderAuthorizationAccessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderAuthorizationAccessTests.swift; sourceTree = "<group>"; };
 		AA00000000000000000005C1 /* FileOperationContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationContract.swift; sourceTree = "<group>"; };
 		AA00000000000000000005F1 /* FileOperationDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationDispatcher.swift; sourceTree = "<group>"; };
+		AA0000000000000000000S01 /* SystemOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemOpener.swift; sourceTree = "<group>"; };
 		AA0000000000000000IPC1 /* MainAppIPCServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainAppIPCServer.swift; sourceTree = "<group>"; };
 		AA0000000000000000IPC2 /* ExtensionIPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionIPCClient.swift; sourceTree = "<group>"; };
 		AA0000000000000000IPC3 /* MenuRightIPC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuRightIPC.swift; sourceTree = "<group>"; };
@@ -298,6 +301,7 @@
 				AA00000000000000000000A6 /* CutPasteboard.swift */,
 				AA00000000000000000000A7 /* OperationPresenter.swift */,
 				AA00000000000000000005F1 /* FileOperationDispatcher.swift */,
+				AA0000000000000000000S01 /* SystemOpener.swift */,
 			);
 			path = FileOperations;
 			sourceTree = "<group>";
@@ -494,6 +498,7 @@
 				AB0000000000000000IPCA /* IPCProtocol.swift in Sources */,
 				AB00000000000000000005C1 /* FileOperationContract.swift in Sources */,
 				AB00000000000000000005F1 /* FileOperationDispatcher.swift in Sources */,
+				AB0000000000000000000S01 /* SystemOpener.swift in Sources */,
 				AB0000000000000000000AF1 /* FileOperationService.swift in Sources */,
 				AB0000000000000000000AF2 /* FileOperationResult.swift in Sources */,
 				AB0000000000000000000AF3 /* FileNameResolver.swift in Sources */,
@@ -551,6 +556,7 @@
 				AB00000000000000000000M8 /* SecurityScopedBookmark.swift in Sources */,
 				AB00000000000000000005C3 /* FileOperationContract.swift in Sources */,
 				AB00000000000000000005F3 /* FileOperationDispatcher.swift in Sources */,
+				AB0000000000000000000S02 /* SystemOpener.swift in Sources */,
 				AB0000000000000000000AF8 /* FileOperationService.swift in Sources */,
 				AB0000000000000000000AF9 /* CutPasteboard.swift in Sources */,
 				AB0000000000000000000AFA /* OperationPresenter.swift in Sources */,

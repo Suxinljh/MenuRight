@@ -83,10 +83,82 @@ enum FileOperationService {
         }
     }
 
+    // MARK: - P6: aliases and the immutable flag
+
+    /// Preferred display name for a Finder alias, matching Finder's own
+    /// "<name> alias" convention. Collision handling is the caller's job.
+    static func aliasName(for source: URL) -> String {
+        source.lastPathComponent + " alias"
+    }
+
+    /// Creates a Finder alias for `source` inside `directory`. Never overwrites:
+    /// name collisions go through `FileNameResolver` like every other create.
+    static func createAlias(for source: URL, in directory: URL) -> Result<URL, FileOperationError> {
+        guard isExistingDirectory(directory) else {
+            return .failure(.invalidDestination(directory.path))
+        }
+        guard FileManager.default.fileExists(atPath: source.path) else {
+            return .failure(.sourceDoesNotExist(source))
+        }
+        let name = FileNameResolver.uniqueName(
+            preferred: aliasName(for: source),
+            existing: existingNames(in: directory)
+        )
+        let aliasURL = directory.appendingPathComponent(name)
+        guard AuthorizedURLResolver.isDirectChild(aliasURL, of: directory) else {
+            return .failure(.invalidMove("refusing to create an alias outside “\(directory.path)”: \(name)"))
+        }
+        do {
+            // A Finder alias *is* a bookmark file. Deliberately NOT
+            // `.withSecurityScope`: an alias must stay resolvable by Finder for
+            // the user, and must not embed one of our app-scoped capabilities.
+            let bookmark = try source.bookmarkData(
+                options: [.suitableForBookmarkFile],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+            try URL.writeBookmarkData(bookmark, to: aliasURL)
+            return .success(aliasURL)
+        } catch {
+            return .failure(FileOperationError.from(error))
+        }
+    }
+
+    /// Sets or clears the user-immutable flag — Finder's "Locked".
+    ///
+    /// Only the selected items are touched (no recursion): locking a folder
+    /// makes the folder itself undeletable, which is the property users expect
+    /// from "Locked", and recursively flagging its contents is slow and
+    /// surprising. Unlocking is always offered alongside locking, otherwise a
+    /// locked item could only be removed with the terminal.
+    static func setLocked(_ locked: Bool, at url: URL) -> Result<Void, FileOperationError> {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return .failure(.sourceDoesNotExist(url))
+        }
+        do {
+            try FileManager.default.setAttributes([.immutable: locked], ofItemAtPath: url.path)
+            return .success(())
+        } catch {
+            return .failure(FileOperationError.from(error))
+        }
+    }
+
+    /// Reads the user-immutable flag (`UF_IMMUTABLE`).
+    ///
+    /// Deliberately NOT `URL.resourceValues(forKeys:)`: `URL` caches fetched
+    /// resource values per instance, so a read taken before a lock/unlock would
+    /// keep reporting the stale value afterwards (caught by
+    /// `testSetLockedAndUnlockRoundTrip`). `attributesOfItem` always stats.
+    static func isLocked(_ url: URL) -> Bool {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+            return false
+        }
+        return (attributes[.immutable] as? Bool) ?? false
+    }
+
     private static func existingNames(in directory: URL) -> [String] {
         (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
     }
-
     private static func isExistingDirectory(_ url: URL) -> Bool {
         var isDirectory: ObjCBool = false
         return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
