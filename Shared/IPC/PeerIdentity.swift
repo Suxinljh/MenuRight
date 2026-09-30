@@ -1,6 +1,7 @@
 import Foundation
 import Security
 import Darwin
+import os
 
 /// Peer identity verification for the App-Group Unix-socket IPC.
 ///
@@ -18,12 +19,29 @@ import Darwin
 ///      `SecCodeCopyGuestWithAttributes(NULL, attrs, kSecCSDefaultFlags, &code)`
 ///      using `kSecGuestAttributeAudit` to obtain a `SecCodeRef`, then we
 ///      `SecCodeCheckValidity(code, kSecCSDefaultFlags, requirement)` against
-///      a designated requirement that pins the peer to our extension bundle
-///      identifier signed by our team.
+///      a designated requirement that pins the peer to our bundle identifier
+///      and team.
 ///   4. The peer's on-disk binary path via `proc_pidpath_audittoken` — used
 ///      to read the team identifier from the static code's signing info,
 ///      since the live SecCode's team-identifier is not always populated in
 ///      the same code path.
+///
+/// ## Verification strategy (and why there are two paths)
+///
+/// The live-code path (3) is preferred: it describes the *running* process.
+/// Inside an App Sandbox, however, `SecCodeCopyGuestWithAttributes` can fail
+/// for a peer at the `OSStatus 100001` step — measured from the FinderSync
+/// extension on macOS 26.6.1, while the same call succeeds from the main app.
+/// When that specific infrastructure step is unavailable we fall back to
+/// validating the **static code at the peer's kernel-provided executable path**
+/// (`proc_pidpath_audittoken`, which the peer cannot forge) against the same
+/// designated requirement. That is the same class of check the main app already
+/// performs for the team identifier, and it is strictly weaker than the live
+/// check (the app bundle on disk could be replaced between the two) — so it is
+/// used only when the live path cannot run at all, and every fallback is logged.
+///
+/// A requirement that is *checked and fails* is never retried through the
+/// fallback: only an unusable live-code API is.
 public enum PeerIdentity {
 
     public struct Verified {
@@ -39,6 +57,8 @@ public enum PeerIdentity {
         case verified(Verified)
         case rejected(reason: String)
     }
+
+    private static let log = Logger(subsystem: MenuRightIPC.subsystem, category: "peer-identity")
 
     /// Bundle identifier of the FinderSync extension (the main app's peer).
     public static let extensionBundleIdentifier = "xin.ljhsu.MenuRight.FinderSync"
@@ -91,23 +111,29 @@ public enum PeerIdentity {
     /// Read peer identity from a connected Unix-domain socket fd and verify it
     /// against the caller's designated requirement. Returns `.verified` only if
     /// every step succeeds.
+    /// - Parameter expectedExecutablePath: when non-nil, the peer's executable
+    ///   path (as reported by the kernel via `proc_pidpath_audittoken`, which the
+    ///   peer cannot forge) must equal this path exactly. This is the one strong
+    ///   check that also works inside an app-extension sandbox, where the code
+    ///   signing APIs are unavailable (see `verify`'s documentation).
     public static func verify(
         fd: Int32,
         requirement requirementString: String = PeerIdentity.extensionRequirementString,
-        expectedTeamIdentifier expectedTeam: String = PeerIdentity.expectedTeamIdentifier
+        expectedTeamIdentifier expectedTeam: String = PeerIdentity.expectedTeamIdentifier,
+        expectedExecutablePath: String? = nil
     ) -> Result {
         // 1) UID/GID via the public getpeereid() — no private struct required.
         var uid: uid_t = 0
         var gid: gid_t = 0
         if getpeereid(fd, &uid, &gid) != 0 {
-            return .rejected(reason: "getpeereid failed: \(String(cString: strerror(errno)))")
+            return reject("getpeereid failed: \(String(cString: strerror(errno)))", requirement: requirementString)
         }
 
         // 2) Peer PID via the public SOL_LOCAL / LOCAL_PEERPID getsockopt.
         var peerPid: pid_t = -1
         var pidLen: socklen_t = socklen_t(MemoryLayout<pid_t>.size)
         if getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &peerPid, &pidLen) != 0 {
-            return .rejected(reason: "LOCAL_PEERPID failed: \(String(cString: strerror(errno)))")
+            return reject("LOCAL_PEERPID failed: \(String(cString: strerror(errno)))", requirement: requirementString)
         }
 
         // 3) Audit token via SOL_LOCAL / LOCAL_PEERTOKEN. The token is a
@@ -115,120 +141,102 @@ public enum PeerIdentity {
         var token = audit_token_t()
         var tokenLen: socklen_t = socklen_t(MemoryLayout<audit_token_t>.size)
         if getsockopt(fd, SOL_LOCAL, LOCAL_PEERTOKEN, &token, &tokenLen) != 0 {
-            return .rejected(reason: "LOCAL_PEERTOKEN failed: \(String(cString: strerror(errno)))")
+            return reject("LOCAL_PEERTOKEN failed: \(String(cString: strerror(errno)))", requirement: requirementString)
         }
 
         // 4) Resolve the peer's executable path from the audit token. This
         // public API is documented in <libproc.h> and is available since
         // macOS 11.0. The buffer size comes from PROC_PIDPATHINFO_MAXSIZE
-        // in <sys/proc_info.h> (4 * MAXPATHLEN = 4096 on macOS).
+        // in <sys/proc_info.h> (4 * MAXPATHLEN = 4096 on macOS). The kernel
+        // fills this in, so the peer cannot choose it.
         let pathSize = 4096
         let pathBuf = UnsafeMutablePointer<CChar>.allocate(capacity: pathSize)
         defer { pathBuf.deallocate() }
         let pathResult = proc_pidpath_audittoken(&token, pathBuf, UInt32(pathSize))
         guard pathResult > 0 else {
-            return .rejected(reason: "proc_pidpath_audittoken failed: \(String(cString: strerror(errno)))")
+            return reject("proc_pidpath_audittoken failed: \(String(cString: strerror(errno)))", requirement: requirementString)
         }
         let execPath = String(cString: pathBuf)
 
-        // 5) Build a SecCodeRef from the audit token.
-        let tokenData = withUnsafeBytes(of: &token) { rawBuf -> Data in
-            Data(bytes: rawBuf.baseAddress!, count: rawBuf.count)
+        // 5) Sandbox-compatible check: the peer must be the executable we expect.
+        // `execPath` comes from the kernel, so this cannot be spoofed by the
+        // peer; it defeats "unlink the socket and bind your own path" unless the
+        // attacker can also replace our installed app bundle.
+        if let expectedExecutablePath,
+           !executablePathsMatch(execPath, expectedExecutablePath) {
+            return reject(
+                "peer executable path mismatch: got=\(execPath) expected=\(expectedExecutablePath)",
+                requirement: requirementString
+            )
         }
-        let guestResult: Result = tokenData.withUnsafeBytes { (rawBuf: UnsafeRawBufferPointer) -> Result in
-            guard let cfData = CFDataCreateWithBytesNoCopy(
-                kCFAllocatorDefault,
-                rawBuf.baseAddress, rawBuf.count,
-                kCFAllocatorNull
-            ) else {
-                return .rejected(reason: "CFDataCreateWithBytesNoCopy returned nil")
-            }
-            let attrs = CFDictionaryCreateMutable(nil, 1, nil, nil)!
-            CFDictionarySetValue(attrs,
-                Unmanaged.passUnretained(kSecGuestAttributeAudit).toOpaque(),
-                Unmanaged.passUnretained(cfData).toOpaque())
-            let attrsRef: CFDictionary = attrs
 
-            var codeRef: SecCode?
-            let s = SecCodeCopyGuestWithAttributes(nil, attrsRef, SecCSFlags(), &codeRef)
-            guard s == errSecSuccess, let codeRef else {
-                return .rejected(reason: "SecCodeCopyGuestWithAttributes failed OSStatus=\(s)")
-            }
+        // 6) Compile the designated requirement once, shared by both paths.
+        var reqRef: SecRequirement?
+        let requirementStatus = SecRequirementCreateWithString(
+            requirementString as CFString, SecCSFlags(), &reqRef
+        )
+        guard requirementStatus == errSecSuccess, let requirement = reqRef else {
+            return reject("SecRequirementCreateWithString failed OSStatus=\(requirementStatus)", requirement: requirementString)
+        }
 
-            // 6) Compile the designated requirement.
-            let reqStr = requirementString as CFString
-            var reqRef: SecRequirement?
-            let rs = SecRequirementCreateWithString(reqStr, SecCSFlags(), &reqRef)
-            guard rs == errSecSuccess, let reqRef else {
-                return .rejected(reason: "SecRequirementCreateWithString failed OSStatus=\(rs)")
+        // 6) Preferred path: the live code object described by the audit token.
+        let tokenData = withUnsafeBytes(of: &token) { raw -> Data in
+            Data(bytes: raw.baseAddress!, count: raw.count)
+        }
+        switch liveCode(tokenData: tokenData) {
+        case .failure(let status):
+            // Infrastructure failure (measured: OSStatus 100001 inside the
+            // extension's sandbox). Fall through to the static check below.
+            log.notice("live peer code unavailable OSStatus=\(status, privacy: .public); falling back to the static code at the peer's executable path")
+        case .success(let code):
+            let validity = SecCodeCheckValidity(code, SecCSFlags(), requirement)
+            guard validity == errSecSuccess else {
+                // The requirement *was* evaluated and failed: never retry it
+                // through the fallback.
+                return reject("SecCodeCheckValidity failed OSStatus=\(validity)", requirement: requirementString)
             }
-
-            // 7) Check the code against the requirement.
-            let vs = SecCodeCheckValidity(codeRef, SecCSFlags(), reqRef)
-            guard vs == errSecSuccess else {
-                return .rejected(reason: "SecCodeCheckValidity failed OSStatus=\(vs) requirement=\(requirementString)")
-            }
-            return .verified(Verified(
+            return finish(v: Verified(
                 pid: peerPid, uid: uid, gid: gid,
                 bundleIdentifier: "?", teamIdentifier: "?",
                 executablePath: execPath
+            ), execPath: execPath, expectedTeam: expectedTeam, requirement: requirementString)
+        }
+
+        // 7) Fallback: validate the static code at the path the kernel reported.
+        var staticCodeRef: SecStaticCode?
+        let staticStatus = SecStaticCodeCreateWithPath(
+            CFURLCreateWithFileSystemPath(nil, execPath as CFString, .cfurlposixPathStyle, false),
+            SecCSFlags(),
+            &staticCodeRef
+        )
+        if staticStatus != errSecSuccess || staticCodeRef == nil {
+            // Both signature paths are unusable -> this process is denied the
+            // code-signing APIs entirely (measured: the FinderSync appex on
+            // macOS 26.6.1 returns OSStatus 100001 for both calls, while the main
+            // app performs them fine). Accept only when the caller supplied a
+            // kernel-verified expected path that matched, and say so loudly.
+            guard expectedExecutablePath != nil else {
+                return reject("SecStaticCodeCreateWithPath failed OSStatus=\(staticStatus) path=\(execPath)", requirement: requirementString)
+            }
+            log.notice("peer accepted on kernel-reported executable path alone: code-signing APIs unavailable here (OSStatus=\(staticStatus, privacy: .public), path=\(execPath, privacy: .public)). The main app still verifies this process's signature server-side.")
+            return .verified(Verified(
+                pid: peerPid, uid: uid, gid: gid,
+                bundleIdentifier: expectedExecutablePath.map { URL(fileURLWithPath: $0).deletingLastPathComponent().path } ?? "?",
+                teamIdentifier: "unavailable",
+                executablePath: execPath
             ))
         }
-        // If guest verification succeeded, augment with bundle/team info from
-        // the static code at execPath.
-        if case .verified(var v) = guestResult {
-            // 8) Read identifier / team identifier from the on-disk static
-            // code at the peer's executable path. Using a static code
-            // (file path) ensures the kSecCodeInfoTeamIdentifier is populated
-            // when the on-disk signature includes the team (true for our dev
-            // and prod certs).
-            guard let url = CFURLCreateWithFileSystemPath(nil, execPath as CFString, .cfurlposixPathStyle, false) else {
-                return .rejected(reason: "CFURLCreateWithFileSystemPath failed")
-            }
-            var staticCodeRef: SecStaticCode?
-            let ss = SecStaticCodeCreateWithPath(url, SecCSFlags(), &staticCodeRef)
-            guard ss == errSecSuccess, let staticCodeRef else {
-                return .rejected(reason: "SecStaticCodeCreateWithPath failed OSStatus=\(ss) path=\(execPath)")
-            }
-            var infoRef: CFDictionary?
-            // Empirically, the team identifier is populated only when
-            // kSecCSSigningInformation (flag bit 1, value 2) is passed.
-            // kSecCSRequirementInformation (bit 2, value 4) is documented
-            // to return the Designated Requirement but does NOT include the
-            // team identifier in this macOS version's Sec framework.
-            let infoStatus = SecCodeCopySigningInformation(
-                staticCodeRef,
-                SecCSFlags(rawValue: 2),
-                &infoRef
-            )
-            guard infoStatus == errSecSuccess, let infoRef else {
-                return .rejected(reason: "SecCodeCopySigningInformation failed OSStatus=\(infoStatus)")
-            }
-            let identKey = Unmanaged.passUnretained(kSecCodeInfoIdentifier).toOpaque()
-            let teamKey = Unmanaged.passUnretained(kSecCodeInfoTeamIdentifier).toOpaque()
-            if let identCF = CFDictionaryGetValue(infoRef, identKey) {
-                v = Verified(
-                    pid: v.pid, uid: v.uid, gid: v.gid,
-                    bundleIdentifier: unsafeBitCast(identCF, to: CFString.self) as String,
-                    teamIdentifier: v.teamIdentifier,
-                    executablePath: v.executablePath
-                )
-            }
-            if let teamCF = CFDictionaryGetValue(infoRef, teamKey) {
-                v = Verified(
-                    pid: v.pid, uid: v.uid, gid: v.gid,
-                    bundleIdentifier: v.bundleIdentifier,
-                    teamIdentifier: unsafeBitCast(teamCF, to: CFString.self) as String,
-                    executablePath: v.executablePath
-                )
-            }
-            // Final team check.
-            if v.teamIdentifier != expectedTeam {
-                return .rejected(reason: "team mismatch: got=\(v.teamIdentifier) expected=\(expectedTeam)")
-            }
-            return .verified(v)
+        let staticValidity = SecStaticCodeCheckValidity(staticCodeRef!, SecCSFlags(), requirement)
+        guard staticValidity == errSecSuccess else {
+            // A real signature was read and did NOT satisfy the requirement.
+            return reject("SecStaticCodeCheckValidity failed OSStatus=\(staticValidity) path=\(execPath)", requirement: requirementString)
         }
-        return guestResult
+        log.notice("peer verified via static code at \(execPath, privacy: .public) (live audit-token check unavailable in this sandbox)")
+        return finish(v: Verified(
+            pid: peerPid, uid: uid, gid: gid,
+            bundleIdentifier: "?", teamIdentifier: "?",
+            executablePath: execPath
+        ), execPath: execPath, expectedTeam: expectedTeam, requirement: requirementString)
     }
 
     /// Main-app convenience wrapper: the peer must be the FinderSync extension,
@@ -240,5 +248,103 @@ public enum PeerIdentity {
             requirement: extensionRequirementString,
             expectedTeamIdentifier: expectedTeamIdentifier
         )
+    }
+
+    // MARK: - Helpers
+
+    /// Standardized comparison of two executable paths. Internal (not private)
+    /// so the unit tests can pin it: this check is what remains enforceable
+    /// inside a sandbox that denies the code-signing APIs.
+    static func executablePathsMatch(_ lhs: String, _ rhs: String) -> Bool {
+        URL(fileURLWithPath: lhs).standardizedFileURL.path == URL(fileURLWithPath: rhs).standardizedFileURL.path
+    }
+
+    private enum LiveCodeOutcome {
+        case success(SecCode)
+        case failure(OSStatus)
+    }
+
+    /// Builds the live code object from the peer's audit token.
+    private static func liveCode(tokenData: Data) -> LiveCodeOutcome {
+        var outcome: LiveCodeOutcome = .failure(errSecInternalError)
+        tokenData.withUnsafeBytes { (raw: UnsafeRawBufferPointer) -> Void in
+            guard let cfData = CFDataCreateWithBytesNoCopy(
+                kCFAllocatorDefault, raw.baseAddress, raw.count, kCFAllocatorNull
+            ) else {
+                outcome = .failure(errSecInternalError)
+                return
+            }
+            let attrs = CFDictionaryCreateMutable(nil, 1, nil, nil)!
+            CFDictionarySetValue(
+                attrs,
+                Unmanaged.passUnretained(kSecGuestAttributeAudit).toOpaque(),
+                Unmanaged.passUnretained(cfData).toOpaque()
+            )
+            var codeRef: SecCode?
+            let status = SecCodeCopyGuestWithAttributes(nil, attrs as CFDictionary, SecCSFlags(), &codeRef)
+            if status == errSecSuccess, let codeRef {
+                outcome = .success(codeRef)
+            } else {
+                outcome = .failure(status)
+            }
+        }
+        return outcome
+    }
+
+    /// Shared tail: read identifier + team from the static code at `execPath`
+    /// and require the expected team.
+    private static func finish(
+        v: Verified,
+        execPath: String,
+        expectedTeam: String,
+        requirement: String
+    ) -> Result {
+        var v = v
+        var staticCodeRef: SecStaticCode?
+        let ss = SecStaticCodeCreateWithPath(
+            CFURLCreateWithFileSystemPath(nil, execPath as CFString, .cfurlposixPathStyle, false),
+            SecCSFlags(),
+            &staticCodeRef
+        )
+        guard ss == errSecSuccess, let staticCodeRef else {
+            return reject("SecStaticCodeCreateWithPath failed OSStatus=\(ss) path=\(execPath)", requirement: requirement)
+        }
+        var infoRef: CFDictionary?
+        // Empirically, the team identifier is populated only when
+        // kSecCSSigningInformation (flag bit 1, value 2) is passed.
+        // kSecCSRequirementInformation (bit 2, value 4) is documented
+        // to return the Designated Requirement but does NOT include the
+        // team identifier in this macOS version's Sec framework.
+        let infoStatus = SecCodeCopySigningInformation(staticCodeRef, SecCSFlags(rawValue: 2), &infoRef)
+        guard infoStatus == errSecSuccess, let infoRef else {
+            return reject("SecCodeCopySigningInformation failed OSStatus=\(infoStatus)", requirement: requirement)
+        }
+        let identKey = Unmanaged.passUnretained(kSecCodeInfoIdentifier).toOpaque()
+        let teamKey = Unmanaged.passUnretained(kSecCodeInfoTeamIdentifier).toOpaque()
+        if let identCF = CFDictionaryGetValue(infoRef, identKey) {
+            v = Verified(
+                pid: v.pid, uid: v.uid, gid: v.gid,
+                bundleIdentifier: unsafeBitCast(identCF, to: CFString.self) as String,
+                teamIdentifier: v.teamIdentifier,
+                executablePath: v.executablePath
+            )
+        }
+        if let teamCF = CFDictionaryGetValue(infoRef, teamKey) {
+            v = Verified(
+                pid: v.pid, uid: v.uid, gid: v.gid,
+                bundleIdentifier: v.bundleIdentifier,
+                teamIdentifier: unsafeBitCast(teamCF, to: CFString.self) as String,
+                executablePath: v.executablePath
+            )
+        }
+        guard v.teamIdentifier == expectedTeam else {
+            return reject("team mismatch: got=\(v.teamIdentifier) expected=\(expectedTeam)", requirement: requirement)
+        }
+        return .verified(v)
+    }
+
+    private static func reject(_ reason: String, requirement: String) -> Result {
+        log.notice("peer REJECTED \(reason, privacy: .public) requirement=\(requirement, privacy: .public)")
+        return .rejected(reason: reason)
     }
 }

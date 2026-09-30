@@ -46,6 +46,28 @@ final class PeerIdentityTests: XCTestCase {
         XCTAssertEqual(PeerIdentity.expectedTeamIdentifier.count, 10)
     }
 
+    // MARK: - Sandbox-compatible path check
+
+    func testExecutablePathComparisonIsStandardizedAndExact() {
+        XCTAssertTrue(PeerIdentity.executablePathsMatch(
+            "/Applications/MenuRight.app/Contents/MacOS/MenuRight",
+            "/Applications/MenuRight.app/Contents/MacOS/MenuRight"
+        ))
+        XCTAssertTrue(PeerIdentity.executablePathsMatch(
+            "/Applications/MenuRight.app/Contents/MacOS/../MacOS/MenuRight",
+            "/Applications/MenuRight.app/Contents/MacOS/MenuRight"
+        ), "`..` must be normalized, not rejected")
+        // An impostor binary with the same *shape* is still a different path.
+        XCTAssertFalse(PeerIdentity.executablePathsMatch(
+            "/tmp/evil/MenuRight.app/Contents/MacOS/MenuRight",
+            "/Applications/MenuRight.app/Contents/MacOS/MenuRight"
+        ))
+        XCTAssertFalse(PeerIdentity.executablePathsMatch(
+            "/Applications/MenuRight.app/Contents/MacOS/MenuRight2",
+            "/Applications/MenuRight.app/Contents/MacOS/MenuRight"
+        ))
+    }
+
     func testVerifyRejectsAnUnconnectedDescriptor() {
         // fd -1 cannot be a peer socket: verification must fail closed.
         guard case .rejected = PeerIdentity.verify(fd: -1) else {

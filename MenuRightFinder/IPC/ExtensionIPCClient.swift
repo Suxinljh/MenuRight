@@ -49,6 +49,33 @@ final class ExtensionIPCClient {
         case unavailable(reason: String)
     }
 
+    /// Path of the main app's executable, derived from our own bundle
+    /// (`…/MenuRight.app/Contents/PlugIns/MenuRightFinder.appex` -> `…/MenuRight.app`).
+    ///
+    /// The extension's sandbox denies the code-signing APIs, so
+    /// `PeerIdentity.verify` cannot check the peer's signature from here (it
+    /// falls back and logs). The kernel-reported peer path is the check that
+    /// *does* work in this sandbox, so we pass the expected path explicitly: an
+    /// impostor that binds its own socket must also be running this exact
+    /// executable, which requires replacing our installed app bundle.
+    private static let expectedMainAppExecutablePath: String? = {
+        guard let appBundle = MenuRightIPC.containingAppBundleURL(forExtensionBundleAt: Bundle.main.bundleURL) else {
+            log.error("could not derive the containing app bundle from \(Bundle.main.bundleURL.path, privacy: .public)")
+            return nil
+        }
+        // Preferred: ask the bundle. Inside the extension sandbox this can fail
+        // (the containing app's Info.plist may be unreadable), so fall back to
+        // the standard layout rather than silently disabling the check - which
+        // is exactly what happened once and made every request fail.
+        if let executable = Bundle(url: appBundle)?.executableURL?.path {
+            log.info("expected main-app executable (from bundle): \(executable, privacy: .public)")
+            return executable
+        }
+        let conventional = MenuRightIPC.conventionalExecutablePath(forAppBundleAt: appBundle)
+        log.notice("expected main-app executable (bundle unreadable, using layout): \(conventional, privacy: .public)")
+        return conventional
+    }()
+
     /// Connect timeout and per-frame deadline shared by all calls.
     private static let connectTimeoutSeconds: timeval = timeval(tv_sec: 2, tv_usec: 0)
 
@@ -142,7 +169,11 @@ final class ExtensionIPCClient {
         // Verify the peer BEFORE sending anything. Anyone running as the same
         // user can unlink the socket file and bind their own listener, so a
         // successful connect proves nothing about who is on the other end.
-        switch PeerIdentity.verify(fd: conn.fd, requirement: PeerIdentity.mainAppRequirementString) {
+        switch PeerIdentity.verify(
+            fd: conn.fd,
+            requirement: PeerIdentity.mainAppRequirementString,
+            expectedExecutablePath: Self.expectedMainAppExecutablePath
+        ) {
         case .rejected(let reason):
             Self.log.notice("FINDER-IPC peer REJECTED: \(reason, privacy: .public)")
             LifecycleDiagnostics.record("extension: peer REJECTED \(reason)", from: "finder-sync")

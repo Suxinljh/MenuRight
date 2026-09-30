@@ -47,6 +47,42 @@ public enum MenuRightIPC {
         return container.appendingPathComponent(socketFilename)
     }
 
+    /// The `.app` bundle that contains an app extension, derived from the
+    /// extension's own bundle URL.
+    ///
+    /// Used by the extension to learn the **exact path of the main app's
+    /// executable**: inside the extension's sandbox the code-signing APIs are
+    /// unavailable (measured: OSStatus 100001 for both the live and the static
+    /// API), so the peer is checked by comparing the kernel-reported executable
+    /// path against this value instead.
+    ///
+    /// Note the trailing slash: `Bundle.main.bundleURL` ends with one, and
+    /// `deletingLastPathComponent()` on `…/X.appex/` yields `…/PlugIns/`, so the
+    /// URL is normalized first. (That trailing slash is not theoretical - it
+    /// silently produced `nil` here and disabled the check.)
+    public static func containingAppBundleURL(forExtensionBundleAt extensionBundle: URL) -> URL? {
+        var url = URL(fileURLWithPath: extensionBundle.path)   // drops any trailing slash
+        guard url.pathExtension == "appex" else { return nil }
+        // …/MenuRight.app/Contents/PlugIns/MenuRightFinder.appex -> …/MenuRight.app
+        url = url.deletingLastPathComponent()   // …/PlugIns
+        url = url.deletingLastPathComponent()   // …/Contents
+        url = url.deletingLastPathComponent()   // …/MenuRight.app
+        guard url.pathExtension == "app" else { return nil }
+        return url
+    }
+
+    /// The main executable path implied by the standard bundle layout
+    /// (`<App>.app/Contents/MacOS/<App>`).
+    ///
+    /// Needed because an extension's sandbox may deny reading the *containing
+    /// app's* Info.plist, which makes `Bundle(url:)?.executableURL` nil even
+    /// though the bundle path itself is derivable. Our products follow the
+    /// standard layout (`PRODUCT_NAME = MenuRight`).
+    public static func conventionalExecutablePath(forAppBundleAt appBundle: URL) -> String {
+        let executableName = appBundle.deletingPathExtension().lastPathComponent
+        return appBundle.appendingPathComponent("Contents/MacOS/\(executableName)").path
+    }
+
     /// Returns the file URL of the diagnostics log inside the App Group
     /// container, or nil if the App Group is unavailable.
     public static func diagnosticsFileURL() -> URL? {

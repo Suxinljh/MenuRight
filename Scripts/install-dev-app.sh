@@ -87,17 +87,36 @@ fi
 
 echo "==> 5/6 Registering and enabling the Finder extension"
 "$LSREGISTER" -f -R -trusted "$INSTALLED_APP"
-pluginkit -a "$INSTALLED_APP/Contents/PlugIns/MenuRightFinder.appex" 2>/dev/null || true
 pluginkit -e use -i "$EXTENSION_ID"
 pkill -f MenuRightFinder 2>/dev/null || true   # Finder relaunches it on demand
-sleep 1
+# Replacing the app gives the .appex a new plugin identity, and Finder keeps
+# serving its cached plugin list: without restarting Finder the context menu
+# silently disappears even though pluginkit reports the plugin as enabled.
+# Observed for real: the extension vanished from `pluginkit -m -p
+# com.apple.FinderSync` and no menu(for:) was called afterwards.
+killall Finder 2>/dev/null || true
+sleep 2
 
 echo "==> 6/6 Verifying the system state"
-pluginkit -m -i "$EXTENSION_ID" -v
-STATE=$(pluginkit -m -i "$EXTENSION_ID" -v | head -1 | cut -c1)
+STATE="?"
+for _ in 1 2 3 4 5; do
+  LINE=$(pluginkit -m -p com.apple.FinderSync -v 2>/dev/null | grep "$EXTENSION_ID" | head -1)
+  if [ -n "$LINE" ]; then
+    STATE=$(printf '%s' "$LINE" | cut -c1)
+    [ "$STATE" = "+" ] && break
+  fi
+  sleep 1
+done
+echo "$LINE"
+if [ -z "$LINE" ]; then
+  echo "    WARNING: the extension is NOT registered as a Finder Sync plugin at all."
+  echo "    Check that the appex exists: ls '$INSTALLED_APP/Contents/PlugIns/'"
+fi
 if [ "$STATE" = "+" ]; then
   echo
-  echo "OK — extension is enabled and points at the installed copy above."
+  echo "OK — the extension is registered, enabled, and Finder was restarted so it"
+  echo "     picks up this build:"
+  echo "     $LINE"
   echo "Next: open $INSTALLED_APP (it is already running) and check that the window"
   echo "shows 'Finder Extension: Enabled'. If it still says Disabled, click"
   echo "'Manage Finder Extension' and toggle MenuRight there, then relaunch the app."
