@@ -23,28 +23,60 @@ stat -f "%Sm  %N" ~/Applications/MenuRight.app/Contents/PlugIns/MenuRightFinder.
 
 ---
 
-## 1. 构建并安装(签名版)
+## 1. 构建并安装(签名版)——**用脚本,不要手工 cp**
 
 ```sh
 cd /Users/suxin/Suxin/code/app/MenuRight
-
-# 1.1 签名构建(这一步会生成/复用 provisioning profile)
-xcodebuild -project MenuRight.xcodeproj -scheme MenuRight -configuration Debug build \
-  -allowProvisioningUpdates
-
-# 1.2 用新构建替换已安装副本(旧的是 8/30 的,建议先备份)
-mv ~/Applications/MenuRight.app ~/Applications/MenuRight.app.old-$(date +%m%d) 2>/dev/null || true
-cp -R ~/Library/Developer/Xcode/DerivedData/MenuRight-hbvytrfsgjgfzodgqzpajbuyguqy/Build/Products/Debug/MenuRight.app \
-      ~/Applications/
-
-# 1.3 重新注册并让 Finder 重载扩展
-LSREG=/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister
-"$LSREG" -f -R -trusted ~/Applications/MenuRight.app
-pluginkit -e use -i xin.ljhsu.MenuRight.FinderSync
-pkill -f MenuRightFinder || true     # Finder 会按需重新拉起扩展
+Scripts/install-dev-app.sh          # 默认 Debug;也可传 Release
 ```
 
-**预期**:`pluginkit -m -i ... -v` 显示 `~/Applications/MenuRight.app/...`,且 `stat` 是今天。
+脚本做六件事:签名构建 → 校验产物签名 → **用 `ditto` 安装**(不是 `cp -R`)→ 验证安装副本能启动 → 注册并启用扩展 → 打印系统状态。每一步失败都会明确报错。
+
+### ⚠️ 两个已经踩过的坑(2026-09-30 实测)
+
+1. **永远不要用 `cp -R` 复制 .app**。Xcode 的 Debug 构建带调试 dylib(硬链接),`cp -R` 会把它解开 →
+   `codesign --verify` 仍然说 "valid on disk",但内核在启动时 SIGKILL:
+   `Taskgated Invalid Signature`(`~/Library/Logs/DiagnosticReports/MenuRight-*.ips`)。
+   **同样一个构建,`ditto` 复制后可以正常启动,`cp -R` 复制后必被杀死** —— 已 A/B 实测。
+2. **系统里只能存在一份 MenuRight**。Finder 只加载"已注册且已启用"的那份扩展;
+   如果同时存在 DerivedData 和 ~/Applications 两份,你会在运行 A 副本时看到 B 副本的扩展状态,
+   于是界面显示 `Disabled`,而 Finder 加载的其实是**旧代码**。
+
+手工命令(脚本内部等价):
+
+```sh
+xcodebuild -project MenuRight.xcodeproj -scheme MenuRight -configuration Debug build -allowProvisioningUpdates
+ditto "<BUILT_PRODUCTS_DIR>/MenuRight.app" ~/Applications/MenuRight.app     # 注意是 ditto
+LSREG=/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister
+"$LSREG" -f -R -trusted ~/Applications/MenuRight.app
+pluginkit -a ~/Applications/MenuRight.app/Contents/PlugIns/MenuRightFinder.appex
+pluginkit -e use -i xin.ljhsu.MenuRight.FinderSync
+pkill -f MenuRightFinder || true
+```
+
+**预期**:`pluginkit -m -i xin.ljhsu.MenuRight.FinderSync -v` 第一列是 `+`,路径指向你刚装的那份。
+若脚本报告安装副本被杀死,说明复制方式不对(回到上面第 1 条)。
+
+### 免责/排查:界面显示 Disabled 怎么办
+
+**实测结论(2026-09-30)**:同一个二进制,从 `~/Applications` 运行报告 `isExtensionEnabled=true`,
+从 DerivedData 运行(Xcode Run)报告 `false` —— 该 API 回答的是"系统已注册并启用的那一份",
+不是"你正在运行的那一份"。应用现在会把这个状态写进诊断日志,并在窗口里显示**正在运行副本的路径**:
+
+```sh
+grep "extension status" ~/Library/Group\ Containers/group.xin.ljhsu.MenuRight/bootstrap-diagnostics.log | tail -1
+# 看 exec= 判断是哪一份副本报告的
+```
+
+自检顺序:
+1. `pluginkit -m -i xin.ljhsu.MenuRight.FinderSync -v` → 必须是 `+`,路径必须是**你正在运行的那份**。
+2. 只保留一个实例:`pgrep -lf 'MenuRight.app/Contents/MacOS/MenuRight'`,多余的退出
+   (在 Xcode 里按 Stop)。
+3. 仍为 Disabled → 点应用里的 **Manage Finder Extension**,在系统设置里把 MenuRight 打开;
+   或 `pluginkit -e use -i xin.ljhsu.MenuRight.FinderSync`,然后重开应用窗口刷新状态。
+4. 若 `~/Library/Logs/DiagnosticReports/MenuRight-*.ips` 出现 `Taskgated Invalid Signature`
+   → 是安装方式问题(见坑 1),或 **provisioning profile 过期**(Personal Team 的 profile 只有 7 天;
+   旧副本的 profile 已于 2026-09-06 过期)。重新 `-allowProvisioningUpdates` 构建即可换新 profile。
 
 > 注意:IPC 功能(新建/别名/锁定/终端/粘贴)需要**主 App 正在运行**(它是 socket 服务端)。
 > 打开 `~/Applications/MenuRight.app` 并保持它运行;退出后扩展会提示 "Menu Right not running"。

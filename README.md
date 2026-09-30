@@ -249,6 +249,11 @@ regression.
 
 ### Manual verification (P5-1 + A2 integration)
 
+**Install/enable for testing: `Scripts/install-dev-app.sh`** (signed build → `ditto` install into
+`~/Applications` → register + enable the extension → verify). Use it instead of copying the app by
+hand: `cp -R` breaks an Xcode debug build's hard links and the kernel then kills the copy with
+"Taskgated Invalid Signature", while `codesign --verify` still reports it as valid.
+
 **Step-by-step runbook: `MenuRight 验证手册.md`** — it covers the build/install step, how to make
 Finder actually load the new extension (it loads the registered copy from `~/Applications`, not
 DerivedData), how to read the logs, and a per-feature pass/fail checklist.

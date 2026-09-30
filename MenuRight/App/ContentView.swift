@@ -21,6 +21,24 @@ struct ContentView: View {
                     Text(isExtensionEnabled ? "Enabled" : "Disabled")
                         .font(.body)
                 }
+                // Which copy is this window? The system enables the extension for
+                // the copy it has registered, and that registration is per path.
+                // Running the DerivedData build while ~/Applications is the
+                // enabled one makes this window report "Disabled" even though
+                // everything is fine — so show the path instead of letting the
+                // user guess.
+                Text(Bundle.main.bundlePath)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                if !isExtensionEnabled {
+                    Text("This copy of the app is not the one the extension is enabled for. Install and run the registered copy (Scripts/install-dev-app.sh) — running from Xcode reports Disabled while Finder loads the installed build.")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
@@ -48,6 +66,14 @@ struct ContentView: View {
     private func refreshExtensionStatus() {
         // macOS 10.14+. Deployment target is 14.0, so no availability gate needed.
         isExtensionEnabled = FIFinderSyncController.isExtensionEnabled
+        // Logged explicitly: "why does the window say Disabled?" is otherwise
+        // guesswork. Compare with `pluginkit -m -i xin.ljhsu.MenuRight.FinderSync -v`:
+        // the system answers for the extension that is *registered and enabled*,
+        // which is not necessarily the copy you are running.
+        LifecycleDiagnostics.record(
+            "extension status isExtensionEnabled=\(isExtensionEnabled)",
+            from: "main-app"
+        )
     }
 }
 
