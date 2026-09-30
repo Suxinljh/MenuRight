@@ -249,6 +249,10 @@ regression.
 
 ### Manual verification (P5-1 + A2 integration)
 
+**Step-by-step runbook: `MenuRight 验证手册.md`** — it covers the build/install step, how to make
+Finder actually load the new extension (it loads the registered copy from `~/Applications`, not
+DerivedData), how to read the logs, and a per-feature pass/fail checklist.
+
 A build passing is NOT enough — the sandboxed extension's behaviour must be
 verified in the real Finder. Automated tests do not and cannot cover this.
 
