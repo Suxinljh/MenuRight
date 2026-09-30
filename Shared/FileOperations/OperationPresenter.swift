@@ -119,6 +119,23 @@ enum OperationPresenter {
         presentTitle(title, message: displayed)
     }
 
+    /// **P7-b** UI bridge for a favorite that could not be opened. The main app
+    /// has already resolved the target (path, bundle identifier or URL) and
+    /// returns a message that names the actual problem, so the alert shows it
+    /// instead of a generic failure.
+    static func presentDelegatedOpenFailure(name: String, code: FileOperationContract.ErrorCode, message: String) {
+        NSLog("[MenuRight] open failed: name=%@ code=%@ message=%@", name, code.rawValue, message)
+        let displayed = message.isEmpty ? "The item could not be opened." : message
+        presentTitle("Couldn’t open “" + name + "”.", message: displayed)
+    }
+
+    /// **P9** UI bridge for a compression/extraction failure.
+    static func presentDelegatedArchiveFailure(action: String, code: FileOperationContract.ErrorCode, message: String) {
+        NSLog("[MenuRight] archive %@ failed: code=%@ message=%@", action, code.rawValue, message)
+        let displayed = message.isEmpty ? "The operation failed." : message
+        presentTitle("Couldn’t \(action).", message: displayed)
+    }
+
     /// **P5-1** Main App unavailable — the extension can't write locally
     /// anymore. We display one consistent message instead of attempting a
     /// fallback that would silently bypass the security gate.

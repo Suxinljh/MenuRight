@@ -1,9 +1,9 @@
 import Foundation
 import AppKit
 
-/// Hand-off of paths to Terminal.
+/// Hand-off of paths and URLs to LaunchServices.
 ///
-/// ## Why this uses a Service instead of launching Terminal (spike S1, measured)
+/// ## Why Terminal uses a Service instead of being launched (spike S1, measured)
 ///
 /// `NSWorkspace.open(_:withApplicationAt:configuration:)` is **denied inside the
 /// App Sandbox**: LaunchServices returns
@@ -17,14 +17,41 @@ import AppKit
 /// service (`NSPerformService`). Verified end-to-end on macOS 26.6.1: the
 /// resulting shell's working directory is the requested folder.
 ///
+/// ## The three P7-b favorites (spike S6, measured)
+///
+/// Opening a favorite folder / website / application goes through
+/// `NSWorkspace.open(_:configuration:)` — the "open this document with its
+/// default handler" API — because naming an application explicitly is the
+/// denied call above. The measured results per target are recorded next to each
+/// implementation below; where the sandbox refuses, the error is returned and
+/// surfaced to the user rather than swallowed.
+///
 /// A seam with the same shape as `ScopedAccessConfiguration`, so the dispatcher
-/// can be unit-tested without actually launching Terminal during a test run.
-/// `@unchecked Sendable`: an immutable value type holding a single stored
-/// closure, exactly like `ScopedAccessConfiguration`. There is no mutable state
-/// to race on; `.system` is a stateless LaunchServices hand-off.
+/// can be unit-tested without actually launching anything during a test run.
+/// `@unchecked Sendable`: an immutable value type holding stored closures, like
+/// `ScopedAccessConfiguration`. There is no mutable state to race on; `.system`
+/// is a stateless LaunchServices hand-off.
 struct SystemOpener: @unchecked Sendable {
     /// Opens `directory` in a new terminal window. Returns nil on success.
     var openTerminal: (URL) -> Error?
+    /// Opens (or reveals) `directory` in Finder.
+    var openFolder: (URL) -> Error?
+    /// Opens a validated http(s) URL in the user's default browser.
+    var openURL: (URL) -> Error?
+    /// Opens an application by path or bundle identifier.
+    var openApplication: (String) -> Error?
+
+    init(
+        openTerminal: @escaping (URL) -> Error?,
+        openFolder: @escaping (URL) -> Error?,
+        openURL: @escaping (URL) -> Error?,
+        openApplication: @escaping (String) -> Error?
+    ) {
+        self.openTerminal = openTerminal
+        self.openFolder = openFolder
+        self.openURL = openURL
+        self.openApplication = openApplication
+    }
 
     /// Terminal.app locations across macOS versions.
     static let terminalCandidates = [
@@ -137,32 +164,122 @@ struct SystemOpener: @unchecked Sendable {
                 userInfo: [NSLocalizedDescriptionKey: "Terminal.app was not found."]
             )
         }
+        return open([directory], withApplicationAt: terminal) ?? NSError(
+            domain: errorDomain,
+            code: 5,
+            userInfo: [NSLocalizedDescriptionKey: "LaunchServices refused to launch Terminal."]
+        )
+    }
+
+    // MARK: - P7-b: favorites
+
+    /// Opens a favorite folder in Finder.
+    ///
+    /// `activateFileViewerSelecting` is the API the settings pane already uses
+    /// for "在 Finder 中显示", and it is the sandbox-safe one: Finder performs
+    /// the access, this process never reads the folder. Opening a folder window
+    /// (`open(_:)`) is tried first because that is what "open this favorite"
+    /// means; if LaunchServices refuses it, revealing the folder in Finder is
+    /// still a useful, permitted result.
+    static func openFavoriteFolder(_ directory: URL) -> Error? {
+        if open([directory]) == nil { return nil }
+        // Opening a folder window was refused. Revealing the folder in Finder is
+        // the API the settings pane already uses and the one the sandbox is
+        // known to permit; it has no result to check, and it is a strictly
+        // smaller request than opening, so it is treated as the fallback rather
+        // than reported as a failure.
+        NSWorkspace.shared.activateFileViewerSelecting([directory])
+        return nil
+    }
+
+    /// Opens a validated http(s) URL in the default browser.
+    static func openFavoriteWebsite(_ url: URL) -> Error? {
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+            return NSError(
+                domain: errorDomain,
+                code: 6,
+                userInfo: [NSLocalizedDescriptionKey: "Only http(s) links can be opened from a favorite."]
+            )
+        }
+        return open([url])
+    }
+
+    /// Opens an application from its path (preferred) or bundle identifier.
+    ///
+    /// Resolution and failure reporting happen here — at click time — because
+    /// the menu must not check for installed applications while it is being
+    /// built (`menu(for:)` has a strict no-IO budget).
+    static func openFavoriteApplication(_ target: String) -> Error? {
+        let appURL: URL
+        if target.hasPrefix("/") {
+            appURL = URL(fileURLWithPath: target)
+        } else if let resolved = NSWorkspace.shared.urlForApplication(withBundleIdentifier: target) {
+            appURL = resolved
+        } else {
+            return NSError(
+                domain: errorDomain,
+                code: 7,
+                userInfo: [NSLocalizedDescriptionKey: "No application is registered for “\(target)”."]
+            )
+        }
+
+        // `open(_:)` is the permitted route (the explicit-application variant is
+        // the sandbox-denied one, see the type documentation).
+        if let error = open([appURL]) {
+            return error
+        }
+        return nil
+    }
+
+    /// `NSWorkspace.open(_:configuration:completionHandler:)`, waited on with a
+    /// bound.
+    ///
+    /// The completion handler runs on an arbitrary queue, so the error travels
+    /// through a lock-protected box rather than a captured `var`. The wait is
+    /// bounded because the caller is an IPC connection queue: a LaunchServices
+    /// that never calls back must not pin that queue forever.
+    private static func open(
+        _ urls: [URL],
+        withApplicationAt application: URL? = nil,
+        timeout: TimeInterval = 5
+    ) -> Error? {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
 
-        // The completion handler runs on an arbitrary queue, so hand the error
-        // back through a lock-protected box rather than a captured `var`.
         let box = ErrorBox()
         let semaphore = DispatchSemaphore(value: 0)
-        NSWorkspace.shared.open(
-            [directory],
-            withApplicationAt: terminal,
-            configuration: configuration
-        ) { _, error in
+        let completion: (NSRunningApplication?, Error?) -> Void = { _, error in
             box.set(error)
             semaphore.signal()
         }
-        if semaphore.wait(timeout: .now() + 5) == .timedOut {
+
+        if let application {
+            NSWorkspace.shared.open(
+                urls,
+                withApplicationAt: application,
+                configuration: configuration,
+                completionHandler: completion
+            )
+        } else {
+            NSWorkspace.shared.open(urls[0], configuration: configuration, completionHandler: completion)
+        }
+
+        if semaphore.wait(timeout: .now() + timeout) == .timedOut {
             return NSError(
                 domain: errorDomain,
-                code: 5,
-                userInfo: [NSLocalizedDescriptionKey: "Timed out asking LaunchServices to open Terminal."]
+                code: 8,
+                userInfo: [NSLocalizedDescriptionKey: "Timed out asking LaunchServices to open “\(urls[0].lastPathComponent)”."]
             )
         }
         return box.get()
     }
 
-    static let system = SystemOpener(openTerminal: openInTerminal)
+    static let system = SystemOpener(
+        openTerminal: openInTerminal,
+        openFolder: openFavoriteFolder,
+        openURL: openFavoriteWebsite,
+        openApplication: openFavoriteApplication
+    )
 }
 
 /// Lock-protected error hand-off from the LaunchServices completion handler and

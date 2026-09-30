@@ -86,7 +86,7 @@ final class MainAppIPCServer: NSObject, @unchecked Sendable {
     /// temporary socket path, and a stub peer verifier.
     init(
         socketURL: URL? = MenuRightIPC.socketFileURL(),
-        fileOpDispatcher: FileOperationDispatcher = FileOperationDispatcher(),
+        fileOpDispatcher: FileOperationDispatcher = FileOperationDispatcher(folderChooser: FolderChooser.chooseDirectory),
         peerVerifier: @escaping (Int32) -> PeerIdentity.Result = { PeerIdentity.verify(fd: $0) }
     ) {
         self.socketURL = socketURL

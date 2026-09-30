@@ -24,6 +24,37 @@ enum FileOperationService {
         }
     }
 
+    /// P6-b: creates a document by copying a blank template.
+    ///
+    /// Used for Pages/Numbers/Keynote, whose formats cannot be synthesized. The
+    /// copy is a plain `copyItem`, so whichever shape the template has (an iWork
+    /// package directory, or a flat file on a non-HFS volume) is preserved.
+    /// Never overwrites: the destination name goes through `FileNameResolver`
+    /// exactly like the generated kinds.
+    static func createFileFromTemplate(
+        template: URL,
+        in directory: URL,
+        preferredName: String
+    ) -> Result<URL, FileOperationError> {
+        guard isExistingDirectory(directory) else {
+            return .failure(.invalidDestination(directory.path))
+        }
+        guard FileManager.default.fileExists(atPath: template.path) else {
+            return .failure(.sourceDoesNotExist(template))
+        }
+        let name = FileNameResolver.uniqueName(preferred: preferredName, existing: existingNames(in: directory))
+        let url = directory.appendingPathComponent(name)
+        guard AuthorizedURLResolver.isDirectChild(url, of: directory) else {
+            return .failure(.invalidMove("refusing to write outside “\(directory.path)”: \(name)"))
+        }
+        do {
+            try FileManager.default.copyItem(at: template, to: url)
+            return .success(url)
+        } catch {
+            return .failure(FileOperationError.from(error))
+        }
+    }
+
     static func createDirectory(in directory: URL, preferredName: String) -> Result<URL, FileOperationError> {
         guard isExistingDirectory(directory) else {
             return .failure(.invalidDestination(directory.path))

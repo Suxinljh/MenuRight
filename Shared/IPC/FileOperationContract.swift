@@ -31,6 +31,37 @@ public enum FileOperationContract {
         case setLocked
         /// P6: hand a directory to Terminal. Non-mutating, see `handleOpenTerminal`.
         case openTerminal
+        /// P6-b: create a Word/Excel/PowerPoint document. The **main app**
+        /// writes the OOXML package (`OOXMLDocumentFactory`); the extension only
+        /// says which kind — the archive writer must never live in the
+        /// sandboxed extension.
+        case createDocument
+        /// P6-b: create a Pages/Numbers/Keynote document by copying the blank
+        /// template from the main app bundle. Fails with `templateMissing` when
+        /// this build has no template for the kind.
+        case createFromTemplate
+        /// P7-b: open one of the user's favorite folders in Finder.
+        case openFolder
+        /// P7-b: open one of the user's favorite applications. `target` is an
+        /// application path or a bundle identifier.
+        case openApplication
+        /// P7-b: open one of the user's favorite websites in the default
+        /// browser. `target` must be http(s).
+        ///
+        /// All three are non-mutating hand-offs to LaunchServices: they are
+        /// deliberately **not** gated on the folder-authorization store, for the
+        /// same reason `openTerminal` is not — this app performs no filesystem
+        /// work, and gating would make a favorite unusable in any folder the
+        /// user has not separately authorized.
+        case openURL
+        /// P9: compress the selection into a new archive next to it.
+        case compressItems
+        /// P9: extract one or more archives.
+        ///
+        /// `destinationDirectory` nil means "each archive's own folder" — the
+        /// menu's 解压到当前文件夹 — which does not require the extension to
+        /// decide anything per item.
+        case extractArchive
     }
 
     /// Per-operation arguments. Exactly one field is meaningful for any given
@@ -53,6 +84,32 @@ public enum FileOperationContract {
         public var destinationDirectory: String?
         /// Required for `setLocked`. true = lock (undeletable), false = unlock.
         public var locked: Bool?
+        /// Required for `createDocument`/`createFromTemplate`. The raw value of
+        /// the `NewFileType` to create (`docx`, `xlsx`, `pptx`, `pages`,
+        /// `numbers`, `keynote`). A raw value the receiving build does not know
+        /// is rejected as `invalidRequest` — the contract stays version 1 and
+        /// old payloads still decode (the field is optional).
+        public var documentKind: String?
+        /// Required for `openApplication`/`openURL`: the application path or
+        /// bundle identifier, or the http(s) URL to open.
+        public var target: String?
+        /// Required for `compressItems`. The `ArchiveFormat` raw value to write
+        /// (`zip` in this build). Unknown or unwritable values are rejected as
+        /// `archiveUnsupported` rather than silently falling back.
+        public var archiveFormat: String?
+        /// Optional for `compressItems`. The archive's label — the "标签" the
+        /// custom-compression dialog offers. Only ZIP stores one (as the
+        /// end-of-central-directory comment); other formats accept and ignore
+        /// it, which the dialog states.
+        public var archiveLabel: String?
+        /// Optional for `compressItems`. `ArchiveCompressionMode` raw value
+        /// (`fast` / `standard` / `maximum`).
+        public var archiveMode: String?
+        /// Optional. `compressItems` + true opens the custom-compression dialog;
+        /// `extractArchive` + true asks the user for a destination folder first
+        /// (NSOpenPanel in the main app). Either way the extension is not the one
+        /// choosing the options or the folder.
+        public var customize: Bool?
 
         public init(
             directory: String? = nil,
@@ -60,7 +117,13 @@ public enum FileOperationContract {
             contentsBase64: String? = nil,
             sourcePaths: [String]? = nil,
             destinationDirectory: String? = nil,
-            locked: Bool? = nil
+            locked: Bool? = nil,
+            documentKind: String? = nil,
+            target: String? = nil,
+            archiveFormat: String? = nil,
+            archiveLabel: String? = nil,
+            archiveMode: String? = nil,
+            customize: Bool? = nil
         ) {
             self.directory = directory
             self.name = name
@@ -68,6 +131,12 @@ public enum FileOperationContract {
             self.sourcePaths = sourcePaths
             self.destinationDirectory = destinationDirectory
             self.locked = locked
+            self.documentKind = documentKind
+            self.target = target
+            self.archiveFormat = archiveFormat
+            self.archiveLabel = archiveLabel
+            self.archiveMode = archiveMode
+            self.customize = customize
         }
     }
 
@@ -127,6 +196,27 @@ public enum FileOperationContract {
         case lockFailed = "lock_failed"
         /// P6: opening Terminal for the given directory failed.
         case openFailed = "open_failed"
+        /// P6-b: the bundled blank template for a Pages/Numbers/Keynote
+        /// document is not present in this build, so nothing was created.
+        ///
+        /// The menu hides such kinds via the published `NewFileAvailability`;
+        /// this code exists for the race where a template disappears between the
+        /// publish and the click, and so the failure is never a generic
+        /// `operation_failed`.
+        case templateMissing = "template_missing"
+        /// P6-b: this build does not know how to generate the requested
+        /// document kind (unknown or unsupported raw value).
+        case unsupportedDocumentKind = "unsupported_document_kind"
+        /// P9: the archive is not a format this build can read, or its
+        /// compression method is not supported.
+        case archiveUnsupported = "archive_unsupported"
+        /// P9: an entry name tried to escape the destination directory.
+        case archiveUnsafePath = "archive_unsafe_path"
+        /// P9: the payload exceeds the configured size limit (checked before
+        /// anything is written).
+        case archiveTooLarge = "archive_too_large"
+        /// P9: the archive itself could not be opened, written or completed.
+        case archiveFailed = "archive_failed"
     }
 
     /// Batch item outcome for `moveItems` responses.

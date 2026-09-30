@@ -79,6 +79,12 @@ final class FileOperationContractTests: XCTestCase {
             .aliasFailed: "alias_failed",
             .lockFailed: "lock_failed",
             .openFailed: "open_failed",
+            .templateMissing: "template_missing",
+            .unsupportedDocumentKind: "unsupported_document_kind",
+            .archiveUnsupported: "archive_unsupported",
+            .archiveUnsafePath: "archive_unsafe_path",
+            .archiveTooLarge: "archive_too_large",
+            .archiveFailed: "archive_failed",
         ]
         for (code, raw) in expected {
             XCTAssertEqual(code.rawValue, raw)
@@ -119,6 +125,102 @@ final class FileOperationContractTests: XCTestCase {
         XCTAssertNil(decoded.args.locked, "older payloads without the P6 field must still decode")
     }
 
+    /// P6-b: the document kinds travel as a name plus a kind — never bytes.
+    func testP6bDocumentRequestsRoundTrip() throws {
+        let cases: [FileOperationContract.Request] = [
+            FileOperationContract.Request(
+                kind: .createDocument,
+                args: FileOperationContract.OperationArgs(
+                    directory: "/a/folder",
+                    name: "Untitled.docx",
+                    documentKind: "docx"
+                )
+            ),
+            FileOperationContract.Request(
+                kind: .createFromTemplate,
+                args: FileOperationContract.OperationArgs(
+                    directory: "/a/folder",
+                    name: "Untitled.key",
+                    documentKind: "keynote"
+                )
+            ),
+        ]
+        for request in cases {
+            let payload = try XCTUnwrap(request.encodedForIPC())
+            let decoded = try XCTUnwrap(FileOperationContract.Request.decode(fromIPC: payload))
+            XCTAssertEqual(decoded, request)
+            XCTAssertNil(decoded.args.contentsBase64, "generation must not depend on extension-supplied bytes")
+        }
+    }
+
+    /// The field is additive: a payload written before P6-b still decodes.
+    func testDocumentKindIsOptionalForOlderPayloads() throws {
+        let legacy = #"{"kind":"createFile","args":{"directory":"/a","name":"x.txt","contentsBase64":""}}"#
+        let decoded = try XCTUnwrap(FileOperationContract.Request.decode(fromIPC: legacy))
+        XCTAssertNil(decoded.args.documentKind)
+    }
+
+    /// P7-b: the favorites hand-offs carry a target (path, bundle identifier or
+    /// URL) instead of bytes or paths-to-write.
+    func testP7bOpenRequestsRoundTrip() throws {
+        let cases: [FileOperationContract.Request] = [
+            FileOperationContract.Request(
+                kind: .openFolder,
+                args: FileOperationContract.OperationArgs(directory: "/Users/foo/Projects")
+            ),
+            FileOperationContract.Request(
+                kind: .openApplication,
+                args: FileOperationContract.OperationArgs(target: "com.apple.TextEdit")
+            ),
+            FileOperationContract.Request(
+                kind: .openURL,
+                args: FileOperationContract.OperationArgs(target: "https://example.com/a?b=1")
+            ),
+        ]
+        for request in cases {
+            let payload = try XCTUnwrap(request.encodedForIPC())
+            let decoded = try XCTUnwrap(FileOperationContract.Request.decode(fromIPC: payload))
+            XCTAssertEqual(decoded, request)
+            XCTAssertEqual(decoded.kind, request.kind)
+        }
+
+        // `target` is additive: a P6 payload without it still decodes.
+        let legacy = #"{"kind":"openTerminal","args":{"directory":"/a"}}"#
+        XCTAssertNil(try XCTUnwrap(FileOperationContract.Request.decode(fromIPC: legacy)).args.target)
+    }
+
+    /// P9: compress/extract requests carry paths plus an explicit format.
+    func testP9ArchiveRequestsRoundTrip() throws {
+        let cases: [FileOperationContract.Request] = [
+            FileOperationContract.Request(
+                kind: .compressItems,
+                args: FileOperationContract.OperationArgs(
+                    name: "Bundle.zip",
+                    sourcePaths: ["/a/one.txt", "/a/two.txt"],
+                    destinationDirectory: "/a",
+                    archiveFormat: "zip"
+                )
+            ),
+            FileOperationContract.Request(
+                kind: .extractArchive,
+                args: FileOperationContract.OperationArgs(
+                    sourcePaths: ["/a/bundle.zip"],
+                    destinationDirectory: nil
+                )
+            ),
+        ]
+        for request in cases {
+            let payload = try XCTUnwrap(request.encodedForIPC())
+            XCTAssertEqual(FileOperationContract.Request.decode(fromIPC: payload), request)
+        }
+
+        // Both fields are additive; older payloads keep decoding.
+        let legacy = #"{"kind":"extractArchive","args":{"sourcePaths":["/a/b.zip"]}}"#
+        let decoded = try XCTUnwrap(FileOperationContract.Request.decode(fromIPC: legacy))
+        XCTAssertNil(decoded.args.archiveFormat)
+        XCTAssertNil(decoded.args.destinationDirectory)
+    }
+
     func testUnknownMethodKindDecodesToNil() {
         let json = #"{"kind":"deleteEverything","args":{}}"#
         XCTAssertNil(FileOperationContract.Request.decode(fromIPC: json))
@@ -140,6 +242,8 @@ private extension FileOperationContract.ErrorCode {
             .pathOutsideAuthorizedScope, .sourceDoesNotExist, .invalidDestination,
             .nameCollision, .filesystemPermissionDenied, .filesystemError,
             .operationFailed, .aliasFailed, .lockFailed, .openFailed,
+            .templateMissing, .unsupportedDocumentKind,
+            .archiveUnsupported, .archiveUnsafePath, .archiveTooLarge, .archiveFailed,
         ]
     }
 }

@@ -74,18 +74,45 @@ final class FileOperationDispatcherTests: XCTestCase {
     /// Records the directories handed to "open terminal" instead of launching
     /// Terminal, so tests stay headless.
     private var openedDirectories: [String] = []
+    /// P7-b: what the favorites path handed to LaunchServices.
+    private var openedFolders: [String] = []
+    private var openedURLs: [String] = []
+    private var openedApplications: [String] = []
 
     private func dispatcher(
         store injectedStore: FolderAuthorizationStore? = nil,
-        openTerminalError: Error? = nil
+        openTerminalError: Error? = nil,
+        openFolderError: Error? = nil,
+        openURLError: Error? = nil,
+        openApplicationError: Error? = nil,
+        templateDirectory: URL? = nil,
+        archiveSettings: ArchiveSettings = ArchiveSettings(),
+        folderChooser: (() -> URL?)? = nil
     ) -> FileOperationDispatcher {
         FileOperationDispatcher(
             store: injectedStore ?? store,
             scopedConfig: configuration(),
-            opener: SystemOpener { url in
-                self.openedDirectories.append(url.path)
-                return openTerminalError
-            }
+            opener: SystemOpener(
+                openTerminal: { url in
+                    self.openedDirectories.append(url.path)
+                    return openTerminalError
+                },
+                openFolder: { url in
+                    self.openedFolders.append(url.path)
+                    return openFolderError
+                },
+                openURL: { url in
+                    self.openedURLs.append(url.absoluteString)
+                    return openURLError
+                },
+                openApplication: { target in
+                    self.openedApplications.append(target)
+                    return openApplicationError
+                }
+            ),
+            templateDirectory: templateDirectory,
+            archiveSettings: { archiveSettings },
+            folderChooser: folderChooser ?? { nil }
         )
     }
 
@@ -108,6 +135,21 @@ final class FileOperationDispatcherTests: XCTestCase {
         payload(.createDirectory, FileOperationContract.OperationArgs(directory: directory.path, name: name))
     }
 
+    /// P6-b: `createDocument` / `createFromTemplate` carry a kind instead of
+    /// bytes — the main app decides what those bytes are.
+    private func documentPayload(
+        _ kind: FileOperationContract.OperationKind,
+        directory: URL,
+        name: String,
+        kind documentKind: String
+    ) -> String {
+        payload(kind, FileOperationContract.OperationArgs(
+            directory: directory.path,
+            name: name,
+            documentKind: documentKind
+        ))
+    }
+
     private func movePayload(sources: [URL], destination: URL) -> String {
         payload(.moveItems, FileOperationContract.OperationArgs(
             sourcePaths: sources.map(\.path),
@@ -123,6 +165,13 @@ final class FileOperationDispatcherTests: XCTestCase {
     private func successPath(_ response: FileOperationContract.Response) -> String? {
         if case .success(let path) = response { return path }
         return nil
+    }
+
+    /// Open operations succeed with no created path, so success has to be
+    /// checked by shape rather than by `successPath`.
+    private func isSuccess(_ response: FileOperationContract.Response) -> Bool {
+        if case .success = response { return true }
+        return false
     }
 
     // MARK: - Request validation
@@ -637,6 +686,518 @@ final class FileOperationDispatcherTests: XCTestCase {
         XCTAssertEqual(
             failureCode(dispatcher().dispatch(payload: payload(.openTerminal, .init()))),
             .invalidRequest
+        )
+    }
+
+    // MARK: - P6-b: generated documents
+
+    func testCreateDocumentWritesAnOpenablePackageIntoTheAuthorizedFolder() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+
+        let response = dispatcher().dispatch(payload: documentPayload(
+            .createDocument, directory: authorized, name: "Untitled.docx", kind: "docx"
+        ))
+        let path = try XCTUnwrap(successPath(response))
+        XCTAssertEqual(path, authorized.appendingPathComponent("Untitled.docx").path)
+
+        let archive = try ZipTestReader(try Data(contentsOf: URL(fileURLWithPath: path)))
+        XCTAssertEqual(archive.entries.first?.name, "[Content_Types].xml")
+        XCTAssertNotNil(archive.entry(named: "word/document.xml"))
+        XCTAssertEqual(started, stopped, "scoped access must be balanced")
+    }
+
+    func testCreateDocumentOnlyAcceptsOfficeKinds() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let d = dispatcher()
+
+        XCTAssertEqual(
+            failureCode(d.dispatch(payload: documentPayload(.createDocument, directory: authorized, name: "a.pages", kind: "pages"))),
+            .unsupportedDocumentKind,
+            "template kinds must not travel as generated documents"
+        )
+        XCTAssertEqual(
+            failureCode(d.dispatch(payload: documentPayload(.createDocument, directory: authorized, name: "a.docx", kind: "exe"))),
+            .invalidRequest
+        )
+        XCTAssertEqual(
+            failureCode(d.dispatch(payload: payload(.createDocument, .init(directory: authorized.path, name: "a.docx")))),
+            .invalidRequest,
+            "the kind is required"
+        )
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: authorized.path).isEmpty)
+    }
+
+    func testCreateDocumentOutsideAuthorizationIsRejected() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        let other = root.appendingPathComponent("Other", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try authorize(authorized)
+
+        let response = dispatcher().dispatch(payload: documentPayload(
+            .createDocument, directory: other, name: "Untitled.xlsx", kind: "xlsx"
+        ))
+        XCTAssertEqual(failureCode(response), .notAuthorized)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: other.path).isEmpty)
+        XCTAssertTrue(started.isEmpty)
+    }
+
+    func testCreateDocumentCollisionGetsAUniqueName() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let d = dispatcher()
+
+        XCTAssertNotNil(successPath(d.dispatch(payload: documentPayload(
+            .createDocument, directory: authorized, name: "Deck.pptx", kind: "pptx"
+        ))))
+        let second = d.dispatch(payload: documentPayload(
+            .createDocument, directory: authorized, name: "Deck.pptx", kind: "pptx"
+        ))
+        XCTAssertEqual(successPath(second), authorized.appendingPathComponent("Deck 2.pptx").path)
+    }
+
+    // MARK: - P6-b: template-backed documents
+
+    func testCreateFromTemplateCopiesTheBlankPackage() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+
+        // An iWork document is normally a package directory; the copy must
+        // preserve that rather than flatten it.
+        let templates = root.appendingPathComponent("Templates", isDirectory: true)
+        let blankKey = templates.appendingPathComponent("blank.key", isDirectory: true)
+        try FileManager.default.createDirectory(at: blankKey, withIntermediateDirectories: true)
+        try Data("index".utf8).write(to: blankKey.appendingPathComponent("Index.zip"))
+
+        let response = dispatcher(templateDirectory: templates).dispatch(payload: documentPayload(
+            .createFromTemplate, directory: authorized, name: "Untitled.key", kind: "keynote"
+        ))
+        let path = try XCTUnwrap(successPath(response))
+        XCTAssertEqual(path, authorized.appendingPathComponent("Untitled.key").path)
+
+        var isDirectory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue, "the template package shape must survive the copy")
+        XCTAssertEqual(
+            try String(contentsOfFile: path + "/Index.zip", encoding: .utf8),
+            "index"
+        )
+        XCTAssertEqual(started, stopped, "scoped access must be balanced")
+    }
+
+    func testCreateFromTemplateWithoutATemplateReportsTemplateMissing() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+
+        let response = dispatcher(templateDirectory: root.appendingPathComponent("Empty", isDirectory: true))
+            .dispatch(payload: documentPayload(
+                .createFromTemplate, directory: authorized, name: "Untitled.pages", kind: "pages"
+            ))
+        XCTAssertEqual(failureCode(response), .templateMissing)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: authorized.path).isEmpty)
+    }
+
+    func testCreateFromTemplateOnlyAcceptsTemplateBackedKinds() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+
+        XCTAssertEqual(
+            failureCode(dispatcher().dispatch(payload: documentPayload(
+                .createFromTemplate, directory: authorized, name: "a.docx", kind: "docx"
+            ))),
+            .unsupportedDocumentKind
+        )
+    }
+
+    func testCreateFromTemplateRejectsATraversalNameBeforeTouchingTheDisk() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+
+        let templates = root.appendingPathComponent("Templates", isDirectory: true)
+        try FileManager.default.createDirectory(at: templates, withIntermediateDirectories: true)
+        try Data("blank".utf8).write(to: templates.appendingPathComponent("blank.numbers"))
+
+        let response = dispatcher(templateDirectory: templates).dispatch(payload: documentPayload(
+            .createFromTemplate, directory: authorized, name: "../escaped.numbers", kind: "numbers"
+        ))
+        XCTAssertEqual(failureCode(response), .invalidRequest)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("escaped.numbers").path))
+        XCTAssertTrue(started.isEmpty, "rejected before any scoped access")
+    }
+
+    // MARK: - P7-b: favorites
+
+    /// Opening is a read-only hand-off to Finder/LaunchServices, exactly like
+    /// `openTerminal`: it must work in folders the user never authorized, and it
+    /// must not start security-scoped access for them either.
+    func testOpenFolderIsNotGatedOnTheAuthorizationStore() throws {
+        let folder = root.appendingPathComponent("NeverAuthorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+
+        let response = dispatcher().dispatch(payload: payload(.openFolder, .init(directory: folder.path)))
+        XCTAssertTrue(isSuccess(response))
+        XCTAssertEqual(openedFolders, [folder.path])
+        XCTAssertTrue(started.isEmpty, "opening a folder must not start security-scoped access")
+    }
+
+    func testOpenFolderRejectsAMissingFolder() throws {
+        let missing = root.appendingPathComponent("nope", isDirectory: true)
+        XCTAssertEqual(
+            failureCode(dispatcher().dispatch(payload: payload(.openFolder, .init(directory: missing.path)))),
+            .invalidDestination
+        )
+        XCTAssertEqual(
+            failureCode(dispatcher().dispatch(payload: payload(.openFolder, .init()))),
+            .invalidRequest
+        )
+        XCTAssertTrue(openedFolders.isEmpty)
+    }
+
+    func testOpenFolderRejectsAFileEvenThoughThePathExists() throws {
+        let file = root.appendingPathComponent("plain.txt")
+        try Data("x".utf8).write(to: file)
+        XCTAssertEqual(
+            failureCode(dispatcher().dispatch(payload: payload(.openFolder, .init(directory: file.path)))),
+            .invalidDestination
+        )
+    }
+
+    func testOpenApplicationPassesPathAndBundleIdentifierTargets() {
+        let d = dispatcher()
+        XCTAssertTrue(isSuccess(d.dispatch(payload: payload(.openApplication, .init(target: "/Applications/Calculator.app")))))
+        XCTAssertTrue(isSuccess(d.dispatch(payload: payload(.openApplication, .init(target: "com.apple.TextEdit")))))
+        XCTAssertEqual(openedApplications, ["/Applications/Calculator.app", "com.apple.TextEdit"])
+    }
+
+    func testOpenApplicationRejectsRelativePathsAndEmptyTargets() {
+        let d = dispatcher()
+        for target in ["./evil.app", "../evil.app", "some/relative.app"] {
+            XCTAssertEqual(
+                failureCode(d.dispatch(payload: payload(.openApplication, .init(target: target)))),
+                .invalidRequest,
+                "“\(target)” must not reach LaunchServices"
+            )
+        }
+        XCTAssertEqual(failureCode(d.dispatch(payload: payload(.openApplication, .init()))), .invalidRequest)
+        XCTAssertTrue(openedApplications.isEmpty)
+    }
+
+    func testOpenURLOnlyAcceptsHTTPWithAHost() {
+        let d = dispatcher()
+        for target in ["file:///etc/passwd", "javascript:alert(1)", "ftp://example.com", "https://", "", "not a url", "https://a b.com"] {
+            XCTAssertEqual(
+                failureCode(d.dispatch(payload: payload(.openURL, .init(target: target)))),
+                .invalidRequest,
+                "“\(target)” must be rejected"
+            )
+        }
+        XCTAssertTrue(openedURLs.isEmpty)
+    }
+
+    func testOpenURLHandsTheValidatedURLToTheOpener() {
+        XCTAssertTrue(isSuccess(dispatcher().dispatch(payload: payload(.openURL, .init(target: "https://example.com/a?b=1")))))
+        XCTAssertEqual(openedURLs, ["https://example.com/a?b=1"])
+    }
+
+    func testOpenerFailuresAreReportedAsOpenFailed() throws {
+        let folder = root.appendingPathComponent("Existing", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let error = NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "refused"])
+
+        XCTAssertEqual(
+            failureCode(dispatcher(openFolderError: error).dispatch(payload: payload(.openFolder, .init(directory: folder.path)))),
+            .openFailed
+        )
+        XCTAssertEqual(
+            failureCode(dispatcher(openURLError: error).dispatch(payload: payload(.openURL, .init(target: "https://example.com")))),
+            .openFailed
+        )
+        XCTAssertEqual(
+            failureCode(dispatcher(openApplicationError: error).dispatch(payload: payload(.openApplication, .init(target: "com.apple.TextEdit")))),
+            .openFailed
+        )
+    }
+
+    // MARK: - P9: compression and extraction
+
+    private func compressPayload(sources: [URL], destination: URL, format: String? = "zip", name: String? = nil) -> String {
+        payload(.compressItems, FileOperationContract.OperationArgs(
+            name: name,
+            sourcePaths: sources.map(\.path),
+            destinationDirectory: destination.path,
+            archiveFormat: format
+        ))
+    }
+
+    private func extractPayload(archives: [URL], destination: URL? = nil) -> String {
+        payload(.extractArchive, FileOperationContract.OperationArgs(
+            sourcePaths: archives.map(\.path),
+            destinationDirectory: destination?.path
+        ))
+    }
+
+    func testCompressItemsCreatesAnArchiveNextToTheSelection() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let first = authorized.appendingPathComponent("a.txt")
+        let second = authorized.appendingPathComponent("b.txt")
+        try Data("A".utf8).write(to: first)
+        try Data("B".utf8).write(to: second)
+
+        let response = dispatcher().dispatch(payload: compressPayload(sources: [first, second], destination: authorized))
+        let path = try XCTUnwrap(successPath(response))
+
+        let reader = try ZipReader(fileURL: URL(fileURLWithPath: path))
+        XCTAssertEqual(reader.entries.map(\.name), ["a.txt", "b.txt"])
+        XCTAssertEqual(started, stopped, "scoped access must be balanced")
+    }
+
+    func testCompressItemsHonoursAnExplicitName() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let file = authorized.appendingPathComponent("a.txt")
+        try Data("A".utf8).write(to: file)
+
+        let response = dispatcher().dispatch(payload: compressPayload(
+            sources: [file], destination: authorized, name: "Bundle.zip"
+        ))
+        XCTAssertEqual(successPath(response), authorized.appendingPathComponent("Bundle.zip").path)
+    }
+
+    func testCompressItemsRejectsFormatsItCannotWrite() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let file = authorized.appendingPathComponent("a.txt")
+        try Data("A".utf8).write(to: file)
+
+        for format in ["7z", "xz", "rar", "nonsense"] {
+            XCTAssertEqual(
+                failureCode(dispatcher().dispatch(payload: compressPayload(
+                    sources: [file], destination: authorized, format: format
+                ))),
+                .archiveUnsupported,
+                "\(format) must be refused explicitly"
+            )
+        }
+    }
+
+    /// Stage 2: every writable format really produces its file.
+    func testCompressItemsWritesEveryWritableFormat() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let file = authorized.appendingPathComponent("a.txt")
+        try Data("A".utf8).write(to: file)
+
+        let expected = ["zip": "a.txt.zip", "tar": "a.txt.tar", "gzip": "a.txt.tar.gz", "bzip2": "a.txt.tar.bz2"]
+        for (format, name) in expected {
+            let response = dispatcher().dispatch(payload: compressPayload(
+                sources: [file], destination: authorized, format: format, name: name
+            ))
+            XCTAssertEqual(successPath(response), authorized.appendingPathComponent(name).path, "\(format)")
+            XCTAssertTrue(FileManager.default.fileExists(atPath: authorized.appendingPathComponent(name).path))
+        }
+    }
+
+    /// P9 stage 3: the dialog's 标签 and 压缩模式 travel over the wire.
+    func testCompressItemsCarriesTheLabelAndMode() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let file = authorized.appendingPathComponent("a.txt")
+        try Data(String(repeating: "x", count: 100_000).utf8).write(to: file)
+
+        let payload = self.payload(.compressItems, FileOperationContract.OperationArgs(
+            name: "labelled.zip",
+            sourcePaths: [file.path],
+            destinationDirectory: authorized.path,
+            archiveFormat: "zip",
+            archiveLabel: "发布包",
+            archiveMode: "maximum"
+        ))
+        let path = try XCTUnwrap(successPath(dispatcher().dispatch(payload: payload)))
+        XCTAssertEqual(try ZipReader(fileURL: URL(fileURLWithPath: path)).comment, "发布包")
+    }
+
+    func testCompressItemsOutsideAuthorizationIsRejected() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        let other = root.appendingPathComponent("Other", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let file = other.appendingPathComponent("a.txt")
+        try Data("A".utf8).write(to: file)
+
+        XCTAssertEqual(
+            failureCode(dispatcher().dispatch(payload: compressPayload(sources: [file], destination: other))),
+            .pathOutsideAuthorizedScope
+        )
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: other.path).isEmpty == false)
+    }
+
+    func testCompressItemsFollowsTheConfiguredConflictPolicy() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let file = authorized.appendingPathComponent("a.txt")
+        try Data("A".utf8).write(to: file)
+
+        let keepBoth = dispatcher(archiveSettings: ArchiveSettings(conflictPolicy: .keepBoth))
+        XCTAssertEqual(
+            successPath(keepBoth.dispatch(payload: compressPayload(sources: [file], destination: authorized, name: "x.zip"))),
+            authorized.appendingPathComponent("x.zip").path
+        )
+        XCTAssertEqual(
+            successPath(keepBoth.dispatch(payload: compressPayload(sources: [file], destination: authorized, name: "x.zip"))),
+            authorized.appendingPathComponent("x 2.zip").path
+        )
+        XCTAssertEqual(
+            failureCode(dispatcher(archiveSettings: ArchiveSettings(conflictPolicy: .skip))
+                .dispatch(payload: compressPayload(sources: [file], destination: authorized, name: "x.zip"))),
+            .nameCollision
+        )
+    }
+
+    func testExtractArchiveExtractsIntoTheArchivesOwnFolderByDefault() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let archive = authorized.appendingPathComponent("sample.zip")
+        try RawZipBuilder.archive([("folder/a.txt", "hello")]).write(to: archive)
+
+        let response = dispatcher().dispatch(payload: extractPayload(archives: [archive]))
+        guard case .batchSuccess(let items) = response else {
+            return XCTFail("expected a batch response, got \(response)")
+        }
+        XCTAssertEqual(items.count, 1)
+        XCTAssertTrue(items[0].success)
+        XCTAssertEqual(items[0].destinationPath, authorized.path)
+        XCTAssertEqual(
+            try String(contentsOf: authorized.appendingPathComponent("folder/a.txt"), encoding: .utf8),
+            "hello"
+        )
+    }
+
+    func testExtractArchiveToAnExplicitDestination() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        let output = authorized.appendingPathComponent("out", isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let archive = authorized.appendingPathComponent("sample.zip")
+        try RawZipBuilder.archive([("a.txt", "hello")]).write(to: archive)
+
+        let response = dispatcher().dispatch(payload: extractPayload(archives: [archive], destination: output))
+        guard case .batchSuccess(let items) = response else { return XCTFail("expected a batch response") }
+        XCTAssertTrue(items[0].success)
+        XCTAssertEqual(try String(contentsOf: output.appendingPathComponent("a.txt"), encoding: .utf8), "hello")
+    }
+
+    /// The end-to-end security path: a `../` entry must be reported, and nothing
+    /// may appear outside the destination.
+    func testExtractArchiveReportsZipSlipEntries() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let archive = authorized.appendingPathComponent("evil.zip")
+        try RawZipBuilder.archive([("good.txt", "safe"), ("../escaped.txt", "pwned")]).write(to: archive)
+
+        let response = dispatcher().dispatch(payload: extractPayload(archives: [archive]))
+        guard case .batchSuccess(let items) = response else { return XCTFail("expected a batch response") }
+        // The archive extracted, but one entry was refused: reported as a skip,
+        // never as a silent success of the traversal.
+        XCTAssertTrue(items[0].success)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("escaped.txt").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: authorized.appendingPathComponent("good.txt").path))
+    }
+
+    /// P9 stage 4: 「解压到指定位置…」 — the destination comes from the picker,
+    /// and cancelling must not extract anywhere.
+    func testExtractArchiveUsesTheChosenDestination() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        let chosen = authorized.appendingPathComponent("Chosen", isDirectory: true)
+        try FileManager.default.createDirectory(at: chosen, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let archive = authorized.appendingPathComponent("sample.zip")
+        try RawZipBuilder.archive([("a.txt", "hello")]).write(to: archive)
+
+        let response = dispatcher(folderChooser: { chosen }).dispatch(payload: payload(
+            .extractArchive,
+            FileOperationContract.OperationArgs(sourcePaths: [archive.path], customize: true)
+        ))
+        guard case .batchSuccess(let items) = response else { return XCTFail("expected a batch response") }
+        XCTAssertTrue(items[0].success)
+        XCTAssertEqual(items[0].destinationPath, chosen.path)
+        XCTAssertEqual(try String(contentsOf: chosen.appendingPathComponent("a.txt"), encoding: .utf8), "hello")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: authorized.appendingPathComponent("a.txt").path))
+    }
+
+    func testExtractArchiveCancelledPickerExtractsNowhere() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let archive = authorized.appendingPathComponent("sample.zip")
+        try RawZipBuilder.archive([("a.txt", "hello")]).write(to: archive)
+
+        let response = dispatcher(folderChooser: { nil }).dispatch(payload: payload(
+            .extractArchive,
+            FileOperationContract.OperationArgs(sourcePaths: [archive.path], customize: true)
+        ))
+        XCTAssertNotNil(failureCode(response))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: authorized.appendingPathComponent("a.txt").path))
+    }
+
+    func testExtractArchiveRejectsANonArchive() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let fake = authorized.appendingPathComponent("fake.zip")
+        try Data("not a zip".utf8).write(to: fake)
+
+        let response = dispatcher().dispatch(payload: extractPayload(archives: [fake]))
+        guard case .batchSuccess(let items) = response else { return XCTFail("expected a batch response") }
+        XCTAssertFalse(items[0].success)
+        XCTAssertEqual(items[0].errorCode, .archiveUnsupported)
+    }
+
+    func testExtractArchiveRefusesToRunAboveTheSizeLimit() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let archive = authorized.appendingPathComponent("big.zip")
+        try RawZipBuilder.archive([("big.txt", String(repeating: "x", count: 2_000_000))]).write(to: archive)
+
+        let response = dispatcher(archiveSettings: ArchiveSettings(sizeLimitMB: 1))
+            .dispatch(payload: extractPayload(archives: [archive]))
+        guard case .batchSuccess(let items) = response else { return XCTFail("expected a batch response") }
+        XCTAssertFalse(items[0].success)
+        XCTAssertEqual(items[0].errorCode, .archiveTooLarge)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: authorized.appendingPathComponent("big.txt").path))
+    }
+
+    func testExtractArchiveOutsideAuthorizationIsRejected() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        let other = root.appendingPathComponent("Other", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let archive = other.appendingPathComponent("sample.zip")
+        try RawZipBuilder.archive([("a.txt", "hello")]).write(to: archive)
+
+        XCTAssertEqual(
+            failureCode(dispatcher().dispatch(payload: extractPayload(archives: [archive]))),
+            .pathOutsideAuthorizedScope
         )
     }
 

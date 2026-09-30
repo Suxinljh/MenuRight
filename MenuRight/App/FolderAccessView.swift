@@ -2,15 +2,20 @@ import SwiftUI
 import AppKit
 import os
 
-/// Folder Access settings section (Phase A2.5).
+/// Folder Access content (Phase A2.5, now hosted by the Folder Permissions
+/// pane).
 ///
 /// Authorized folders are turned into app-scope security-scoped bookmarks
 /// created from the NSOpenPanel user selection, then persisted in the shared
 /// App Group store so the Finder Sync extension can resolve them.
+///
+/// The view renders plain rows (not a `List`) because the settings pane already
+/// scrolls; nesting scroll views would fight the pane's own scrolling.
 struct FolderAccessView: View {
     /// Low-frequency diagnostics for the authorization entry point.
     private static let diag = Logger(subsystem: "xin.ljhsu.MenuRight", category: "main-app")
 
+    @EnvironmentObject private var settings: SettingsStore
     @State private var folders: [AuthorizedFolder] = []
     @State private var store: FolderAuthorizationStore? = FolderAuthorizationStore.appGroupDefault()
     /// Cached authorization status per folder id.
@@ -22,43 +27,85 @@ struct FolderAccessView: View {
     @State private var statuses: [UUID: AuthorizationStatus] = [:]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Folder Access")
-                .font(.headline)
-            Text("Authorize folders where Menu Right can create, move, and modify files.")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 0) {
             if store == nil {
-                Text("Authorized-folder storage is unavailable (App Group not configured).")
-                    .foregroundColor(.orange)
-            }
-            List {
+                Text(settings.text(.folderPermissionStorageUnavailable))
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if folders.isEmpty {
+                SettingsEmptyHint(text: settings.text(.folderPermissionEmpty))
+            } else {
                 ForEach(folders) { folder in
-                    HStack(spacing: 10) {
-                        Image(systemName: "folder")
-                            .foregroundColor(.blue)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(folder.displayName)
-                            Text(folder.originalPath)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        statusBadge(for: folder)
-                        Button("Remove") {
-                            remove(folder)
-                        }
+                    row(for: folder)
+                    if folder.id != folders.last?.id {
+                        SettingsRowDivider()
                     }
                 }
             }
-            .frame(minHeight: 150)
-            Button("Add Folder…") {
-                addFolder()
+
+            SettingsRowDivider()
+
+            HStack {
+                Button(settings.text(.folderPermissionAdd)) {
+                    addFolder()
+                }
+                .disabled(store == nil)
+                Spacer()
             }
         }
         .onAppear { reload() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             reload()
+        }
+    }
+
+    // MARK: - Rows
+
+    @ViewBuilder
+    private func row(for folder: AuthorizedFolder) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: "folder")
+                .foregroundStyle(.blue)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(folder.displayName)
+                Text(folder.originalPath)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
+            Spacer(minLength: 12)
+            statusBadge(for: folder)
+            Button {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: folder.originalPath)])
+            } label: {
+                Image(systemName: "arrow.forward.circle")
+            }
+            .buttonStyle(.borderless)
+            .help(settings.text(.commonRevealInFinder))
+            Button {
+                remove(folder)
+            } label: {
+                Image(systemName: "minus.circle")
+            }
+            .buttonStyle(.borderless)
+            .help(settings.text(.commonRemove))
+        }
+    }
+
+    @ViewBuilder
+    private func statusBadge(for folder: AuthorizedFolder) -> some View {
+        // Read-only: the badge renders the value computed by `reload()`.
+        switch statuses[folder.id] ?? .needsReauthorization {
+        case .authorized:
+            SettingsBadge(text: settings.text(.folderPermissionStatusAuthorized), color: .green)
+        case .needsReauthorization:
+            SettingsBadge(text: settings.text(.folderPermissionStatusNeedsReauth), color: .orange)
+        case .unavailable:
+            SettingsBadge(text: settings.text(.folderPermissionStatusUnavailable), color: .red)
         }
     }
 
@@ -69,50 +116,46 @@ struct FolderAccessView: View {
             Self.diag.log("APP addFolder: store is nil, aborting")
             return
         }
-        Self.diag.log("APP addFolder: store ok, presenting NSOpenPanel")
-
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = false
-        panel.prompt = "Authorize"
-        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser
-        // Ensure the modal panel actually comes to front.
-        panel.level = .modalPanel
-        NSApp.activate(ignoringOtherApps: true)
-
-        let response = panel.runModal()
-        Self.diag.log("APP addFolder: runModal returned \(response.rawValue, privacy: .public)")
-        guard response == .OK, let url = panel.url else {
-            Self.diag.log("APP addFolder: no selection (cancelled or empty), url=\(String(describing: panel.url?.path), privacy: .public)")
-            return
-        }
-        Self.diag.log("APP addFolder: selected \(url.path, privacy: .public), creating bookmark")
-
-        do {
-            let bookmarkData = try SecurityScopedBookmark.create(for: url)
-            let displayName = displayName(for: url)
-            let folder = AuthorizedFolder(
-                displayName: displayName,
-                originalPath: url.path,
-                bookmarkData: bookmarkData
-            )
-            try store.add(folder)
+        // Same code path as the first-run guide, so both create identical
+        // authorizations.
+        let outcome = FolderAuthorizationAction.present(
+            store: store,
+            prompt: settings.text(.folderPermissionAdd),
+            log: { Self.diag.log("\($0, privacy: .public)") }
+        )
+        switch outcome {
+        case .cancelled:
+            break
+        case .added(let folder):
+            Self.diag.log("APP addFolder: stored \(folder.originalPath, privacy: .public)")
             reload()
-        } catch {
-            let message = (error as NSError).localizedDescription
-            presentAlert(title: "Couldn’t authorize folder", message: message)
+        case .failed(let message):
+            SettingsAlert.present(
+                title: settings.text(.errorAlertTitle),
+                message: message,
+                buttonTitle: settings.text(.commonConfirm)
+            )
         }
     }
 
     private func remove(_ folder: AuthorizedFolder) {
         guard let store else { return }
+        let confirmed = SettingsAlert.confirm(
+            title: settings.text(.folderPermissionRemoveTitle),
+            message: settings.text(.folderPermissionRemoveMessage),
+            confirmTitle: settings.text(.commonRemove),
+            cancelTitle: settings.text(.commonCancel)
+        )
+        guard confirmed else { return }
         do {
             try store.remove(id: folder.id)
             reload()
         } catch {
-            presentAlert(title: "Couldn’t remove folder", message: (error as NSError).localizedDescription)
+            SettingsAlert.present(
+                title: settings.text(.errorAlertTitle),
+                message: (error as NSError).localizedDescription,
+                buttonTitle: settings.text(.commonConfirm)
+            )
         }
     }
 
@@ -129,33 +172,4 @@ struct FolderAccessView: View {
         statuses = resolved
     }
 
-    private func displayName(for url: URL) -> String {
-        let homePath = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
-        if url.standardizedFileURL.path == homePath {
-            return "Home"
-        }
-        return url.lastPathComponent
-    }
-
-    @ViewBuilder
-    private func statusBadge(for folder: AuthorizedFolder) -> some View {
-        // Read-only: the badge renders the value computed by `reload()`.
-        switch statuses[folder.id] ?? .needsReauthorization {
-        case .authorized:
-            Text("Authorized").foregroundColor(.green)
-        case .needsReauthorization:
-            Text("Needs Reauthorization").foregroundColor(.orange)
-        case .unavailable:
-            Text("Unavailable").foregroundColor(.red)
-        }
-    }
-
-    private func presentAlert(title: String, message: String) {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = title
-        alert.informativeText = message
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
 }

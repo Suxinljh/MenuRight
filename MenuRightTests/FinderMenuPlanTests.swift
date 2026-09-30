@@ -9,19 +9,21 @@ final class FinderMenuPlanTests: XCTestCase {
         }
     }
 
-    func testItemSelectionHasCopyTrioSeparatorAndCut() {
+    func testItemSelectionHasCopyTrioAndCut() {
         let items = [URL(fileURLWithPath: "/Users/foo/example.png")]
         let selection = FinderSelectionContext(itemURLs: items, targetedURL: nil)
         let plan = FinderMenuBuilder.plan(for: selection, hasCutPayload: false)
 
-        // 3 per-item actions + separator + 3 copies + separator + cut = 9
-        XCTAssertEqual(plan.count, 9)
-        XCTAssertEqual(plan[3], .separator)
-        XCTAssertEqual(plan[4], .action(.copyName(payload: "example.png")))
-        XCTAssertEqual(plan[5], .action(.copyPath(payload: "/Users/foo/example.png")))
-        XCTAssertEqual(plan[6], .action(.copyFileURL(payload: "file:///Users/foo/example.png")))
-        XCTAssertEqual(plan[7], .separator)
-        XCTAssertEqual(plan[8], .action(.cut(items: items)))
+        // 3 per-item actions + 3 copies + cut = 7, with no separator items:
+        // Finder reserves a separator's slot but draws no rule in an extension menu.
+        XCTAssertEqual(plan.count, 7)
+        XCTAssertEqual(plan[0], .action(.createAlias(items: items)))
+        XCTAssertEqual(plan[1], .action(.setLocked(items: items, locked: true)))
+        XCTAssertEqual(plan[2], .action(.setLocked(items: items, locked: false)))
+        XCTAssertEqual(plan[3], .action(.copyName(payload: "example.png")))
+        XCTAssertEqual(plan[4], .action(.copyPath(payload: "/Users/foo/example.png")))
+        XCTAssertEqual(plan[5], .action(.copyFileURL(payload: "file:///Users/foo/example.png")))
+        XCTAssertEqual(plan[6], .action(.cut(items: items)))
     }
 
     func testCutCarriesAllSelectedItems() {
@@ -40,14 +42,18 @@ final class FinderMenuPlanTests: XCTestCase {
         let selection = FinderSelectionContext(itemURLs: [], targetedURL: container)
         let plan = FinderMenuBuilder.plan(for: selection, hasCutPayload: true)
 
-        guard case .submenu(let title, let submenuActions) = plan[4] else {
-            return XCTFail("expected New File submenu at index 4")
+        // No separators in the plan: Finder gives a separator its slot but draws
+        // no rule, leaving a blank row. 6 items: terminal, 2 copies, New File ▸,
+        // new folder, paste.
+        XCTAssertEqual(plan.count, 6)
+        guard case .submenu(let titleKey, let submenuActions) = plan[3] else {
+            return XCTFail("expected New File submenu at index 3")
         }
-        XCTAssertEqual(title, "New File")
+        XCTAssertEqual(titleKey, .categoryNewFile)
         XCTAssertEqual(submenuActions.count, NewFileKind.allCases.count)
         XCTAssertEqual(submenuActions.first, .newFile(kind: .text, directory: container))
         XCTAssertEqual(plan[0], .action(.openTerminal(directory: container)))
-        XCTAssertEqual(plan[7], .action(.pasteHere(destination: container, enabled: true)))
+        XCTAssertEqual(plan[5], .action(.pasteHere(destination: container, enabled: true)))
     }
 
     func testEmptySelectionWithoutTargetProducesNoPlan() {
@@ -58,12 +64,16 @@ final class FinderMenuPlanTests: XCTestCase {
     // MARK: - New file kinds
 
     func testNewFileKindMetadata() {
-        XCTAssertEqual(NewFileKind.text.title, "Text File")
-        XCTAssertEqual(NewFileKind.markdown.title, "Markdown File")
-        XCTAssertEqual(NewFileKind.html.title, "HTML File")
-        XCTAssertEqual(NewFileKind.css.title, "CSS File")
-        XCTAssertEqual(NewFileKind.javascript.title, "JavaScript File")
-        XCTAssertEqual(NewFileKind.json.title, "JSON File")
+        // Titles come from the shared catalog, so the submenu follows the
+        // language selected in 通用设置.
+        XCTAssertEqual(NewFileKind.text.title(in: .english), "Text File")
+        XCTAssertEqual(NewFileKind.markdown.title(in: .english), "Markdown File")
+        XCTAssertEqual(NewFileKind.html.title(in: .english), "HTML File")
+        XCTAssertEqual(NewFileKind.css.title(in: .english), "CSS File")
+        XCTAssertEqual(NewFileKind.javascript.title(in: .english), "JavaScript File")
+        XCTAssertEqual(NewFileKind.json.title(in: .english), "JSON File")
+        XCTAssertEqual(NewFileKind.text.title(in: .simplifiedChinese), "文本文件")
+        XCTAssertEqual(NewFileKind.json.title(in: .simplifiedChinese), "JSON 文件")
 
         XCTAssertEqual(NewFileKind.text.defaultName, "Untitled.txt")
         XCTAssertEqual(NewFileKind.markdown.defaultName, "Untitled.md")
@@ -71,10 +81,145 @@ final class FinderMenuPlanTests: XCTestCase {
         XCTAssertEqual(NewFileKind.css.defaultName, "Untitled.css")
         XCTAssertEqual(NewFileKind.javascript.defaultName, "Untitled.js")
         XCTAssertEqual(NewFileKind.json.defaultName, "Untitled.json")
+        // P6-b document kinds.
+        XCTAssertEqual(NewFileKind.docx.defaultName, "Untitled.docx")
+        XCTAssertEqual(NewFileKind.xlsx.defaultName, "Untitled.xlsx")
+        XCTAssertEqual(NewFileKind.pptx.defaultName, "Untitled.pptx")
+        XCTAssertEqual(NewFileKind.pages.defaultName, "Untitled.pages")
+        XCTAssertEqual(NewFileKind.numbers.defaultName, "Untitled.numbers")
+        XCTAssertEqual(NewFileKind.keynote.defaultName, "Untitled.key")
+        XCTAssertEqual(NewFileKind.keynote.title(in: .simplifiedChinese), "Keynote 演示")
+        XCTAssertEqual(NewFileKind.docx.title(in: .english), "Word Document")
 
         XCTAssertNil(NewFileKind.text.contents)
         XCTAssertNil(NewFileKind.markdown.contents)
         XCTAssertEqual(NewFileKind.json.contents, Data("{}".utf8))
+        // Document kinds carry no bytes: the main app generates or copies them.
+        for kind in [NewFileKind.docx, .xlsx, .pptx, .pages, .numbers, .keynote] {
+            XCTAssertNil(kind.contents, "\(kind.rawValue) must be produced by the main app")
+        }
+    }
+
+    // MARK: - P6-b availability
+
+    func testTheSubmenuOffersOnlyKindsTheMainAppCanCreate() {
+        let container = URL(fileURLWithPath: "/Users/foo/Projects", isDirectory: true)
+        let selection = FinderSelectionContext(itemURLs: [], targetedURL: container)
+
+        // Only Keynote has a template in this build.
+        let availability = NewFileAvailability(creatableTypes: ["text", "markdown", "html", "css", "javascript",
+                                                               "json", "docx", "xlsx", "pptx", "keynote"])
+        let kinds = NewFileKind.available(from: availability)
+        XCTAssertEqual(kinds, [.text, .markdown, .html, .css, .javascript, .json, .docx, .xlsx, .pptx, .keynote])
+
+        let plan = FinderMenuBuilder.plan(for: selection, hasCutPayload: false, newFileKinds: kinds)
+        guard case .submenu(_, let actions) = plan[3] else {
+            return XCTFail("expected the New File submenu")
+        }
+        XCTAssertFalse(actions.contains(.newFile(kind: .pages, directory: container)))
+        XCTAssertTrue(actions.contains(.newFile(kind: .keynote, directory: container)))
+    }
+
+    /// No payload yet (fresh install, or the app has not run since an update)
+    /// must not produce a submenu whose items are guaranteed to fail.
+    func testWithoutAPublishedPayloadOnlyTextKindsAreOffered() {
+        XCTAssertEqual(NewFileKind.available(from: nil), NewFileKind.textKinds)
+
+        let allText = Set(NewFileKind.textKinds)
+        for kind in NewFileKind.available(from: nil) {
+            XCTAssertTrue(allText.contains(kind), "\(kind.rawValue) should not be offered before the app publishes")
+        }
+    }
+
+    /// Text kinds need nothing from the main app beyond a name, so they must
+    /// survive even a payload that only lists document kinds.
+    func testTextKindsStayAvailableEvenWithAnIncompletePayload() {
+        let kinds = NewFileKind.available(from: NewFileAvailability(creatableTypes: ["docx"]))
+        XCTAssertEqual(kinds, NewFileKind.textKinds + [.docx])
+    }
+
+    func testKindCategoriesMatchTheWireContract() {
+        XCTAssertEqual(NewFileKind.text.category, .text)
+        XCTAssertEqual(NewFileKind.docx.category, .office)
+        XCTAssertEqual(NewFileKind.keynote.category, .iWork)
+    }
+
+    // MARK: - P7-b favorites
+
+    private func submenus(_ plan: [FinderMenuPlanItem]) -> [(StringKey, [FinderMenuAction])] {
+        plan.compactMap { item in
+            if case .submenu(let key, let actions) = item { return (key, actions) }
+            return nil
+        }
+    }
+
+    func testFavoriteSubmenusFollowTheSpecOrderAndSkipEmptyLists() {
+        let container = URL(fileURLWithPath: "/Users/foo/Projects", isDirectory: true)
+        let selection = FinderSelectionContext(itemURLs: [], targetedURL: container)
+        let favorites = [
+            FinderFavoriteEntry(kind: .folder, menuTitle: "项目", target: "/Users/foo/Projects"),
+            FinderFavoriteEntry(kind: .website, menuTitle: "GitHub", target: "https://github.com"),
+            FinderFavoriteEntry(kind: .application, menuTitle: "Safari", target: "/Applications/Safari.app"),
+        ]
+        let plan = FinderMenuBuilder.plan(for: selection, hasCutPayload: true, favorites: favorites)
+        let menus = submenus(plan)
+
+        // New File first, then apps ▸ websites ▸ folders — the product spec order.
+        XCTAssertEqual(menus.map(\.0), [
+            .categoryNewFile,
+            .categoryFavoriteApps,
+            .categoryFavoriteWebsites,
+            .categoryFavoriteFolders,
+        ])
+        XCTAssertEqual(menus[1].1, [.openFavorite(entry: favorites[2])])
+        XCTAssertEqual(menus[2].1, [.openFavorite(entry: favorites[1])])
+        XCTAssertEqual(menus[3].1, [.openFavorite(entry: favorites[0])])
+        XCTAssertEqual(plan.count, 6 + 3, "the three favorites submenus come after Paste Here")
+    }
+
+    func testOnlyNonEmptyFavoriteListsGetASubmenu() {
+        let container = URL(fileURLWithPath: "/Users/foo/Projects", isDirectory: true)
+        let selection = FinderSelectionContext(itemURLs: [], targetedURL: container)
+        let favorites = [FinderFavoriteEntry(kind: .website, menuTitle: "GitHub", target: "https://github.com")]
+        let plan = FinderMenuBuilder.plan(for: selection, hasCutPayload: false, favorites: favorites)
+
+        XCTAssertEqual(submenus(plan).map(\.0), [.categoryNewFile, .categoryFavoriteWebsites])
+    }
+
+    /// An empty submenu is a dead end; the spec asks for it to be hidden.
+    func testNoFavoritesMeansNoFavoriteSubmenus() {
+        let container = URL(fileURLWithPath: "/Users/foo/Projects", isDirectory: true)
+        let selection = FinderSelectionContext(itemURLs: [], targetedURL: container)
+        let plan = FinderMenuBuilder.plan(for: selection, hasCutPayload: false, favorites: [])
+
+        XCTAssertEqual(submenus(plan).map(\.0), [.categoryNewFile])
+        XCTAssertFalse(actions(plan).contains { action in
+            if case .openFavorite = action { return true }
+            return false
+        })
+    }
+
+    /// The item-selection menu stays flat: favorites live in the background menu.
+    func testSelectedItemsNeverOfferFavorites() {
+        let items = [URL(fileURLWithPath: "/Users/foo/a.txt")]
+        let selection = FinderSelectionContext(itemURLs: items, targetedURL: nil)
+        let favorites = [FinderFavoriteEntry(kind: .folder, menuTitle: "项目", target: "/Users/foo/Projects")]
+        let plan = FinderMenuBuilder.plan(for: selection, hasCutPayload: false, favorites: favorites)
+
+        XCTAssertTrue(submenus(plan).isEmpty)
+        XCTAssertFalse(actions(plan).contains { action in
+            if case .openFavorite = action { return true }
+            return false
+        })
+    }
+
+    /// The title is the only key Finder replays, so the plan must render exactly
+    /// the entries' (already unique) titles.
+    func testFavoriteTitlesComeFromTheEntryItself() {
+        let entry = FinderFavoriteEntry(kind: .website, menuTitle: "GitHub — github.com", target: "https://github.com")
+        for language in [AppLanguage.simplifiedChinese, .english] {
+            XCTAssertEqual(FinderMenuTitles.title(for: .openFavorite(entry: entry), language: language), entry.menuTitle)
+        }
     }
 
     func testCodeFormatsGetUsableSkeletonsNotEmptyFiles() throws {
@@ -92,8 +237,11 @@ final class FinderMenuPlanTests: XCTestCase {
 
     func testNewFileKindsAreUniquelyNamedAndTitled() {
         let names = NewFileKind.allCases.map(\.defaultName)
-        let titles = NewFileKind.allCases.map(\.title)
+        let titles = NewFileKind.allCases.map { $0.title(in: .english) }
+        let chineseTitles = NewFileKind.allCases.map { $0.title(in: .simplifiedChinese) }
         XCTAssertEqual(Set(names).count, names.count, "default names must be unique: \(names)")
         XCTAssertEqual(Set(titles).count, titles.count, "titles must be unique: \(titles)")
+        // Title-based replay means duplicates would make a click ambiguous.
+        XCTAssertEqual(Set(chineseTitles).count, chineseTitles.count, "中文标题必须唯一: \(chineseTitles)")
     }
 }

@@ -85,6 +85,89 @@
 		AB0000000000000000TST8 /* UnixSocketTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC8 /* UnixSocketTransport.swift */; };
 		AB0000000000000000TST9 /* PeerIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPC9 /* PeerIdentity.swift */; };
 		AB0000000000000000TSTA /* IPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000IPCA /* IPCProtocol.swift */; };
+		ABSETAPP001 /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR001 /* AppLanguage.swift */; };
+		ABSETAPP002 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR002 /* Localization.swift */; };
+		ABSETAPP003 /* MenuRightSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR003 /* MenuRightSettings.swift */; };
+		ABSETAPP004 /* NewFileType.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR004 /* NewFileType.swift */; };
+		ABSETAPP005 /* FavoriteEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR005 /* FavoriteEntry.swift */; };
+		ABSETAPP006 /* CodeTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR006 /* CodeTheme.swift */; };
+		ABSETAPP007 /* ArchiveSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR007 /* ArchiveSettings.swift */; };
+		ABSETAPP008 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR008 /* SettingsStore.swift */; };
+		ABSETAPP011 /* SettingsCategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR011 /* SettingsCategory.swift */; };
+		ABSETAPP012 /* SettingsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR012 /* SettingsComponents.swift */; };
+		ABSETAPP013 /* SettingsRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR013 /* SettingsRootView.swift */; };
+		ABSETAPP014 /* LaunchAtLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR014 /* LaunchAtLogin.swift */; };
+		ABSETAPP021 /* GeneralSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR021 /* GeneralSettingsView.swift */; };
+		ABSETAPP022 /* FilePermissionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR022 /* FilePermissionSettingsView.swift */; };
+		ABSETAPP023 /* FolderPermissionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR023 /* FolderPermissionSettingsView.swift */; };
+		ABSETAPP024 /* NewFileSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR024 /* NewFileSettingsView.swift */; };
+		ABSETAPP025 /* FavoriteSettingsViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR025 /* FavoriteSettingsViews.swift */; };
+		ABSETAPP026 /* CodeThemeSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR026 /* CodeThemeSettingsView.swift */; };
+		ABSETAPP027 /* ArchiveSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR027 /* ArchiveSettingsView.swift */; };
+		ABSETTST001 /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR001 /* AppLanguage.swift */; };
+		ABSETTST002 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR002 /* Localization.swift */; };
+		ABSETTST003 /* MenuRightSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR003 /* MenuRightSettings.swift */; };
+		ABSETTST004 /* NewFileType.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR004 /* NewFileType.swift */; };
+		ABSETTST005 /* FavoriteEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR005 /* FavoriteEntry.swift */; };
+		ABSETTST006 /* CodeTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR006 /* CodeTheme.swift */; };
+		ABSETTST007 /* ArchiveSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR007 /* ArchiveSettings.swift */; };
+		ABSETTST008 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR008 /* SettingsStore.swift */; };
+		ABSETTST031 /* SettingsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR031 /* SettingsStoreTests.swift */; };
+		ABSETTST032 /* MenuRightSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR032 /* MenuRightSettingsTests.swift */; };
+		ABSETTST033 /* LocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR033 /* LocalizationTests.swift */; };
+		ABRES001 /* SidebarIcons.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AARES001 /* SidebarIcons.xcassets */; };
+		ABRES002 /* Third-Party-Notices in Resources */ = {isa = PBXBuildFile; fileRef = AARES002 /* Third-Party-Notices */; };
+		ABSETTST101 /* SettingsCategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR011 /* SettingsCategory.swift */; };
+		ABSETTST102 /* SettingsCategoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR101 /* SettingsCategoryTests.swift */; };
+		ABICON01 /* MenuRight.icon in Resources */ = {isa = PBXBuildFile; fileRef = 185BBB7B30445FAE009F934F /* MenuRight.icon */; };
+		ABRES003 /* BrandAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AARES003 /* BrandAssets.xcassets */; };
+		ABRES004 /* SettingsIcons.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AARES004 /* SettingsIcons.xcassets */; };
+		ABFEXT01 /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR001 /* AppLanguage.swift */; };
+		ABFEXT02 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR002 /* Localization.swift */; };
+		ABFEXT03 /* FinderMenuLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFREF01 /* FinderMenuLanguage.swift */; };
+		ABFTST01 /* FinderMenuLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFREF01 /* FinderMenuLanguage.swift */; };
+		ABFTST02 /* FinderMenuLocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFREF02 /* FinderMenuLocalizationTests.swift */; };
+		ABONB01 /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAONB01 /* OnboardingFlow.swift */; };
+		ABONB02 /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAONB01 /* OnboardingFlow.swift */; };
+		ABONB03 /* OnboardingFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAONB02 /* OnboardingFlowTests.swift */; };
+		ABONB04 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAONB03 /* OnboardingView.swift */; };
+		ABONB05 /* FolderAuthorizationAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAONB04 /* FolderAuthorizationAction.swift */; };
+		ABP6B01 /* ZipWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B01 /* ZipWriter.swift */; };
+		ABP6B02 /* OOXMLDocumentFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B02 /* OOXMLDocumentFactory.swift */; };
+		ABP6B03 /* DocumentTemplateCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B03 /* DocumentTemplateCatalog.swift */; };
+		ABP6B04 /* NewFileAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B04 /* NewFileAvailability.swift */; };
+		ABP6B05 /* ZipWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B01 /* ZipWriter.swift */; };
+		ABP6B06 /* OOXMLDocumentFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B02 /* OOXMLDocumentFactory.swift */; };
+		ABP6B07 /* DocumentTemplateCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B03 /* DocumentTemplateCatalog.swift */; };
+		ABP6B08 /* NewFileAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B04 /* NewFileAvailability.swift */; };
+		ABP6B09 /* NewFileAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B04 /* NewFileAvailability.swift */; };
+		ABP6B10 /* ZipWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B05 /* ZipWriterTests.swift */; };
+		ABP6B11 /* OOXMLDocumentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B06 /* OOXMLDocumentTests.swift */; };
+		ABP6B12 /* DocumentTemplateCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B07 /* DocumentTemplateCatalogTests.swift */; };
+		ABP6B13 /* NewFileAvailabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B08 /* NewFileAvailabilityTests.swift */; };
+		ABRES005 /* Templates in Resources */ = {isa = PBXBuildFile; fileRef = AARES005 /* Templates */; };
+		ABP6B14 /* FinderFavorites.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B09 /* FinderFavorites.swift */; };
+		ABP6B15 /* FinderFavorites.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B09 /* FinderFavorites.swift */; };
+		ABP6B16 /* FinderFavoritesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B10 /* FinderFavoritesTests.swift */; };
+		ABARC01 /* ZipReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC01 /* ZipReader.swift */; };
+		ABARC02 /* ArchiveExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC02 /* ArchiveExtractor.swift */; };
+		ABARC04 /* ZipReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC01 /* ZipReader.swift */; };
+		ABARC05 /* ArchiveExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC02 /* ArchiveExtractor.swift */; };
+		ABARC12 /* ArchiveFormats.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC08 /* ArchiveFormats.swift */; };
+		ABARC13 /* ArchiveMemberSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC09 /* ArchiveMemberSource.swift */; };
+		ABARC14 /* ArchiveCompressor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC10 /* ArchiveCompressor.swift */; };
+		ABARC15 /* ArchiveFormats.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC08 /* ArchiveFormats.swift */; };
+		ABARC16 /* ArchiveMemberSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC09 /* ArchiveMemberSource.swift */; };
+		ABARC17 /* ArchiveCompressor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC10 /* ArchiveCompressor.swift */; };
+		ABARC18 /* ArchiveCompressorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC11 /* ArchiveCompressorTests.swift */; };
+		ABARC07 /* FinderArchives.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC04 /* FinderArchives.swift */; };
+		ABARC08 /* FinderArchives.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC04 /* FinderArchives.swift */; };
+		ABARC09 /* ArchiveExtractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC05 /* ArchiveExtractionTests.swift */; };
+		ABARC11 /* FinderArchivesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC07 /* FinderArchivesTests.swift */; };
+		ABSHEET2 /* CustomCompressionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASHEET1 /* CustomCompressionSheet.swift */; };
+		ABSHEET1 /* CustomCompressionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASHEET1 /* CustomCompressionSheet.swift */; };
+		ABSWC01 /* SWCompression in Frameworks */ = {isa = PBXBuildFile; productRef = AASWC01 /* SWCompression */; };
+		ABSWC02 /* SWCompression in Frameworks */ = {isa = PBXBuildFile; productRef = AASWC02 /* SWCompression */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -172,6 +255,60 @@
 		AA0000000000000000TES4 /* FileOperationContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationContractTests.swift; sourceTree = "<group>"; };
 		AA0000000000000000TES5 /* PeerIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerIdentityTests.swift; sourceTree = "<group>"; };
 		AA0000000000000000TES6 /* IPCIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPCIntegrationTests.swift; sourceTree = "<group>"; };
+		AASETR001 /* AppLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguage.swift; sourceTree = "<group>"; };
+		AASETR002 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
+		AASETR003 /* MenuRightSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuRightSettings.swift; sourceTree = "<group>"; };
+		AASETR004 /* NewFileType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFileType.swift; sourceTree = "<group>"; };
+		AASETR005 /* FavoriteEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoriteEntry.swift; sourceTree = "<group>"; };
+		AASETR006 /* CodeTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeTheme.swift; sourceTree = "<group>"; };
+		AASETR007 /* ArchiveSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveSettings.swift; sourceTree = "<group>"; };
+		AASETR008 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		AASETR011 /* SettingsCategory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsCategory.swift; sourceTree = "<group>"; };
+		AASETR012 /* SettingsComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsComponents.swift; sourceTree = "<group>"; };
+		AASETR013 /* SettingsRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRootView.swift; sourceTree = "<group>"; };
+		AASETR014 /* LaunchAtLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLogin.swift; sourceTree = "<group>"; };
+		AASETR021 /* GeneralSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsView.swift; sourceTree = "<group>"; };
+		AASETR022 /* FilePermissionSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePermissionSettingsView.swift; sourceTree = "<group>"; };
+		AASETR023 /* FolderPermissionSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderPermissionSettingsView.swift; sourceTree = "<group>"; };
+		AASETR024 /* NewFileSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFileSettingsView.swift; sourceTree = "<group>"; };
+		AASETR025 /* FavoriteSettingsViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoriteSettingsViews.swift; sourceTree = "<group>"; };
+		AASETR026 /* CodeThemeSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeThemeSettingsView.swift; sourceTree = "<group>"; };
+		AASETR027 /* ArchiveSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveSettingsView.swift; sourceTree = "<group>"; };
+		AASETR031 /* SettingsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStoreTests.swift; sourceTree = "<group>"; };
+		AASETR032 /* MenuRightSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuRightSettingsTests.swift; sourceTree = "<group>"; };
+		AASETR033 /* LocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTests.swift; sourceTree = "<group>"; };
+		AARES001 /* SidebarIcons.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = SidebarIcons.xcassets; sourceTree = "<group>"; };
+		AARES002 /* Third-Party-Notices */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Third-Party-Notices"; sourceTree = "<group>"; };
+		AASETR101 /* SettingsCategoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsCategoryTests.swift; sourceTree = "<group>"; };
+		AARES003 /* BrandAssets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = BrandAssets.xcassets; sourceTree = "<group>"; };
+		AARES004 /* SettingsIcons.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = SettingsIcons.xcassets; sourceTree = "<group>"; };
+		AAFREF01 /* FinderMenuLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderMenuLanguage.swift; sourceTree = "<group>"; };
+		AAFREF02 /* FinderMenuLocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderMenuLocalizationTests.swift; sourceTree = "<group>"; };
+		AAONB01 /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
+		AAONB02 /* OnboardingFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowTests.swift; sourceTree = "<group>"; };
+		AAONB03 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		AAONB04 /* FolderAuthorizationAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderAuthorizationAction.swift; sourceTree = "<group>"; };
+		AAP6B01 /* ZipWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipWriter.swift; sourceTree = "<group>"; };
+		AAP6B02 /* OOXMLDocumentFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OOXMLDocumentFactory.swift; sourceTree = "<group>"; };
+		AAP6B03 /* DocumentTemplateCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentTemplateCatalog.swift; sourceTree = "<group>"; };
+		AAP6B04 /* NewFileAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFileAvailability.swift; sourceTree = "<group>"; };
+		AAP6B05 /* ZipWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipWriterTests.swift; sourceTree = "<group>"; };
+		AAP6B06 /* OOXMLDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OOXMLDocumentTests.swift; sourceTree = "<group>"; };
+		AAP6B07 /* DocumentTemplateCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentTemplateCatalogTests.swift; sourceTree = "<group>"; };
+		AAP6B08 /* NewFileAvailabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFileAvailabilityTests.swift; sourceTree = "<group>"; };
+		AARES005 /* Templates */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Templates; sourceTree = "<group>"; };
+		AAP6B09 /* FinderFavorites.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderFavorites.swift; sourceTree = "<group>"; };
+		AAP6B10 /* FinderFavoritesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderFavoritesTests.swift; sourceTree = "<group>"; };
+		AAARC01 /* ZipReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipReader.swift; sourceTree = "<group>"; };
+		AAARC02 /* ArchiveExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveExtractor.swift; sourceTree = "<group>"; };
+		AAARC08 /* ArchiveFormats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveFormats.swift; sourceTree = "<group>"; };
+		AAARC09 /* ArchiveMemberSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveMemberSource.swift; sourceTree = "<group>"; };
+		AAARC10 /* ArchiveCompressor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveCompressor.swift; sourceTree = "<group>"; };
+		AASHEET1 /* CustomCompressionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomCompressionSheet.swift; sourceTree = "<group>"; };
+		AAARC11 /* ArchiveCompressorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveCompressorTests.swift; sourceTree = "<group>"; };
+		AAARC04 /* FinderArchives.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderArchives.swift; sourceTree = "<group>"; };
+		AAARC05 /* ArchiveExtractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveExtractionTests.swift; sourceTree = "<group>"; };
+		AAARC07 /* FinderArchivesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderArchivesTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -180,6 +317,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AB00000000000000000000A3 /* FinderSync.framework in Frameworks */,
+				ABSWC01 /* SWCompression in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -195,6 +333,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ABSWC02 /* SWCompression in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -231,6 +370,7 @@
 				AA0000000000000000000064 /* MenuRight.entitlements */,
 				AA0000000000000000IPC5 /* IPC */,
 				185BBB7B30445FAE009F934F /* MenuRight.icon */,
+				AAGROUPSET004 /* Resources */,
 			);
 			path = MenuRight;
 			sourceTree = "<group>";
@@ -241,6 +381,8 @@
 				AA0000000000000000000061 /* MenuRightApp.swift */,
 				AA0000000000000000000062 /* ContentView.swift */,
 				AA00000000000000000000C6 /* FolderAccessView.swift */,
+				AAGROUPSET002 /* Settings */,
+				AAONB04 /* FolderAuthorizationAction.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -255,6 +397,9 @@
 				AA0000000000000000000075 /* Info.plist */,
 				AA0000000000000000000076 /* MenuRightFinder.entitlements */,
 				AA0000000000000000IPC6 /* IPC */,
+				AAFREF01 /* FinderMenuLanguage.swift */,
+				AAP6B09 /* FinderFavorites.swift */,
+				AAARC04 /* FinderArchives.swift */,
 			);
 			path = MenuRightFinder;
 			sourceTree = "<group>";
@@ -278,6 +423,20 @@
 				AA0000000000000000TES4 /* FileOperationContractTests.swift */,
 				AA0000000000000000TES5 /* PeerIdentityTests.swift */,
 				AA0000000000000000TES6 /* IPCIntegrationTests.swift */,
+				AASETR031 /* SettingsStoreTests.swift */,
+				AASETR032 /* MenuRightSettingsTests.swift */,
+				AASETR033 /* LocalizationTests.swift */,
+				AASETR101 /* SettingsCategoryTests.swift */,
+				AAFREF02 /* FinderMenuLocalizationTests.swift */,
+				AAONB02 /* OnboardingFlowTests.swift */,
+				AAP6B05 /* ZipWriterTests.swift */,
+				AAP6B06 /* OOXMLDocumentTests.swift */,
+				AAP6B07 /* DocumentTemplateCatalogTests.swift */,
+				AAP6B08 /* NewFileAvailabilityTests.swift */,
+				AAP6B10 /* FinderFavoritesTests.swift */,
+				AAARC05 /* ArchiveExtractionTests.swift */,
+				AAARC11 /* ArchiveCompressorTests.swift */,
+				AAARC07 /* FinderArchivesTests.swift */,
 			);
 			path = MenuRightTests;
 			sourceTree = "<group>";
@@ -302,6 +461,9 @@
 				AA00000000000000000000A7 /* OperationPresenter.swift */,
 				AA00000000000000000005F1 /* FileOperationDispatcher.swift */,
 				AA0000000000000000000S01 /* SystemOpener.swift */,
+				AAP6B01 /* ZipWriter.swift */,
+				AAP6B02 /* OOXMLDocumentFactory.swift */,
+				AAP6B03 /* DocumentTemplateCatalog.swift */,
 			);
 			path = FileOperations;
 			sourceTree = "<group>";
@@ -310,10 +472,24 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000043 /* Authorization */,
+				AAGROUPARC1 /* Archive */,
 				AA0000000000000000000041 /* FileOperations */,
 				AA0000000000000000IPC7 /* IPC */,
+				AAGROUPSET001 /* Settings */,
 			);
 			path = Shared;
+			sourceTree = "<group>";
+		};
+		AAGROUPARC1 /* Archive */ = {
+			isa = PBXGroup;
+			children = (
+				AAARC01 /* ZipReader.swift */,
+				AAARC08 /* ArchiveFormats.swift */,
+				AAARC09 /* ArchiveMemberSource.swift */,
+				AAARC10 /* ArchiveCompressor.swift */,
+				AAARC02 /* ArchiveExtractor.swift */,
+			);
+			path = Archive;
 			sourceTree = "<group>";
 		};
 		AA0000000000000000000043 /* Authorization */ = {
@@ -356,6 +532,65 @@
 			path = IPC;
 			sourceTree = "<group>";
 		};
+		AAGROUPSET001 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				AASETR001 /* AppLanguage.swift */,
+				AASETR002 /* Localization.swift */,
+				AASETR003 /* MenuRightSettings.swift */,
+				AASETR004 /* NewFileType.swift */,
+				AASETR005 /* FavoriteEntry.swift */,
+				AASETR006 /* CodeTheme.swift */,
+				AASETR007 /* ArchiveSettings.swift */,
+				AASETR008 /* SettingsStore.swift */,
+				AAONB01 /* OnboardingFlow.swift */,
+				AAP6B04 /* NewFileAvailability.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		AAGROUPSET002 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				AASETR011 /* SettingsCategory.swift */,
+				AASETR012 /* SettingsComponents.swift */,
+				AASETR013 /* SettingsRootView.swift */,
+				AASETR014 /* LaunchAtLogin.swift */,
+				AAGROUPSET003 /* Panes */,
+				AASHEET1 /* CustomCompressionSheet.swift */,
+				AAONB03 /* OnboardingView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		AAGROUPSET003 /* Panes */ = {
+			isa = PBXGroup;
+			children = (
+				AASETR021 /* GeneralSettingsView.swift */,
+				AASETR022 /* FilePermissionSettingsView.swift */,
+				AASETR023 /* FolderPermissionSettingsView.swift */,
+				AASETR024 /* NewFileSettingsView.swift */,
+				AASETR025 /* FavoriteSettingsViews.swift */,
+				AASETR026 /* CodeThemeSettingsView.swift */,
+				AASETR027 /* ArchiveSettingsView.swift */,
+			);
+			path = Panes;
+			sourceTree = "<group>";
+		};
+
+		AAGROUPSET004 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				AARES001 /* SidebarIcons.xcassets */,
+				AARES002 /* Third-Party-Notices */,
+				AARES003 /* BrandAssets.xcassets */,
+				AARES004 /* SettingsIcons.xcassets */,
+				AARES005 /* Templates */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -377,6 +612,9 @@
 			productName = MenuRight;
 			productReference = AA0000000000000000000051 /* MenuRight.app */;
 			productType = "com.apple.product-type.application";
+			packageProductDependencies = (
+				AASWC01 /* SWCompression */,
+			);
 		};
 		AD0000000000000000000002 /* MenuRightFinder */ = {
 			isa = PBXNativeTarget;
@@ -412,6 +650,9 @@
 			productName = MenuRightTests;
 			productReference = AA0000000000000000000053 /* MenuRightTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
+			packageProductDependencies = (
+				AASWC02 /* SWCompression */,
+			);
 		};
 /* End PBXNativeTarget section */
 
@@ -451,14 +692,47 @@
 				AD0000000000000000000002 /* MenuRightFinder */,
 				AD0000000000000000000003 /* MenuRightTests */,
 			);
+			packageReferences = (
+				AASWC00 /* XCRemoteSwiftPackageReference "SWCompression" */,
+			);
 		};
 /* End PBXProject section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		AASWC00 /* XCRemoteSwiftPackageReference "SWCompression" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/tsolomko/SWCompression.git";
+			requirement = {
+				kind = exactVersion;
+				version = 4.9.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AASWC01 /* SWCompression */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AASWC00 /* XCRemoteSwiftPackageReference "SWCompression" */;
+			productName = SWCompression;
+		};
+		AASWC02 /* SWCompression */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AASWC00 /* XCRemoteSwiftPackageReference "SWCompression" */;
+			productName = SWCompression;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin PBXResourcesBuildPhase section */
 		AC00000000000000000000D3 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ABRES001 /* SidebarIcons.xcassets in Resources */,
+				ABRES002 /* Third-Party-Notices in Resources */,
+				ABICON01 /* MenuRight.icon in Resources */,
+				ABRES003 /* BrandAssets.xcassets in Resources */,
+				ABRES004 /* SettingsIcons.xcassets in Resources */,
+				ABRES005 /* Templates in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -506,6 +780,38 @@
 				AB0000000000000000000AF5 /* CutPayload.swift in Sources */,
 				AB0000000000000000000AF6 /* CutPasteboard.swift in Sources */,
 				AB0000000000000000000AF7 /* OperationPresenter.swift in Sources */,
+				ABSETAPP001 /* AppLanguage.swift in Sources */,
+				ABSETAPP002 /* Localization.swift in Sources */,
+				ABSETAPP003 /* MenuRightSettings.swift in Sources */,
+				ABSETAPP004 /* NewFileType.swift in Sources */,
+				ABSETAPP005 /* FavoriteEntry.swift in Sources */,
+				ABSETAPP006 /* CodeTheme.swift in Sources */,
+				ABSETAPP007 /* ArchiveSettings.swift in Sources */,
+				ABSETAPP008 /* SettingsStore.swift in Sources */,
+				ABSETAPP011 /* SettingsCategory.swift in Sources */,
+				ABSETAPP012 /* SettingsComponents.swift in Sources */,
+				ABSETAPP013 /* SettingsRootView.swift in Sources */,
+				ABSETAPP014 /* LaunchAtLogin.swift in Sources */,
+				ABSETAPP021 /* GeneralSettingsView.swift in Sources */,
+				ABSETAPP022 /* FilePermissionSettingsView.swift in Sources */,
+				ABSETAPP023 /* FolderPermissionSettingsView.swift in Sources */,
+				ABSETAPP024 /* NewFileSettingsView.swift in Sources */,
+				ABSETAPP025 /* FavoriteSettingsViews.swift in Sources */,
+				ABSETAPP026 /* CodeThemeSettingsView.swift in Sources */,
+				ABSETAPP027 /* ArchiveSettingsView.swift in Sources */,
+				ABONB01 /* OnboardingFlow.swift in Sources */,
+				ABONB04 /* OnboardingView.swift in Sources */,
+				ABONB05 /* FolderAuthorizationAction.swift in Sources */,
+				ABSHEET1 /* CustomCompressionSheet.swift in Sources */,
+				ABP6B01 /* ZipWriter.swift in Sources */,
+				ABP6B02 /* OOXMLDocumentFactory.swift in Sources */,
+				ABP6B03 /* DocumentTemplateCatalog.swift in Sources */,
+				ABP6B04 /* NewFileAvailability.swift in Sources */,
+				ABARC01 /* ZipReader.swift in Sources */,
+				ABARC02 /* ArchiveExtractor.swift in Sources */,
+				ABARC12 /* ArchiveFormats.swift in Sources */,
+				ABARC13 /* ArchiveMemberSource.swift in Sources */,
+				ABARC14 /* ArchiveCompressor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -526,6 +832,12 @@
 				AB0000000000000000IPCC /* PeerIdentity.swift in Sources */,
 				AB0000000000000000IPCD /* IPCProtocol.swift in Sources */,
 				AB00000000000000000005C2 /* FileOperationContract.swift in Sources */,
+				ABFEXT01 /* AppLanguage.swift in Sources */,
+				ABFEXT02 /* Localization.swift in Sources */,
+				ABFEXT03 /* FinderMenuLanguage.swift in Sources */,
+				ABP6B09 /* NewFileAvailability.swift in Sources */,
+				ABP6B14 /* FinderFavorites.swift in Sources */,
+				ABARC08 /* FinderArchives.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -572,6 +884,43 @@
 				AB0000000000000000TES4 /* FileOperationContractTests.swift in Sources */,
 				AB0000000000000000TES5 /* PeerIdentityTests.swift in Sources */,
 				AB0000000000000000TES6 /* IPCIntegrationTests.swift in Sources */,
+				ABSETTST001 /* AppLanguage.swift in Sources */,
+				ABSETTST002 /* Localization.swift in Sources */,
+				ABSETTST003 /* MenuRightSettings.swift in Sources */,
+				ABSETTST004 /* NewFileType.swift in Sources */,
+				ABSETTST005 /* FavoriteEntry.swift in Sources */,
+				ABSETTST006 /* CodeTheme.swift in Sources */,
+				ABSETTST007 /* ArchiveSettings.swift in Sources */,
+				ABSETTST008 /* SettingsStore.swift in Sources */,
+				ABSETTST031 /* SettingsStoreTests.swift in Sources */,
+				ABSETTST032 /* MenuRightSettingsTests.swift in Sources */,
+				ABSETTST033 /* LocalizationTests.swift in Sources */,
+				ABSETTST101 /* SettingsCategory.swift in Sources */,
+				ABSETTST102 /* SettingsCategoryTests.swift in Sources */,
+				ABFTST01 /* FinderMenuLanguage.swift in Sources */,
+				ABFTST02 /* FinderMenuLocalizationTests.swift in Sources */,
+				ABONB02 /* OnboardingFlow.swift in Sources */,
+				ABONB03 /* OnboardingFlowTests.swift in Sources */,
+				ABP6B05 /* ZipWriter.swift in Sources */,
+				ABP6B06 /* OOXMLDocumentFactory.swift in Sources */,
+				ABP6B07 /* DocumentTemplateCatalog.swift in Sources */,
+				ABP6B08 /* NewFileAvailability.swift in Sources */,
+				ABP6B10 /* ZipWriterTests.swift in Sources */,
+				ABP6B11 /* OOXMLDocumentTests.swift in Sources */,
+				ABP6B12 /* DocumentTemplateCatalogTests.swift in Sources */,
+				ABP6B13 /* NewFileAvailabilityTests.swift in Sources */,
+				ABP6B15 /* FinderFavorites.swift in Sources */,
+				ABP6B16 /* FinderFavoritesTests.swift in Sources */,
+				ABARC04 /* ZipReader.swift in Sources */,
+				ABARC05 /* ArchiveExtractor.swift in Sources */,
+				ABARC15 /* ArchiveFormats.swift in Sources */,
+				ABARC16 /* ArchiveMemberSource.swift in Sources */,
+				ABARC17 /* ArchiveCompressor.swift in Sources */,
+				ABARC07 /* FinderArchives.swift in Sources */,
+				ABARC09 /* ArchiveExtractionTests.swift in Sources */,
+				ABSHEET2 /* CustomCompressionSheet.swift in Sources */,
+				ABARC18 /* ArchiveCompressorTests.swift in Sources */,
+				ABARC11 /* FinderArchivesTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

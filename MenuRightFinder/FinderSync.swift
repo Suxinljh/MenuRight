@@ -96,36 +96,53 @@ final class FinderSync: FIFinderSync {
 
         // Pasteboard decode only — no filesystem work while building the menu.
         let hasCutPayload = CutPasteboard.containsValidCut()
+        // P6-b: which kinds the *running* main app can create. Also a cfprefsd
+        // read, not a filesystem scan; the templates themselves are never
+        // touched from this process.
+        let newFileKinds = NewFileKind.available(from: NewFileAvailability.readFromAppGroup())
+        // P7-b: the favorites submenus. A second cfprefsd read, no file access —
+        // an entry whose app was uninstalled is resolved at click time.
+        let favorites = FinderFavorites.entries()
+        // P9: which selected items are archives. Extension check only — no
+        // filesystem probe, so the menu-build budget holds.
+        let archives = FinderArchives.classify(selection.itemURLs)
         let plan = FinderMenuBuilder.plan(
             for: selection,
             containerMenu: menuKind == .contextualMenuForContainer,
-            hasCutPayload: hasCutPayload
+            hasCutPayload: hasCutPayload,
+            newFileKinds: newFileKinds,
+            favorites: favorites,
+            archives: archives
         )
-        Self.diag.log("menu(for:) plan.count=\(plan.count, privacy: .public) hasCutPayload=\(hasCutPayload, privacy: .public)")
+        Self.diag.log("menu(for:) plan.count=\(plan.count, privacy: .public) hasCutPayload=\(hasCutPayload, privacy: .public) newFileKinds=[\(newFileKinds.map(\.rawValue).joined(separator: ","), privacy: .public)] favorites=\(favorites.count, privacy: .public) archives=\(archives.archives.count, privacy: .public)/\(archives.compressible.count, privacy: .public)")
         guard !plan.isEmpty else {
             Self.diag.log("menu(for:) plan empty -> returning nil")
             return nil
         }
 
-        let menu = makeMenu(from: plan)
+        // The app owns the setting; the extension reads it from the shared App
+        // Group payload on every build, so a language change in 通用设置 shows up
+        // on the next right-click.
+        let language = FinderMenuLanguage.resolve()
+        Self.diag.log("menu(for:) language=\(language.rawValue, privacy: .public)")
+        let menu = makeMenu(from: plan, language: language)
         Self.diag.log("menu(for:) returning menu with \(menu.items.count, privacy: .public) items")
         return menu
     }
 
     // MARK: - Menu construction
 
-    private func makeMenu(from plan: [FinderMenuPlanItem]) -> NSMenu {
+    private func makeMenu(from plan: [FinderMenuPlanItem], language: AppLanguage) -> NSMenu {
         let menu = NSMenu(title: "")
         for item in plan {
             switch item {
-            case .separator:
-                menu.addItem(.separator())
             case .action(let action):
-                add(action, to: menu)
-            case .submenu(let title, let actions):
+                add(action, to: menu, language: language)
+            case .submenu(let titleKey, let actions):
+                let title = FinderMenuTitles.submenuTitle(titleKey, language: language)
                 let submenu = NSMenu(title: title)
                 for action in actions {
-                    add(action, to: submenu)
+                    add(action, to: submenu, language: language)
                 }
                 let menuItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
                 menuItem.submenu = submenu
@@ -135,44 +152,83 @@ final class FinderSync: FIFinderSync {
         return menu
     }
 
-    private func add(_ action: FinderMenuAction, to menu: NSMenu) {
+    private func add(_ action: FinderMenuAction, to menu: NSMenu, language: AppLanguage) {
+        let title = FinderMenuTitles.title(for: action, language: language)
         switch action {
         case .copyName(let payload):
-            addItem(title: "Copy Name", selector: #selector(performCopy(_:)), representedObject: payload, to: menu)
+            addItem(title: title, selector: #selector(performCopy(_:)), representedObject: payload, to: menu)
         case .copyPath(let payload):
-            addItem(title: "Copy Path", selector: #selector(performCopy(_:)), representedObject: payload, to: menu)
+            addItem(title: title, selector: #selector(performCopy(_:)), representedObject: payload, to: menu)
         case .copyFileURL(let payload):
-            addItem(title: "Copy File URL", selector: #selector(performCopy(_:)), representedObject: payload, to: menu)
+            addItem(title: title, selector: #selector(performCopy(_:)), representedObject: payload, to: menu)
         case .copyFolderPath(let payload):
-            addItem(title: "Copy Folder Path", selector: #selector(performCopy(_:)), representedObject: payload, to: menu)
+            addItem(title: title, selector: #selector(performCopy(_:)), representedObject: payload, to: menu)
         case .cut(let items):
-            addItem(title: "Cut", selector: #selector(performCut(_:)), representedObject: items, to: menu)
+            addItem(title: title, selector: #selector(performCut(_:)), representedObject: items, to: menu)
         case .pasteHere(let destination, let enabled):
-            let item = NSMenuItem(title: "Paste Here", action: #selector(performPaste(_:)), keyEquivalent: "")
+            let item = NSMenuItem(title: title, action: #selector(performPaste(_:)), keyEquivalent: "")
             item.target = self
             item.isEnabled = enabled
             item.representedObject = destination
             menu.addItem(item)
         case .newFile(let kind, let directory):
             addItem(
-                title: kind.title,
+                title: title,
                 selector: #selector(performNewFile(_:)),
                 representedObject: NewFileRequest(kind: kind, directory: directory),
                 to: menu
             )
         case .newFolder(let directory):
-            addItem(title: "New Folder", selector: #selector(performNewFolder(_:)), representedObject: directory, to: menu)
+            addItem(title: title, selector: #selector(performNewFolder(_:)), representedObject: directory, to: menu)
         case .openTerminal(let directory):
-            addItem(title: FinderMenuTitles.openTerminal, selector: #selector(performOpenTerminal(_:)), representedObject: directory, to: menu)
+            addItem(title: title, selector: #selector(performOpenTerminal(_:)), representedObject: directory, to: menu)
         case .copyFolderName(let payload):
-            addItem(title: "Copy Folder Name", selector: #selector(performCopy(_:)), representedObject: payload, to: menu)
+            addItem(title: title, selector: #selector(performCopy(_:)), representedObject: payload, to: menu)
         case .createAlias(let items):
-            addItem(title: FinderMenuTitles.createAlias, selector: #selector(performCreateAlias(_:)), representedObject: items, to: menu)
+            addItem(title: title, selector: #selector(performCreateAlias(_:)), representedObject: items, to: menu)
         case .setLocked(let items, let locked):
+            _ = locked   // the title already encodes it (Lock / Unlock)
             addItem(
-                title: locked ? FinderMenuTitles.lock : FinderMenuTitles.unlock,
+                title: title,
                 selector: #selector(performSetLocked(_:)),
                 representedObject: items,
+                to: menu
+            )
+        case .openFavorite(let entry):
+            addItem(
+                title: title,
+                selector: #selector(performOpenFavorite(_:)),
+                representedObject: entry,
+                to: menu
+            )
+        case .extractArchives(let archives, let destination):
+            addItem(
+                title: title,
+                selector: #selector(performExtractArchives(_:)),
+                representedObject: ArchiveRequest(archives: archives, destination: destination),
+                to: menu
+            )
+        case .compressItems(let items, let format):
+            addItem(
+                title: title,
+                selector: #selector(performCompressItems(_:)),
+                representedObject: ArchiveRequest(archives: items, destination: nil, format: format),
+                to: menu
+            )
+        case .extractArchivesCustomize(let archives):
+            addItem(
+                title: title,
+                selector: #selector(performExtractArchives(_:)),
+                representedObject: ArchiveRequest(archives: archives, destination: nil),
+                to: menu
+            )
+        case .compressItemsCustomize(let items):
+            // Same selector: the click is dispatched from the live selection and
+            // the title, which is what tells the dialog variant apart.
+            addItem(
+                title: title,
+                selector: #selector(performCompressItems(_:)),
+                representedObject: ArchiveRequest(archives: items, destination: nil, format: "zip"),
                 to: menu
             )
         }
@@ -198,18 +254,18 @@ final class FinderSync: FIFinderSync {
         )
         let title = sender.title
         let payload: String?
-        switch title {
-        case "Copy Name":
+        switch FinderMenuTitles.copySubject(forTitle: title) {
+        case .names:
             payload = selection.formattedNames
-        case "Copy Path":
+        case .paths:
             payload = selection.formattedPaths
-        case "Copy File URL":
+        case .fileURLs:
             payload = selection.formattedFileURLs
-        case "Copy Folder Name":
+        case .folderName:
             payload = selection.containerDirectory?.lastPathComponent
-        case "Copy Folder Path":
+        case .folderPath:
             payload = selection.containerDirectory?.path
-        default:
+        case nil:
             Self.diag.log("ACTION performCopy: unknown title=\(title, privacy: .public)")
             payload = nil
         }
@@ -241,7 +297,7 @@ final class FinderSync: FIFinderSync {
         }
     }
     @objc private func performNewFile(_ sender: NSMenuItem) {
-        guard let kind = NewFileKind.allCases.first(where: { $0.title == sender.title }) else {
+        guard let kind = FinderMenuTitles.newFileKind(forTitle: sender.title) else {
             Self.diag.log("ACTION performNewFile: unknown title=\(sender.title, privacy: .public)")
             return
         }
@@ -256,24 +312,44 @@ final class FinderSync: FIFinderSync {
         }
         Self.diag.log("ACTION INVOKED performNewFile title=\(sender.title, privacy: .public) kind=\(kind.rawValue, privacy: .public) target=\(directory.path, privacy: .public) delegating=true")
 
-        let contentsBase64: String?
-        if let raw = kind.contents {
-            contentsBase64 = raw.base64EncodedString()
-        } else {
-            contentsBase64 = nil
+        // Text kinds are generated here (small, no bundle resources). Document
+        // kinds name themselves and let the main app do the work: the OOXML
+        // archive writer must not ship inside the sandboxed extension, and the
+        // blank iWork templates live in the app bundle.
+        let request: FileOperationContract.Request
+        switch kind.category {
+        case .text:
+            let contentsBase64 = kind.contents.map { $0.base64EncodedString() }
+            request = FileOperationContract.Request(
+                kind: .createFile,
+                args: FileOperationContract.OperationArgs(
+                    directory: directory.path,
+                    name: kind.defaultName,
+                    contentsBase64: contentsBase64
+                ),
+                clientRequestId: UUID().uuidString
+            )
+        case .office:
+            request = FileOperationContract.Request(
+                kind: .createDocument,
+                args: FileOperationContract.OperationArgs(
+                    directory: directory.path,
+                    name: kind.defaultName,
+                    documentKind: kind.rawValue
+                ),
+                clientRequestId: UUID().uuidString
+            )
+        case .iWork:
+            request = FileOperationContract.Request(
+                kind: .createFromTemplate,
+                args: FileOperationContract.OperationArgs(
+                    directory: directory.path,
+                    name: kind.defaultName,
+                    documentKind: kind.rawValue
+                ),
+                clientRequestId: UUID().uuidString
+            )
         }
-        let args = FileOperationContract.OperationArgs(
-            directory: directory.path,
-            name: kind.defaultName,
-            contentsBase64: contentsBase64,
-            sourcePaths: nil,
-            destinationDirectory: nil
-        )
-        let request = FileOperationContract.Request(
-            kind: .createFile,
-            args: args,
-            clientRequestId: UUID().uuidString
-        )
         sendDelegated(request) { [weak self] outcome in
             self?.handleNewFileOutcome(outcome, kind: kind, directory: directory)
         }
@@ -294,6 +370,149 @@ final class FinderSync: FIFinderSync {
             OperationPresenter.presentDelegatedCreateFailure(name: kind.defaultName, code: code, message: message)
         case .unavailable(let reason):
             Self.diag.log("ACTION performNewFile delegated UNAVAILABLE reason=\(reason, privacy: .public)")
+            OperationPresenter.presentMainAppUnavailable(context: reason)
+        }
+    }
+
+    // MARK: - P7-b: favorites
+
+    /// Opens a 常用软件 / 常用网页 / 常用文件夹 entry.
+    ///
+    /// Finder replays the click through a reconstructed menu item that drops
+    /// `representedObject`, so the entry is looked up by title against the live
+    /// settings — the same pure function that built the menu produces the same
+    /// titles, and a settings change between build and click cannot mis-dispatch.
+    @objc private func performOpenFavorite(_ sender: NSMenuItem) {
+        let title = sender.title
+        guard let entry = FinderFavorites.entries().first(where: { $0.menuTitle == title }) else {
+            Self.diag.log("ACTION performOpenFavorite: no favorite matches title=\(title, privacy: .public)")
+            return
+        }
+        Self.diag.log("ACTION INVOKED performOpenFavorite kind=\(entry.kind.rawValue, privacy: .public) target=\(entry.target, privacy: .public)")
+
+        let request: FileOperationContract.Request
+        switch entry.kind {
+        case .folder:
+            request = FileOperationContract.Request(
+                kind: .openFolder,
+                args: FileOperationContract.OperationArgs(directory: entry.target),
+                clientRequestId: UUID().uuidString
+            )
+        case .application:
+            request = FileOperationContract.Request(
+                kind: .openApplication,
+                args: FileOperationContract.OperationArgs(target: entry.target),
+                clientRequestId: UUID().uuidString
+            )
+        case .website:
+            request = FileOperationContract.Request(
+                kind: .openURL,
+                args: FileOperationContract.OperationArgs(target: entry.target),
+                clientRequestId: UUID().uuidString
+            )
+        }
+        sendDelegated(request) { [weak self] outcome in
+            self?.handleOpenFavoriteOutcome(outcome, entry: entry)
+        }
+    }
+
+    private func handleOpenFavoriteOutcome(
+        _ outcome: ExtensionIPCClient.FileOperationOutcome,
+        entry: FinderFavoriteEntry
+    ) {
+        switch outcome {
+        case .success:
+            Self.diag.log("ACTION performOpenFavorite delegated SUCCESS target=\(entry.target, privacy: .public)")
+        case .batchSuccess:
+            Self.diag.log("ACTION performOpenFavorite unexpected batch success target=\(entry.target, privacy: .public)")
+        case .failure(let code, let message):
+            Self.diag.log("ACTION performOpenFavorite delegated FAILURE code=\(code.rawValue, privacy: .public) message=\(message, privacy: .public)")
+            OperationPresenter.presentDelegatedOpenFailure(name: entry.menuTitle, code: code, message: message)
+        case .unavailable(let reason):
+            Self.diag.log("ACTION performOpenFavorite delegated UNAVAILABLE reason=\(reason, privacy: .public)")
+            OperationPresenter.presentMainAppUnavailable(context: reason)
+        }
+    }
+
+    // MARK: - P9: compression and extraction
+
+    /// 解压 ▸.
+    ///
+    /// The archives come from the **live selection**, not from the menu item
+    /// (Finder drops `representedObject` across the process boundary): a menu
+    /// built before the selection changed cannot extract the wrong files.
+    @objc private func performExtractArchives(_ sender: NSMenuItem) {
+        let controller = FIFinderSyncController.default()
+        let selection = FinderSelectionContext(
+            itemURLs: controller.selectedItemURLs() ?? [],
+            targetedURL: controller.targetedURL()
+        )
+        let archives = FinderArchives.classify(selection.itemURLs)
+        guard archives.canExtract else {
+            Self.diag.log("ACTION performExtractArchives: live selection has no extractable archive")
+            return
+        }
+        Self.diag.log("ACTION INVOKED performExtractArchives count=\(archives.archives.count, privacy: .public) delegating=true")
+
+        let wantsDestination = FinderMenuTitles.isCustomExtractionTitle(sender.title)
+        Self.diag.log("ACTION performExtractArchives chooseDestination=\(wantsDestination, privacy: .public)")
+        let request = FileOperationContract.Request(
+            kind: .extractArchive,
+            args: FileOperationContract.OperationArgs(
+                sourcePaths: archives.archives.map(\.path),
+                destinationDirectory: nil,
+                customize: wantsDestination ? true : nil
+            ),
+            clientRequestId: UUID().uuidString
+        )
+        sendDelegated(request) { [weak self] outcome in
+            self?.handleArchiveOutcome(outcome, action: "extract the archive")
+        }
+    }
+
+    /// 压缩 ▸. Every selected item goes into one archive in its own folder.
+    @objc private func performCompressItems(_ sender: NSMenuItem) {
+        let controller = FIFinderSyncController.default()
+        let selection = FinderSelectionContext(
+            itemURLs: controller.selectedItemURLs() ?? [],
+            targetedURL: controller.targetedURL()
+        )
+        let items = selection.itemURLs
+        guard let destination = items.first?.deletingLastPathComponent() else {
+            Self.diag.log("ACTION performCompressItems: no live selection")
+            return
+        }
+        let wantsDialog = FinderMenuTitles.isCustomCompressionTitle(sender.title)
+        let format = FinderMenuTitles.compressionFormat(forTitle: sender.title) ?? "zip"
+        Self.diag.log("ACTION INVOKED performCompressItems count=\(items.count, privacy: .public) format=\(format, privacy: .public) target=\(destination.path, privacy: .public) delegating=true")
+
+        let request = FileOperationContract.Request(
+            kind: .compressItems,
+            args: FileOperationContract.OperationArgs(
+                sourcePaths: items.map(\.path),
+                destinationDirectory: destination.path,
+                archiveFormat: format,
+                customize: wantsDialog ? true : nil
+            ),
+            clientRequestId: UUID().uuidString
+        )
+        sendDelegated(request) { [weak self] outcome in
+            self?.handleArchiveOutcome(outcome, action: "compress the selection")
+        }
+    }
+
+    private func handleArchiveOutcome(_ outcome: ExtensionIPCClient.FileOperationOutcome, action: String) {
+        switch outcome {
+        case .success(let createdPath):
+            Self.diag.log("ACTION archive \(action, privacy: .public) delegated SUCCESS createdPath=\(createdPath ?? "<none>", privacy: .public)")
+        case .batchSuccess(let items):
+            Self.diag.log("ACTION archive \(action, privacy: .public) delegated BATCH items=\(items.count, privacy: .public) failures=\(items.filter { !$0.success }.count, privacy: .public)")
+            OperationPresenter.presentDelegatedItemFailures(items, action: action)
+        case .failure(let code, let message):
+            Self.diag.log("ACTION archive \(action, privacy: .public) delegated FAILURE code=\(code.rawValue, privacy: .public) message=\(message, privacy: .public)")
+            OperationPresenter.presentDelegatedArchiveFailure(action: action, code: code, message: message)
+        case .unavailable(let reason):
+            Self.diag.log("ACTION archive \(action, privacy: .public) delegated UNAVAILABLE reason=\(reason, privacy: .public)")
             OperationPresenter.presentMainAppUnavailable(context: reason)
         }
     }
@@ -479,9 +698,9 @@ final class FinderSync: FIFinderSync {
             Self.diag.log("ACTION performSetLocked: no live selection, ignoring")
             return
         }
-        // Title-based dispatch, because representedObject is lost; hence the
-        // shared FinderMenuTitles constants.
-        let locked = sender.title != FinderMenuTitles.unlock
+        // Title-based dispatch, because representedObject is lost. Matched in any
+        // language, so a menu built before a language switch still works.
+        let locked = !FinderMenuTitles.isUnlockTitle(sender.title)
         Self.diag.log("ACTION INVOKED performSetLocked locked=\(locked, privacy: .public) count=\(items.count, privacy: .public) delegating=true")
         let request = FileOperationContract.Request(
             kind: .setLocked,
@@ -544,4 +763,11 @@ final class FinderSync: FIFinderSync {
 struct NewFileRequest {
     let kind: NewFileKind
     let directory: URL
+}
+
+/// Represented object carried by the archive menu items (P9).
+struct ArchiveRequest {
+    let archives: [URL]
+    let destination: URL?
+    var format: String = "zip"
 }

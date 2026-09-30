@@ -13,9 +13,9 @@ final class FinderMenuBuilderTests: XCTestCase {
         }
     }
 
-    private func submenuTitles(_ plan: [FinderMenuPlanItem]) -> [String] {
+    private func submenuTitleKeys(_ plan: [FinderMenuPlanItem]) -> [StringKey] {
         plan.compactMap { item in
-            if case .submenu(let title, _) = item { return title }
+            if case .submenu(let titleKey, _) = item { return titleKey }
             return nil
         }
     }
@@ -45,7 +45,7 @@ final class FinderMenuBuilderTests: XCTestCase {
             targetedURL: nil
         )
         let plan = FinderMenuBuilder.plan(for: selection, hasCutPayload: false)
-        XCTAssertTrue(submenuTitles(plan).isEmpty)
+        XCTAssertTrue(submenuTitleKeys(plan).isEmpty)
     }
 
     func testItemSelectionDoesNotOfferContainerActions() {
@@ -96,21 +96,19 @@ final class FinderMenuBuilderTests: XCTestCase {
         let selection = FinderSelectionContext(itemURLs: [], targetedURL: container)
         let plan = FinderMenuBuilder.plan(for: selection, hasCutPayload: true)
 
-        XCTAssertEqual(plan.count, 8)
+        XCTAssertEqual(plan.count, 6)
         XCTAssertEqual(plan[0], .action(.openTerminal(directory: container)))
         XCTAssertEqual(plan[1], .action(.copyFolderName(payload: "My Project")))
         XCTAssertEqual(plan[2], .action(.copyFolderPath(payload: "/Users/foo/My Project")))
-        XCTAssertEqual(plan[3], .separator)
 
-        guard case .submenu(let title, let submenuActions) = plan[4] else {
+        guard case .submenu(let titleKey, let submenuActions) = plan[3] else {
             return XCTFail("expected the New File submenu")
         }
-        XCTAssertEqual(title, "New File")
+        XCTAssertEqual(titleKey, .categoryNewFile)
         XCTAssertEqual(submenuActions, NewFileKind.allCases.map { .newFile(kind: $0, directory: container) })
 
-        XCTAssertEqual(plan[5], .action(.newFolder(directory: container)))
-        XCTAssertEqual(plan[6], .separator)
-        XCTAssertEqual(plan[7], .action(.pasteHere(destination: container, enabled: true)))
+        XCTAssertEqual(plan[4], .action(.newFolder(directory: container)))
+        XCTAssertEqual(plan[5], .action(.pasteHere(destination: container, enabled: true)))
     }
 
     func testContainerMenuOffersNoItemActions() {
@@ -139,7 +137,7 @@ final class FinderMenuBuilderTests: XCTestCase {
             "container menu must not offer item actions even with a stale selection"
         )
         XCTAssertEqual(actions(plan).last, .pasteHere(destination: URL(fileURLWithPath: "/Users/suxin/Suxin/code", isDirectory: true), enabled: false))
-        XCTAssertTrue(submenuTitles(plan).contains("New File"))
+        XCTAssertTrue(submenuTitleKeys(plan).contains(.categoryNewFile))
     }
 
     func testPasteHereDisabledWithoutCutPayload() {
@@ -156,11 +154,20 @@ final class FinderMenuBuilderTests: XCTestCase {
 
     // MARK: - Titles shared with the action dispatch
 
-    func testActionTitlesAreStableBecauseFinderSyncDispatchesOnThem() {
-        XCTAssertEqual(FinderMenuTitles.createAlias, "Create Alias")
-        XCTAssertEqual(FinderMenuTitles.lock, "Lock")
-        XCTAssertEqual(FinderMenuTitles.unlock, "Unlock")
-        XCTAssertEqual(FinderMenuTitles.openTerminal, "Open Terminal")
-        XCTAssertNotEqual(FinderMenuTitles.lock, FinderMenuTitles.unlock)
+    func testActionTitlesFollowTheSelectedLanguage() {
+        let container = URL(fileURLWithPath: "/Users/foo/Projects", isDirectory: true)
+        let terminal = FinderMenuAction.openTerminal(directory: container)
+
+        XCTAssertEqual(FinderMenuTitles.title(for: terminal, language: .english), "Open Terminal")
+        XCTAssertEqual(FinderMenuTitles.title(for: terminal, language: .simplifiedChinese), "打开终端")
+
+        let lock = FinderMenuAction.setLocked(items: [], locked: true)
+        let unlock = FinderMenuAction.setLocked(items: [], locked: false)
+        XCTAssertEqual(FinderMenuTitles.title(for: lock, language: .simplifiedChinese), "锁定")
+        XCTAssertEqual(FinderMenuTitles.title(for: unlock, language: .simplifiedChinese), "解锁")
+        XCTAssertNotEqual(
+            FinderMenuTitles.title(for: lock, language: .english),
+            FinderMenuTitles.title(for: unlock, language: .english)
+        )
     }
 }
