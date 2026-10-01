@@ -34,7 +34,10 @@ final class ArchiveRequestCenter: ObservableObject {
     func present(_ request: PendingArchiveRequest) {
         let show = {
             self.pending = request
-            NSApp.activate(ignoringOtherApps: true)
+            // `NSApp` is nil in a unit-test process (there is no NSApplication),
+            // and the sheet is never shown there — the request is still parked so
+            // the call path is exercised without a running app.
+            NSApp?.activate(ignoringOtherApps: true)
             Self.log.info("ARCHIVE dialog presented sources=\(request.sources.count, privacy: .public) format=\(request.format.rawValue, privacy: .public)")
         }
         if Thread.isMainThread {
@@ -49,6 +52,11 @@ final class ArchiveRequestCenter: ObservableObject {
     }
 }
 
+/// Cross-thread "stop" flag for one compression run.
+///
+/// 取消 dismisses the sheet immediately, but the tree walk keeps running on a
+/// background queue until it notices — this flag is the hand-off between the two
+/// threads. A fresh instance is created for every run, so a cancel can never
 /// Main-thread folder picker for "解压到指定位置…".
 ///
 /// Lives here rather than in the dispatcher so that the dispatcher stays free of
@@ -87,6 +95,7 @@ struct CustomCompressionSheet: View {
     @State private var mode: ArchiveCompressionMode
     @State private var errorText: String?
     @State private var isWorking = false
+    @State private var control: ArchiveOperationControl?
 
     private let sources: [URL]
     private let onDone: () -> Void
@@ -116,6 +125,15 @@ struct CustomCompressionSheet: View {
     /// Only ZIP carries an archive comment, so the field is disabled elsewhere
     /// instead of silently dropping what the user typed.
     private var labelIsStored: Bool { format == .zip }
+
+    /// 允许的压缩格式 filters this picker as well, so the setting cannot be
+    /// bypassed from the dialog. It never narrows to nothing, though: with every
+    /// box unticked the dialog falls back to the four formats this build can
+    /// write, because an unusable dialog is worse than a setting being odd.
+    private var selectableFormats: [ArchiveFormat] {
+        let allowed = ArchiveCompressor.writableFormats.filter { store.settings.archives.isEnabled($0) }
+        return allowed.isEmpty ? ArchiveCompressor.writableFormats : allowed
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -157,7 +175,7 @@ struct CustomCompressionSheet: View {
                 GridRow {
                     Text(store.text(.archiveFormat)).gridColumnAlignment(.trailing)
                     Picker("", selection: $format) {
-                        ForEach(ArchiveCompressor.writableFormats, id: \.self) { candidate in
+                        ForEach(selectableFormats, id: \.self) { candidate in
                             Text(store.text(candidate.titleKey)).tag(candidate)
                         }
                     }
@@ -199,7 +217,7 @@ struct CustomCompressionSheet: View {
 
             HStack {
                 Spacer()
-                Button(store.text(.commonCancel)) { finish() }
+                Button(store.text(.commonCancel)) { cancel() }
                     .keyboardShortcut(.cancelAction)
                 Button(store.text(.commonConfirm)) { save() }
                     .keyboardShortcut(.defaultAction)
@@ -208,6 +226,12 @@ struct CustomCompressionSheet: View {
         }
         .padding(20)
         .frame(width: 520)
+        .onAppear {
+            // The dialog opens on ZIP; the settings may have turned ZIP off.
+            if !selectableFormats.contains(format), let first = selectableFormats.first {
+                format = first
+            }
+        }
     }
 
     private func unsupportedToggle(_ title: String) -> some View {
@@ -239,6 +263,9 @@ struct CustomCompressionSheet: View {
         isWorking = true
         errorText = nil
         let settings = store.settings.archives
+        // 取消 must actually stop the walk, not just hide the sheet.
+        let control = ArchiveOperationControl()
+        self.control = control
         // Squeeze the work off the main thread; the archive is built in memory.
         DispatchQueue.global(qos: .userInitiated).async {
             do {
@@ -250,12 +277,16 @@ struct CustomCompressionSheet: View {
                     conflictPolicy: settings.conflictPolicy,
                     sizeLimitMB: settings.sizeLimitMB,
                     mode: mode,
-                    label: label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : label
+                    label: label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : label,
+                    control: control
                 )
                 DispatchQueue.main.async {
                     Self.log(report)
                     finish()
                 }
+            } catch ArchiveError.cancelled {
+                // The sheet is already gone and nothing was written: the archive
+                // is assembled in memory and only lands on disk at the end.
             } catch {
                 DispatchQueue.main.async {
                     isWorking = false
@@ -263,6 +294,11 @@ struct CustomCompressionSheet: View {
                 }
             }
         }
+    }
+
+    private func cancel() {
+        control?.cancel()
+        finish()
     }
 
     private func finish() {

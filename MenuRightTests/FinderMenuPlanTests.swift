@@ -244,4 +244,132 @@ final class FinderMenuPlanTests: XCTestCase {
         // Title-based replay means duplicates would make a click ambiguous.
         XCTAssertEqual(Set(chineseTitles).count, chineseTitles.count, "中文标题必须唯一: \(chineseTitles)")
     }
+
+    // MARK: - P9 解压/压缩 submenus
+
+    private func submenu(_ key: StringKey, in plan: [FinderMenuPlanItem]) -> [FinderMenuAction]? {
+        for item in plan {
+            if case .submenu(let titleKey, let actions) = item, titleKey == key { return actions }
+        }
+        return nil
+    }
+
+    private func archiveSelection(_ urls: [URL]) -> FinderArchiveSelection {
+        FinderArchiveSelection(archives: urls, compressible: urls)
+    }
+
+    private func plan(
+        selecting urls: [URL],
+        archives: FinderArchiveSelection? = nil,
+        destination: FinderArchives.Destination = .ask,
+        compressionFormats: [String] = FinderArchives.compressionFormats
+    ) -> [FinderMenuPlanItem] {
+        FinderMenuBuilder.plan(
+            for: FinderSelectionContext(itemURLs: urls, targetedURL: nil),
+            hasCutPayload: false,
+            archives: archives ?? archiveSelection(urls),
+            archiveDestination: destination,
+            compressionFormats: compressionFormats
+        )
+    }
+
+    func testExtractSubmenuAsksForADestinationByDefault() {
+        let archives = [URL(fileURLWithPath: "/Users/foo/a.zip")]
+        XCTAssertEqual(submenu(.finderMenuExtract, in: plan(selecting: archives)), [
+            .extractArchives(archives: archives, destination: nil),
+            .extractArchivesCustomize(archives: archives),
+        ])
+    }
+
+    /// 解压位置 == 指定文件夹…: the second item goes straight there and its title
+    /// names the folder, so no panel is needed.
+    func testExtractSubmenuGoesStraightToTheChosenFolder() {
+        let archives = [URL(fileURLWithPath: "/Users/foo/a.zip")]
+        let folder = URL(fileURLWithPath: "/Users/foo/Downloads", isDirectory: true)
+        XCTAssertEqual(submenu(.finderMenuExtract, in: plan(selecting: archives, destination: .folder(folder))), [
+            .extractArchives(archives: archives, destination: nil),
+            .extractArchivesToFolder(archives: archives, destination: folder),
+        ])
+    }
+
+    /// 解压位置 == 压缩包所在文件夹 repeats the first item, so the menu offers one
+    /// extraction item rather than two identical ones.
+    func testExtractSubmenuDropsTheItemThatWouldDuplicateExtractHere() {
+        let archives = [URL(fileURLWithPath: "/Users/foo/a.zip")]
+        let items = submenu(.finderMenuExtract, in: plan(selecting: archives, destination: .duplicatesFirstItem))
+        XCTAssertEqual(items, [.extractArchives(archives: archives, destination: nil)])
+    }
+
+    /// 解压到当前文件夹 is a literal promise: no setting may change what it does.
+    func testExtractHereIsUnaffectedByTheDestinationSetting() {
+        let archives = [URL(fileURLWithPath: "/Users/foo/a.zip")]
+        for destination in [FinderArchives.Destination.ask,
+                            .duplicatesFirstItem,
+                            .folder(URL(fileURLWithPath: "/Users/foo/Downloads", isDirectory: true))] {
+            let items = submenu(.finderMenuExtract, in: plan(selecting: archives, destination: destination))
+            XCTAssertEqual(items?.first, .extractArchives(archives: archives, destination: nil), "\(destination)")
+        }
+    }
+
+    func testCompressionSubmenuFollowsTheAllowedFormats() {
+        let files = [URL(fileURLWithPath: "/Users/foo/report.pdf")]
+        XCTAssertEqual(
+            submenu(.finderMenuCompress, in: plan(
+                selecting: files,
+                archives: FinderArchiveSelection(archives: [], compressible: files),
+                compressionFormats: ["zip", "bzip2"]
+            )),
+            [
+                .compressItems(items: files, format: "zip"),
+                .compressItems(items: files, format: "bzip2"),
+                .compressItemsCustomize(items: files),
+            ]
+        )
+    }
+
+    /// No writable format left enabled: 自定义压缩… is still the way in, so the
+    /// submenu must not vanish.
+    func testCompressionSubmenuKeepsTheDialogWhenNoFormatIsAllowed() {
+        let files = [URL(fileURLWithPath: "/Users/foo/report.pdf")]
+        XCTAssertEqual(
+            submenu(.finderMenuCompress, in: plan(
+                selecting: files,
+                archives: FinderArchiveSelection(archives: [], compressible: files),
+                compressionFormats: []
+            )),
+            [.compressItemsCustomize(items: files)]
+        )
+    }
+
+    // MARK: - Title round-trip for the configured folder
+
+    func testConfiguredFolderTitleNamesTheFolderAndRoundTrips() {
+        for language in [AppLanguage.simplifiedChinese, .english] {
+            let title = FinderMenuTitles.extractToFolderTitle(folderName: "下载", language: language)
+            XCTAssertTrue(title.contains("下载"), "\(language): \(title)")
+            XCTAssertTrue(
+                FinderMenuTitles.isConfiguredFolderExtractionTitle(title, folderName: "下载"),
+                "\(language): the click must be recognised again"
+            )
+            XCTAssertFalse(
+                FinderMenuTitles.isConfiguredFolderExtractionTitle(title, folderName: "文稿"),
+                "\(language): a different folder must not match"
+            )
+        }
+    }
+
+    /// The configured-folder title must never be mistaken for the panel item.
+    func testConfiguredFolderTitleIsNotThePanelTitle() {
+        let title = FinderMenuTitles.extractToFolderTitle(folderName: "下载", language: .simplifiedChinese)
+        XCTAssertFalse(FinderMenuTitles.isCustomExtractionTitle(title))
+        XCTAssertFalse(FinderMenuTitles.isExtractHereTitle(title))
+    }
+
+    func testExtractHereTitleRoundTrips() {
+        for language in [AppLanguage.simplifiedChinese, .english] {
+            let title = Localization.text(.finderMenuExtractHere, language: language)
+            XCTAssertTrue(FinderMenuTitles.isExtractHereTitle(title), "\(language)")
+            XCTAssertFalse(FinderMenuTitles.isCustomExtractionTitle(title), "\(language)")
+        }
+    }
 }

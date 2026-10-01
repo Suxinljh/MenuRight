@@ -306,4 +306,186 @@ final class ArchiveCompressorTests: XCTestCase {
             guard case ArchiveError.readFailed = error else { return XCTFail("expected readFailed, got \(error)") }
         }
     }
+
+    // MARK: - Read failures and 取消
+
+    /// A source file that cannot be read must fail the run. Storing it as a
+    /// zero-byte entry produces an archive that looks successful while the
+    /// file's contents are silently gone.
+    func testUnreadableSourceFailsInsteadOfStoringAZeroByteEntry() throws {
+        let file = try makeFile("secret.txt", "hello")
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
+        }
+
+        XCTAssertThrowsError(try compress([file], format: .zip, name: "out.zip")) { error in
+            guard case ArchiveError.readFailed(let detail) = error else {
+                return XCTFail("expected readFailed, got \(error)")
+            }
+            XCTAssertTrue(detail.contains("secret.txt"), "the message must name the file: \(detail)")
+        }
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: root.appendingPathComponent("out.zip").path),
+            "a refused compression must not leave an archive behind"
+        )
+    }
+
+    /// 取消 in the dialog stops the walk. The archive is assembled in memory and
+    /// written last, so a cancel cannot leave a partial file.
+    func testCancellationStopsBeforeAnythingIsWritten() throws {
+        let file = try makeFile("a.txt", "hello")
+
+        XCTAssertThrowsError(try ArchiveCompressor.compress(
+            [file],
+            into: root,
+            preferredName: "cancelled.zip",
+            format: .zip,
+            conflictPolicy: .keepBoth,
+            sizeLimitMB: 64,
+            control: ArchiveOperationControl(cancelled: true)
+        )) { error in
+            XCTAssertEqual(error as? ArchiveError, .cancelled)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("cancelled.zip").path))
+    }
+
+    /// The flag is polled per entry, so a cancel that arrives mid-walk stops
+    /// there instead of finishing the tree first.
+    func testCancellationIsPolledWhileWalkingTheTree() throws {
+        _ = try makeFile("one/a.txt", "a")
+        _ = try makeFile("one/b.txt", "b")
+        _ = try makeFile("one/c.txt", "c")
+        let folder = root.appendingPathComponent("one", isDirectory: true)
+
+        // Cancel from the progress callback, which fires once per file read —
+        // i.e. while the walk is in progress, exactly where the poll used to be.
+        var polls = 0
+        let control = ArchiveOperationControl()
+        control.onProgress { _ in
+            polls += 1
+            if polls > 2 { control.cancel() }
+        }
+        XCTAssertThrowsError(try ArchiveCompressor.compress(
+            [folder],
+            into: root,
+            preferredName: "mid.zip",
+            format: .zip,
+            conflictPolicy: .keepBoth,
+            sizeLimitMB: 64,
+            control: control
+        )) { error in
+            XCTAssertEqual(error as? ArchiveError, .cancelled)
+        }
+        XCTAssertLessThan(polls, 6, "the walk must stop soon after the flag is set")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("mid.zip").path))
+    }
+
+    /// A cancelled run is not a failure the user has to read about.
+    func testCancellationHasItsOwnDescription() {
+        XCTAssertEqual(ArchiveExtractor.describe(.cancelled), "Cancelled")
+    }
+
+    // MARK: - Progress and control (the 暂停/取消 window's other half)
+
+    /// The bar is only meaningful if it ends at 1, and the last frame must land
+    /// after the archive is actually written.
+    func testCompressionReportsProgressUpToOne() throws {
+        _ = try makeFile("big/a.bin", String(repeating: "x", count: 4096))
+        _ = try makeFile("big/b.bin", String(repeating: "y", count: 4096))
+        let folder = root.appendingPathComponent("big", isDirectory: true)
+
+        var seen: [Double] = []
+        let control = ArchiveOperationControl()
+        control.onProgress { seen.append($0) }
+
+        _ = try ArchiveCompressor.compress(
+            [folder],
+            into: root,
+            preferredName: "progress.zip",
+            format: .zip,
+            conflictPolicy: .keepBoth,
+            sizeLimitMB: 64,
+            control: control
+        )
+
+        XCTAssertFalse(seen.isEmpty, "a compression must report progress")
+        XCTAssertEqual(seen.last, 1, "the bar must finish full")
+        XCTAssertEqual(seen, seen.sorted(), "progress must not go backwards: \(seen)")
+    }
+
+    /// Pause blocks the worker between entries and resume lets it finish — the
+    /// behaviour behind the 暂停/继续 button.
+    func testPausedCompressionWaitsAndThenFinishes() throws {
+        for index in 0..<6 {
+            _ = try makeFile("many/f\(index).txt", "payload")
+        }
+        let folder = root.appendingPathComponent("many", isDirectory: true)
+
+        let control = ArchiveOperationControl()
+        var finished = false
+        let done = expectation(description: "compression finished after resume")
+
+        DispatchQueue.global().async {
+            _ = try? ArchiveCompressor.compress(
+                [folder],
+                into: self.root,
+                preferredName: "paused.zip",
+                format: .zip,
+                conflictPolicy: .keepBoth,
+                sizeLimitMB: 64,
+                control: control
+            )
+            finished = true
+            done.fulfill()
+        }
+
+        control.pause()
+        // Still paused: give it real time to (wrongly) finish anyway.
+        Thread.sleep(forTimeInterval: 0.3)
+        XCTAssertFalse(finished, "a paused operation must not complete")
+        XCTAssertTrue(control.isPaused)
+
+        control.resume()
+        wait(for: [done], timeout: 5)
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: root.appendingPathComponent("paused.zip").path)
+        )
+    }
+
+    /// The control message travels by `clientRequestId`; an id nobody is running
+    /// must report "no such operation" instead of silently doing nothing.
+    func testRegistryRoutesControlActionsToTheRunningOperation() {
+        let registry = ArchiveOperationRegistry()
+        let control = ArchiveOperationControl()
+        registry.register(control, as: "cid-1")
+
+        XCTAssertTrue(registry.apply(.pause, to: "cid-1"))
+        XCTAssertTrue(control.isPaused)
+        XCTAssertTrue(registry.apply(.resume, to: "cid-1"))
+        XCTAssertFalse(control.isPaused)
+        XCTAssertTrue(registry.apply(.cancel, to: "cid-1"))
+        XCTAssertTrue(control.isCancelled)
+
+        XCTAssertFalse(registry.apply(.cancel, to: "nobody"), "a stale window must not look like a working one")
+
+        registry.unregister(id: "cid-1")
+        XCTAssertFalse(registry.apply(.cancel, to: "cid-1"))
+    }
+
+    func testCheckpointThrowsOnceCancelled() {
+        let control = ArchiveOperationControl()
+        XCTAssertNoThrow(try control.checkpoint())
+        control.cancel()
+        XCTAssertThrowsError(try control.checkpoint()) { error in
+            XCTAssertEqual(error as? ArchiveError, .cancelled)
+        }
+    }
+
+    func testUserCancellationMapsToItsOwnErrorCode() {
+        // Not `.operationFailed`: the extension silences this code, because
+        // popping an error dialog for something the user asked for is wrong.
+        let dispatcherResponse = FileOperationContract.ErrorCode.cancelledByUser
+        XCTAssertEqual(dispatcherResponse.rawValue, "cancelled_by_user")
+    }
 }

@@ -194,11 +194,65 @@ enum StringKey: String, CaseIterable {
     case finderMenuExtract
     case finderMenuExtractHere
     case finderMenuExtractCustom
+    /// `%@` is the folder named in 解压位置.
+    case finderMenuExtractToFolder
     case finderMenuCompress
     case finderMenuCompressToZip
     case finderMenuCompressToTar
     case finderMenuCompressToTarGz
     case finderMenuCompressToTarBz2
+
+    // MARK: Finder Sync failure prompts (OperationPresenter)
+    /// Buttons.
+    case presenterOK
+    case presenterOpenApp
+    /// Main app not running — the only prompt that offers a way out.
+    case presenterAppNotRunningTitle
+    case presenterAppNotRunningBody
+    case presenterAppNotRunningHint
+    case presenterDetails
+    /// The main app is alive but has not answered a long file operation yet.
+    case presenterStillRunningTitle
+    case presenterStillRunningBody
+    /// Progress notice shown while a delegated operation runs.
+    case presenterBusyCompress
+    case presenterBusyExtract
+    case presenterBusyGeneric
+    case presenterBusyBody
+    /// The progress notice's only button: hide the notice, keep the work.
+    case presenterBusyHide
+    /// Progress window: window title, and its 暂停/继续/取消 buttons.
+    case presenterProgressTitle
+    case presenterProgressPause
+    case presenterProgressResume
+    case presenterProgressCancel
+    case presenterProgressPreparing
+    /// Generic failure wording.
+    case presenterOperationFailed
+    case presenterCouldNotAction
+    case presenterCouldNotCreate
+    case presenterCouldNotOpen
+    case presenterCouldNotMoveOne
+    case presenterCouldNotMoveMany
+    case presenterAllItemsFailed
+    case presenterSomeItemsFailed
+    case presenterMoveConflictAll
+    case presenterMoveConflictSome
+    case presenterMoveFailed
+    case presenterOpenFailed
+    case presenterFolderAccessTitle
+    case presenterFolderAccessBody
+    case presenterFolderAccessHint
+    case presenterCutFailedTitle
+    case presenterCutFailedBody
+    case presenterPasteFailedTitle
+    case presenterTerminalFailedTitle
+    /// The `%@` in `presenterCouldNotAction`, one per delegated action.
+    case presenterActionExtract
+    case presenterActionCompress
+    case presenterActionCreateAlias
+    case presenterActionLock
+    case presenterActionUnlock
 
     // MARK: Favorites
     case favoriteFoldersIntro
@@ -244,6 +298,8 @@ enum StringKey: String, CaseIterable {
     case archiveDestinationAsk
     case archiveDestinationSameFolder
     case archiveDestinationCustom
+    case archiveDestinationNotAuthorized
+    case archiveDestinationNotAuthorizedDetail
     case archiveConflict
     case archiveConflictKeepBoth
     case archiveConflictSkip
@@ -252,6 +308,12 @@ enum StringKey: String, CaseIterable {
     case archiveSkipMetadata
     case archiveSizeLimit
     case archiveSizeLimitUnit
+    /// Shown under the field while the input is fine; names the allowed range.
+    case archiveSizeLimitRangeHint
+    /// Shown instead as soon as the input is above the maximum.
+    case archiveSizeLimitMaxHint
+    case archiveSizeLimitMinHint
+    case archiveSizeLimitInvalidHint
     case archiveNote
     case archiveSecurity
 
@@ -557,11 +619,83 @@ enum Localization {
         .finderMenuExtract: Entry(zh: "解压", en: "Extract"),
         .finderMenuExtractHere: Entry(zh: "解压到当前文件夹", en: "Extract Here"),
         .finderMenuExtractCustom: Entry(zh: "解压到指定位置…", en: "Extract to…"),
+        .finderMenuExtractToFolder: Entry(zh: "解压到「%@」", en: "Extract to “%@”"),
         .finderMenuCompress: Entry(zh: "压缩", en: "Compress"),
         .finderMenuCompressToZip: Entry(zh: "压缩为 ZIP", en: "Compress to ZIP"),
         .finderMenuCompressToTar: Entry(zh: "压缩为 TAR", en: "Compress to TAR"),
         .finderMenuCompressToTarGz: Entry(zh: "压缩为 TAR.GZ", en: "Compress to TAR.GZ"),
         .finderMenuCompressToTarBz2: Entry(zh: "压缩为 TAR.BZ2", en: "Compress to TAR.BZ2"),
+
+        // Finder Sync failure prompts
+        .presenterOK: Entry(zh: "好", en: "OK"),
+        .presenterOpenApp: Entry(zh: "打开 MenuRight", en: "Open Menu Right"),
+        .presenterAppNotRunningTitle: Entry(zh: "MenuRight 未运行", en: "Menu Right not running"),
+        .presenterAppNotRunningBody: Entry(
+            zh: "所有文件操作都由 MenuRight 主应用执行，所以它必须处于运行状态。",
+            en: "Menu Right does the actual file work, so the app has to be running."
+        ),
+        .presenterAppNotRunningHint: Entry(
+            zh: "打开 MenuRight 后，回到访达菜单重试一次即可。",
+            en: "Open Menu Right, then try again from the Finder menu."
+        ),
+        .presenterDetails: Entry(zh: "详情：%@", en: "Details: %@"),
+        .presenterStillRunningTitle: Entry(zh: "操作仍在进行", en: "Still working"),
+        .presenterStillRunningBody: Entry(
+            zh: "MenuRight 已收到这个操作，并且仍在处理（等待已超过 %@）。结果会直接出现在目标文件夹，请不要重复操作；如果很久都没有结果，可以重启 MenuRight。",
+            en: "Menu Right has your request and is still working on it (over %@ now). The result will appear in the destination folder — please don't repeat the action. If nothing shows up for a long time, restart Menu Right."
+        ),
+        .presenterBusyCompress: Entry(zh: "正在压缩…", en: "Compressing…"),
+        .presenterBusyExtract: Entry(zh: "正在解压…", en: "Extracting…"),
+        .presenterBusyGeneric: Entry(zh: "正在处理…", en: "Working…"),
+        .presenterBusyHide: Entry(zh: "隐藏", en: "Hide"),
+        .presenterProgressTitle: Entry(zh: "正在压缩", en: "Compressing"),
+        .presenterProgressPause: Entry(zh: "暂停", en: "Pause"),
+        .presenterProgressResume: Entry(zh: "继续", en: "Resume"),
+        .presenterProgressCancel: Entry(zh: "取消", en: "Cancel"),
+        .presenterProgressPreparing: Entry(zh: "正在读取文件…", en: "Reading files…"),
+        .presenterBusyBody: Entry(
+            zh: "完成后这个提示会自动消失，结果会直接出现在目标文件夹。",
+            en: "This notice closes itself when the operation finishes; the result appears in the destination folder."
+        ),
+        .presenterOperationFailed: Entry(zh: "操作失败。", en: "The operation failed."),
+        .presenterCouldNotAction: Entry(zh: "无法完成“%@”。", en: "Couldn't %@."),
+        .presenterCouldNotCreate: Entry(zh: "无法创建“%@”。", en: "Couldn't create “%@”."),
+        .presenterCouldNotOpen: Entry(zh: "无法打开“%@”。", en: "Couldn't open “%@”."),
+        .presenterCouldNotMoveOne: Entry(zh: "无法移动该项。", en: "Couldn't move the item."),
+        .presenterCouldNotMoveMany: Entry(zh: "无法移动 %d 项。", en: "Couldn't move %d items."),
+        .presenterAllItemsFailed: Entry(zh: "%d 项全部失败。", en: "All %d items failed."),
+        .presenterSomeItemsFailed: Entry(zh: "%d/%d 项失败。", en: "%d of %d items failed."),
+        .presenterMoveConflictAll: Entry(
+            zh: "目标位置已有同名文件，无法移动：%@。",
+            en: "Items could not be moved because files with the same names already exist in the destination: %@."
+        ),
+        .presenterMoveConflictSome: Entry(
+            zh: "部分项目无法移动：目标位置已有同名文件。",
+            en: "Some items could not be moved because files with the same names already exist in the destination."
+        ),
+        .presenterMoveFailed: Entry(zh: "移动失败。", en: "The move failed."),
+        .presenterOpenFailed: Entry(zh: "该项目无法打开。", en: "The item could not be opened."),
+        .presenterFolderAccessTitle: Entry(zh: "需要文件夹访问权限", en: "Folder Access Required"),
+        .presenterFolderAccessBody: Entry(
+            zh: "MenuRight 需要先获得这个文件夹的访问权限，才能在这里修改文件。",
+            en: "Menu Right needs access to this folder before it can modify files here."
+        ),
+        .presenterFolderAccessHint: Entry(
+            zh: "打开 MenuRight 的「文件夹权限」，授权这个文件夹或它的上层文件夹。",
+            en: "Open Menu Right → Folder Access and authorize this folder or one of its parent folders."
+        ),
+        .presenterCutFailedTitle: Entry(zh: "无法剪切项目", en: "Couldn't cut items"),
+        .presenterCutFailedBody: Entry(
+            zh: "剪切信息无法写入剪贴板。",
+            en: "The cut information could not be written to the pasteboard."
+        ),
+        .presenterPasteFailedTitle: Entry(zh: "无法粘贴项目", en: "Couldn't paste items"),
+        .presenterTerminalFailedTitle: Entry(zh: "无法打开终端", en: "Couldn't open Terminal"),
+        .presenterActionExtract: Entry(zh: "解压压缩包", en: "extract the archive"),
+        .presenterActionCompress: Entry(zh: "压缩所选项目", en: "compress the selection"),
+        .presenterActionCreateAlias: Entry(zh: "创建快捷方式", en: "create the alias"),
+        .presenterActionLock: Entry(zh: "锁定项目", en: "lock the item"),
+        .presenterActionUnlock: Entry(zh: "解锁项目", en: "unlock the item"),
         .finderMenuCopyFolderName: Entry(zh: "复制文件夹名称", en: "Copy Folder Name"),
         .finderMenuCopyFolderPath: Entry(zh: "复制文件夹路径", en: "Copy Folder Path"),
 
@@ -623,8 +757,8 @@ enum Localization {
         ),
         .archiveFormats: Entry(zh: "允许的压缩格式", en: "Allowed Formats"),
         .archiveFormatsFooter: Entry(
-            zh: "体积上限用于防止大压缩包被整包读入内存，超过上限会返回明确错误而不是卡死。",
-            en: "The size limit keeps big archives from being read into memory as one Data value; exceeding it returns a clear error instead of stalling."
+            zh: "体积上限用于防止大压缩包被整包读入内存，超过上限会返回明确错误。",
+            en: "The size limit keeps big archives from being read into memory as one Data value; exceeding it returns a clear error."
         ),
         .archiveFormatZip: Entry(zh: "ZIP", en: "ZIP"),
         .archiveFormatSevenZip: Entry(zh: "7-Zip", en: "7-Zip"),
@@ -642,6 +776,14 @@ enum Localization {
         .archiveDestinationAsk: Entry(zh: "每次询问", en: "Ask Every Time"),
         .archiveDestinationSameFolder: Entry(zh: "压缩包所在文件夹", en: "Archive’s Folder"),
         .archiveDestinationCustom: Entry(zh: "指定文件夹…", en: "Chosen Folder…"),
+        .archiveDestinationNotAuthorized: Entry(
+            zh: "该文件夹尚未授权，解压到那里会被拒绝。",
+            en: "This folder is not authorized yet, so extracting there will be refused."
+        ),
+        .archiveDestinationNotAuthorizedDetail: Entry(
+            zh: "请先在「文件夹权限」里授权该文件夹（或其上层文件夹）。",
+            en: "Authorize it — or a parent folder — under Folder Permissions first."
+        ),
         .archiveConflict: Entry(zh: "同名文件", en: "Name Conflicts"),
         .archiveConflictKeepBoth: Entry(zh: "保留两者（重命名新文件）", en: "Keep Both (rename the new file)"),
         .archiveConflictSkip: Entry(zh: "跳过", en: "Skip"),
@@ -653,9 +795,13 @@ enum Localization {
         ),
         .archiveSizeLimit: Entry(zh: "体积上限", en: "Size Limit"),
         .archiveSizeLimitUnit: Entry(zh: "MB", en: "MB"),
+        .archiveSizeLimitRangeHint: Entry(zh: "可输入 %@–%@ MB", en: "Enter %@–%@ MB"),
+        .archiveSizeLimitMaxHint: Entry(zh: "最大不能超过 %@ MB", en: "Maximum is %@ MB"),
+        .archiveSizeLimitMinHint: Entry(zh: "最小不能小于 %@ MB", en: "Minimum is %@ MB"),
+        .archiveSizeLimitInvalidHint: Entry(zh: "请输入数字", en: "Enter a number"),
         .archiveNote: Entry(
-            zh: "解压执行会在 P9 落地；本页配置已经持久化，接入后立即生效。",
-            en: "Extraction itself lands with P9. These settings are already persisted and take effect as soon as it does."
+            zh: "「解压位置」作用于菜单里的「解压到指定位置…」一项：「解压到当前文件夹」始终解压到压缩包所在文件夹。自定义压缩对话框的格式下拉同样受「允许的压缩格式」限制。",
+            en: "Extract To drives the 解压到指定位置… menu item — 解压到当前文件夹 always extracts beside the archive. The custom-compression dialog’s format list follows Allowed Formats too."
         ),
         .archiveSecurity: Entry(
             zh: "安全约束：解压时拒绝「../」、绝对路径与符号链接逃逸（Zip Slip），并在主应用的授权范围内写入。",

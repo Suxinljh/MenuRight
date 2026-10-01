@@ -8,6 +8,9 @@ import SWCompression
 /// can point anywhere, so following one would mean packaging files the user did
 /// not select, and storing one would mean writing it back on extraction.
 ///
+/// A source file that cannot be read **fails the compression**: it must never
+/// become a zero-byte entry that looks like a successful archive.
+///
 /// The archive is assembled in memory, so the configured size limit is enforced
 /// on the *input* total as well: refusing with a clear error beats being killed
 /// by the memory watchdog.
@@ -88,6 +91,16 @@ enum ArchiveCompressor {
 
     /// Zips `sources` into `directory` under `preferredName` (already carrying
     /// its extension). Collisions follow `conflictPolicy` like extraction does.
+    ///
+    /// `control` is checkpointed once per entry while the tree is walked and
+    /// again per entry while the archive is built, which is where it picks up a
+    /// pause or a cancel. The archive is assembled in memory and written only at
+    /// the very end, so a cancel throws `.cancelled` and leaves nothing behind —
+    /// no partial file, no temp file to clean up.
+    ///
+    /// Progress is reported in two phases, both determinate: reading the sources
+    /// (by bytes, against a metadata-only pre-walk) and writing the container (by
+    /// entries, straight out of `ZipWriter`'s deflate loop).
     static func compress(
         _ sources: [URL],
         into directory: URL,
@@ -96,7 +109,8 @@ enum ArchiveCompressor {
         conflictPolicy: ArchiveConflictPolicy,
         sizeLimitMB: Int,
         mode: ArchiveCompressionMode = .standard,
-        label: String? = nil
+        label: String? = nil,
+        control: ArchiveOperationControl? = nil
     ) throws -> Report {
         guard !sources.isEmpty else { throw ArchiveError.readFailed("nothing to compress") }
         guard let fileExtension = fileNameExtension(for: format) else {
@@ -114,6 +128,12 @@ enum ArchiveCompressor {
         var skippedLinks: [String] = []
         var total: Int64 = 0
 
+        // Metadata-only pre-walk: the read phase can only report a *fraction* if
+        // something knows the denominator up front, and touching sizes is cheap
+        // next to reading every byte below.
+        let expectedBytes = sourceBytes(of: sources)
+        control?.report(0)
+
         for source in sources {
             guard FileManager.default.fileExists(atPath: source.path) else {
                 throw ArchiveError.readFailed("“\(source.path)” does not exist")
@@ -124,17 +144,30 @@ enum ArchiveCompressor {
                 into: &items,
                 skippedLinks: &skippedLinks,
                 total: &total,
-                limit: limit
+                limit: limit,
+                control: control,
+                onBytesRead: { read in
+                    guard expectedBytes > 0 else { return }
+                    // Reading is the first half of the bar.
+                    control?.report(0.5 * Double(read) / Double(expectedBytes))
+                }
             )
         }
 
+        // The container build is the second half, reported per entry.
+        let entryCount = max(items.count, 1)
         let archive = try archiveData(
             items: items,
             format: format,
             fileExtension: fileExtension,
             mode: mode,
-            label: label
+            label: label,
+            control: control,
+            onEntry: { index in
+                control?.report(0.5 + 0.5 * Double(index) / Double(entryCount))
+            }
         )
+        control?.report(1)
         let url = try destinationURL(in: directory, preferredName: preferredName, conflictPolicy: conflictPolicy)
         do {
             if conflictPolicy == .overwrite {
@@ -184,8 +217,11 @@ enum ArchiveCompressor {
         into items: inout [Item],
         skippedLinks: inout [String],
         total: inout Int64,
-        limit: Int64
+        limit: Int64,
+        control: ArchiveOperationControl?,
+        onBytesRead: ((Int64) -> Void)? = nil
     ) throws {
+        try control?.checkpoint()
         let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey])
         if values?.isSymbolicLink == true {
             skippedLinks.append(entryName)
@@ -206,7 +242,9 @@ enum ArchiveCompressor {
                     into: &items,
                     skippedLinks: &skippedLinks,
                     total: &total,
-                    limit: limit
+                    limit: limit,
+                    control: control,
+                    onBytesRead: onBytesRead
                 )
             }
             return
@@ -214,15 +252,20 @@ enum ArchiveCompressor {
 
         let size = Int64(values?.fileSize ?? 0)
         total += size
+        onBytesRead?(total)
         guard total <= limit else {
             throw ArchiveError.tooLarge("the selection is larger than the \(limit / 1024 / 1024) MB limit")
         }
-        items.append(Item(
-            entryName: entryName,
-            url: url,
-            isDirectory: false,
-            contents: (try? Data(contentsOf: url, options: [.mappedIfSafe])) ?? Data()
-        ))
+        // A file that cannot be read must fail the compression instead of being
+        // stored as a zero-byte entry: an archive that silently lost the content
+        // of a file looks like a successful run and is only discovered much later.
+        let contents: Data
+        do {
+            contents = try Data(contentsOf: url, options: [.mappedIfSafe])
+        } catch {
+            throw ArchiveError.readFailed("“\(entryName)” could not be read: \(error.localizedDescription)")
+        }
+        items.append(Item(entryName: entryName, url: url, isDirectory: false, contents: contents))
     }
 
     // MARK: - Format writers
@@ -232,7 +275,9 @@ enum ArchiveCompressor {
         format: ArchiveFormat,
         fileExtension: String,
         mode: ArchiveCompressionMode,
-        label: String?
+        label: String?,
+        control: ArchiveOperationControl? = nil,
+        onEntry: ((Int) -> Void)? = nil
     ) throws -> Data {
         switch format {
         case .zip:
@@ -244,12 +289,28 @@ enum ArchiveCompressor {
             }
             do {
                 // The label goes into the EOCD comment, which only ZIP has.
-                return try ZipWriter.archive(entries, comment: label, level: mode.deflateLevel)
+                return try ZipWriter.archive(
+                    entries,
+                    comment: label,
+                    level: mode.deflateLevel,
+                    // Reported from inside the deflate loop: this is the part the
+                    // user actually waits on, and it is the only place with a
+                    // per-entry view of it.
+                    onEntry: { index in
+                        onEntry?(index)
+                        try control?.checkpoint()
+                    }
+                )
             } catch {
                 throw ArchiveError.writeFailed(String(describing: error))
             }
         case .tar, .gzip, .bzip2:
+            // These containers have no per-entry hook; the whole tree is walked
+            // once inside `makeTar`, so a cancel can only land before it starts.
+            try control?.checkpoint()
+            onEntry?(items.count / 2)
             let tar = makeTar(items: items)
+            onEntry?(items.count)
             switch format {
             case .tar:
                 return tar
@@ -303,5 +364,36 @@ enum ArchiveCompressor {
                 FileNameResolver.uniqueName(preferred: preferredName, existing: siblings)
             )
         }
+    }
+
+    /// Total size of the sources, from metadata only — no file contents are read.
+    ///
+    /// Used solely as the denominator of the read-phase progress bar. Walking a
+    /// tree with `stat` is orders of magnitude cheaper than reading it, and the
+    /// alternative (an indeterminate bar for the longest part of the operation)
+    /// tells the user less.
+    static func sourceBytes(of sources: [URL]) -> Int64 {
+        var total: Int64 = 0
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey]
+        for source in sources {
+            let values = try? source.resourceValues(forKeys: Set(keys))
+            if values?.isSymbolicLink == true { continue }
+            if values?.isDirectory == true {
+                guard let walker = FileManager.default.enumerator(
+                    at: source,
+                    includingPropertiesForKeys: keys,
+                    options: [],
+                    errorHandler: { _, _ in true }
+                ) else { continue }
+                for case let url as URL in walker {
+                    let child = try? url.resourceValues(forKeys: Set(keys))
+                    if child?.isSymbolicLink == true || child?.isDirectory == true { continue }
+                    total += Int64(child?.fileSize ?? 0)
+                }
+            } else {
+                total += Int64(values?.fileSize ?? 0)
+            }
+        }
+        return total
     }
 }

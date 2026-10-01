@@ -81,7 +81,11 @@ enum ZipWriter {
     static func archive(
         _ entries: [ZipArchiveEntry],
         comment: String? = nil,
-        level: Int32 = Z_DEFAULT_COMPRESSION
+        level: Int32 = Z_DEFAULT_COMPRESSION,
+        /// Called before each entry is deflated, with its index. This loop is
+        /// where compression time actually goes, so it is where progress and a
+        /// pause/cancel request can be observed at a useful granularity.
+        onEntry: ((Int) throws -> Void)? = nil
     ) throws -> Data {
         guard entries.count <= maximumEntries else {
             throw ZipWriterError.zip64Required("\(entries.count) entries exceeds the ZIP limit of \(maximumEntries)")
@@ -90,7 +94,8 @@ enum ZipWriter {
         var output = Data()
         var centralDirectory = Data()
 
-        for entry in entries {
+        for (index, entry) in entries.enumerated() {
+            try onEntry?(index)
             let nameBytes = try nameBytes(for: entry.name)
             let uncompressedSize = UInt64(entry.contents.count)
             guard uncompressedSize <= maximumSize else {

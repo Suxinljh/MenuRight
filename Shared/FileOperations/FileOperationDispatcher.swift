@@ -66,7 +66,16 @@ public final class FileOperationDispatcher: @unchecked Sendable {
     /// This function never throws: every failure mode is encoded in the
     /// returned `Response.failure` so the transport layer can reply with a
     /// single IPCProtocol.Response.
-    public func dispatch(payload: String?) -> FileOperationContract.Response {
+    /// `control` is non-nil only for archive work: it is how a 暂停/取消 from the
+    /// progress window reaches the compressor that is already running.
+    ///
+    /// Not `public`: `ArchiveOperationControl` is process-internal, and this type
+    /// is compiled straight into the app and test targets rather than imported as
+    /// a module, so internal access is all either of them needs.
+    func dispatch(
+        payload: String?,
+        control: ArchiveOperationControl? = nil
+    ) -> FileOperationContract.Response {
         guard let request = FileOperationContract.Request.decode(fromIPC: payload) else {
             Self.log.error("DISPATCH malformed request payload (decode failed)")
             return .failure(code: .invalidRequest, message: "Malformed request payload")
@@ -97,7 +106,7 @@ public final class FileOperationDispatcher: @unchecked Sendable {
         case .openURL:
             return handleOpenURL(request: request)
         case .compressItems:
-            return handleCompressItems(request: request)
+            return handleCompressItems(request: request, control: control)
         case .extractArchive:
             return handleExtractArchive(request: request)
         }
@@ -317,7 +326,10 @@ public final class FileOperationDispatcher: @unchecked Sendable {
     /// go through the authorization gate. Format support is explicit: this build
     /// writes ZIP / TAR / TAR.GZ / TAR.BZ2, and anything else is
     /// `archiveUnsupported` rather than a silent fallback to ZIP.
-    private func handleCompressItems(request: FileOperationContract.Request) -> FileOperationContract.Response {
+    private func handleCompressItems(
+        request: FileOperationContract.Request,
+        control: ArchiveOperationControl?
+    ) -> FileOperationContract.Response {
         guard let sourceRaws = request.args.sourcePaths, !sourceRaws.isEmpty else {
             return .failure(code: .invalidRequest, message: "compressItems requires non-empty sourcePaths")
         }
@@ -326,6 +338,16 @@ public final class FileOperationDispatcher: @unchecked Sendable {
             return .failure(
                 code: .archiveUnsupported,
                 message: "This build cannot create “\(rawFormat)” archives (ZIP, TAR, TAR.GZ and TAR.BZ2 are supported)."
+            )
+        }
+
+        // 允许的压缩格式 filters the 压缩 ▸ menu, but a menu built before the
+        // setting changed can still arrive, so the app re-checks it against its
+        // own settings. The custom dialog is exempt: it names the format itself.
+        if request.args.customize != true, !archiveSettings().isEnabled(format) {
+            return .failure(
+                code: .archiveUnsupported,
+                message: "Creating “\(format.rawValue)” archives is turned off in the archive settings."
             )
         }
 
@@ -387,7 +409,8 @@ public final class FileOperationDispatcher: @unchecked Sendable {
                     conflictPolicy: settings.conflictPolicy,
                     sizeLimitMB: settings.sizeLimitMB,
                     mode: mode,
-                    label: label
+                    label: label,
+                    control: control
                 )
                 Self.log.info(
                     "DISPATCH compressItems SUCCESS path=\(report.archiveURL.path, privacy: .public) format=\(format.rawValue, privacy: .public) entries=\(report.entryCount, privacy: .public) skippedSymlinks=\(report.skippedSymbolicLinks.count, privacy: .public)"
@@ -517,6 +540,7 @@ public final class FileOperationDispatcher: @unchecked Sendable {
         case .unsafePath: return .archiveUnsafePath
         case .tooLarge: return .archiveTooLarge
         case .conflict: return .nameCollision
+        case .cancelled: return .cancelledByUser
         case .readFailed, .writeFailed: return .archiveFailed
         }
     }

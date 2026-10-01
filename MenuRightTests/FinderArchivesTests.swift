@@ -118,4 +118,88 @@ final class FinderArchivesTests: XCTestCase {
         XCTAssertEqual(FinderArchives.compressionSuffix(forFormat: "bzip2"), "tar.bz2")
         XCTAssertNil(FinderArchives.compressionSuffix(forFormat: "rar"))
     }
+
+    // MARK: - 解压位置 → the second 解压 item
+
+    /// No payload at all (fresh install) keeps the pre-setting behaviour: ask.
+    func testMissingPayloadAsksForADestination() {
+        XCTAssertEqual(FinderArchives.destination(from: defaults), .ask)
+    }
+
+    func testAskEveryTimeAsksForADestination() throws {
+        var settings = MenuRightSettings.default
+        settings.archives.destination = .askEachTime
+        try write(settings: settings)
+        XCTAssertEqual(FinderArchives.destination(from: defaults), .ask)
+    }
+
+    /// 压缩包所在文件夹 is exactly what 解压到当前文件夹 already does, so the
+    /// second item is dropped instead of duplicating it.
+    func testArchiveFolderDropsTheSecondExtractItem() throws {
+        var settings = MenuRightSettings.default
+        settings.archives.destination = .sameFolder
+        try write(settings: settings)
+        XCTAssertEqual(FinderArchives.destination(from: defaults), .duplicatesFirstItem)
+    }
+
+    func testChosenFolderIsUsedDirectly() throws {
+        var settings = MenuRightSettings.default
+        settings.archives.destination = .customFolder
+        settings.archives.customDestinationPath = "/tmp/MenuRight Downloads"
+        try write(settings: settings)
+        XCTAssertEqual(
+            FinderArchives.destination(from: defaults),
+            .folder(URL(fileURLWithPath: "/tmp/MenuRight Downloads"))
+        )
+    }
+
+    /// 指定文件夹 with nothing chosen yet cannot be honoured: asking beats
+    /// extracting next to the archive while the pane says otherwise.
+    func testChosenFolderWithoutAPathAsks() throws {
+        var settings = MenuRightSettings.default
+        settings.archives.destination = .customFolder
+        settings.archives.customDestinationPath = "   "
+        try write(settings: settings)
+        XCTAssertEqual(FinderArchives.destination(from: defaults), .ask)
+    }
+
+    /// A payload written by another build must never redirect an extraction.
+    func testUnknownDestinationValueAsks() {
+        defaults.set(
+            Data(#"{"archives":{"destination":"somewhereElse"}}"#.utf8),
+            forKey: FinderArchives.storageKey
+        )
+        XCTAssertEqual(FinderArchives.destination(from: defaults), .ask)
+    }
+
+    // MARK: - 允许的压缩格式 → 压缩 ▸
+
+    func testCompressionFormatsFallBackToEverythingWithoutAPayload() {
+        XCTAssertEqual(FinderArchives.enabledCompressionFormats(from: defaults), FinderArchives.compressionFormats)
+    }
+
+    func testCompressionFormatsFollowTheSetting() throws {
+        var settings = MenuRightSettings.default
+        settings.archives.enabledFormats = [.zip, .bzip2]
+        try write(settings: settings)
+        XCTAssertEqual(FinderArchives.enabledCompressionFormats(from: defaults), ["zip", "bzip2"])
+    }
+
+    /// Only read-only formats enabled: no format item survives, and 压缩 ▸ still
+    /// offers 自定义压缩… (that pairing is asserted in the menu-plan tests).
+    func testReadOnlyFormatsLeaveNoCompressionItems() throws {
+        var settings = MenuRightSettings.default
+        settings.archives.enabledFormats = [.sevenZip, .xz]
+        try write(settings: settings)
+        XCTAssertEqual(FinderArchives.enabledCompressionFormats(from: defaults), [])
+    }
+
+    /// An empty set means "everything", matching the extraction side: a payload
+    /// with every box unticked must not look like a build that cannot compress.
+    func testEmptyFormatSetKeepsEveryCompressionFormat() throws {
+        var settings = MenuRightSettings.default
+        settings.archives.enabledFormats = []
+        try write(settings: settings)
+        XCTAssertEqual(FinderArchives.enabledCompressionFormats(from: defaults), FinderArchives.compressionFormats)
+    }
 }

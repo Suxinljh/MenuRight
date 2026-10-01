@@ -8,8 +8,11 @@
 #   * ZIP / TAR / TAR.GZ / TAR.BZ2 are created by our own code path and read back
 #     by our own extractor, reproducing the original tree (`diff -r`);
 #   * our ZIP is accepted by the system `unzip -t`;
-#   * archives made by the **system tools** (`gzip`, `bzip2`, `xz`, `tar`) are
-#     extracted correctly, i.e. the SWCompression backends work on foreign files;
+#   * archives made by tools **other than ours** are extracted correctly, i.e.
+#     the SWCompression backends work on foreign files: `tar`/`gzip`/`bzip2`/
+#     `xz`-made TARs, a plain `.gz`, and — via libarchive's 7-Zip writer in
+#     macOS' bsdtar — a real `.7z`. Those last two are the only automated
+#     evidence for XZ and 7-Zip reading anywhere in the project;
 #   * a **hostile** archive carrying `../` entries and a symlink is refused
 #     entry-by-entry, and nothing lands outside the destination directory.
 #
@@ -19,7 +22,7 @@
 # test of the shipped code rather than of a copy.
 #
 # What it cannot prove: the Finder right-click path itself (manual gate, §3.8),
-# and 7-Zip reading (no 7-Zip writer exists on macOS; see the README).
+# and RAR (out of scope by decision D5-R1).
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -40,14 +43,48 @@ ln -s a.txt "$OUT_DIR/fixture/link.txt"
 gzip -kc "$OUT_DIR/fixture.tar" > "$OUT_DIR/work/foreign/foreign.tar.gz"
 bzip2 -kc "$OUT_DIR/fixture.tar" > "$OUT_DIR/work/foreign/foreign.tar.bz2"
 gzip -kc "$OUT_DIR/fixture/a.txt" > "$OUT_DIR/work/foreign/plain.txt.gz"
-# xz is not part of a stock macOS; the check is skipped when it is missing.
+
+# xz is not part of a stock macOS. Prefer the CLI when it is installed, otherwise
+# use Python's lzma (the liblzma binding every CPython ships) — either way the
+# sample must be produced by something **other** than our own code, which is the
+# whole point of the foreign-archive section.
 HAVE_XZ=no
 if command -v xz >/dev/null 2>&1; then
     xz -kc "$OUT_DIR/fixture.tar" > "$OUT_DIR/work/foreign/foreign.tar.xz"
     HAVE_XZ=yes
-else
-    echo "(xz is not installed — the foreign .tar.xz check will be skipped)"
+elif "${PYTHON:-python3}" -c 'import lzma' 2>/dev/null; then
+    if "${PYTHON:-python3}" - "$OUT_DIR/fixture.tar" > "$OUT_DIR/work/foreign/foreign.tar.xz" <<'PY'
+import lzma, sys
+with open(sys.argv[1], "rb") as source:
+    sys.stdout.buffer.write(lzma.compress(source.read(), format=lzma.FORMAT_XZ))
+PY
+    then
+        HAVE_XZ=yes
+    else
+        rm -f "$OUT_DIR/work/foreign/foreign.tar.xz"
+    fi
 fi
+
+# 7-Zip: nothing in this project can *write* 7z (SWCompression is read-only), but
+# macOS' bsdtar carries libarchive's 7-Zip writer, which is exactly what "a
+# foreign 7-Zip archive" means for this check.
+HAVE_7Z=no
+if ( cd "$OUT_DIR" && tar -cf "$OUT_DIR/work/foreign/foreign.7z" --format=7zip fixture ) 2>/dev/null; then
+    HAVE_7Z=yes
+else
+    rm -f "$OUT_DIR/work/foreign/foreign.7z"
+fi
+
+# These two are the formats with no other automated coverage — the unit tests can
+# only exercise what they can construct, and neither 7z nor xz can be constructed
+# from Swift here. A skip is therefore a real coverage gap, not a detail.
+if [ "$HAVE_XZ" != "yes" ]; then
+    echo "!! NOT TESTED: foreign .tar.xz (no xz CLI and no python3 lzma)"
+fi
+if [ "$HAVE_7Z" != "yes" ]; then
+    echo "!! NOT TESTED: foreign .7z (this bsdtar cannot write 7zip)"
+fi
+
 rm -f "$OUT_DIR/fixture.tar"
 
 "${PYTHON:-python3}" - "$OUT_DIR/hostile.zip" <<'PY'
@@ -212,8 +249,27 @@ if [ "$HAVE_XZ" = "yes" ]; then
     check "foreign tar.xz opened" \
         "$([ -f "$OUT_DIR/work/foreign-foreign.tar.xz/fixture/a.txt" ] && echo yes || echo no)" "yes"
 fi
+if [ "$HAVE_7Z" = "yes" ]; then
+    check "foreign 7z opened" \
+        "$([ -f "$OUT_DIR/work/foreign-foreign.7z/fixture/a.txt" ] && echo yes || echo no)" "yes"
+    check "foreign 7z kept the tree (nested file, no symlink)" \
+        "$([ -f "$OUT_DIR/work/foreign-foreign.7z/fixture/nested/b.txt" ] \
+            && [ ! -e "$OUT_DIR/work/foreign-foreign.7z/fixture/link.txt" ] \
+            && echo yes || echo no)" "yes"
+fi
 check "foreign plain gzip expanded to one file" \
     "$([ -f "$OUT_DIR/work/foreign-plain.txt.gz/plain.txt" ] && echo yes || echo no)" "yes"
+
+# P9 promises six readable formats. This is the only place all six are proven
+# against archives we did not write ourselves, so say out loud which ones ran.
+echo "--- format coverage (archives we did not write)"
+echo "  ZIP     : written by us, accepted by the system reader (unzip -t) above"
+echo "  TAR     : tested — every foreign .tar.* sample below is peeled to a TAR"
+echo "  GZip    : tested (foreign .tar.gz above, plus a plain .gz)"
+echo "  BZip2   : $([ -f "$OUT_DIR/work/foreign-foreign.tar.bz2/fixture/a.txt" ] && echo tested || echo 'NOT TESTED')"
+echo "  XZ      : $([ "$HAVE_XZ" = yes ] && echo tested || echo 'NOT TESTED')"
+echo "  7-Zip   : $([ "$HAVE_7Z" = yes ] && echo tested || echo 'NOT TESTED')"
+echo "  RAR     : out of scope by decision D5-R1"
 
 if [ "$failures" -ne 0 ]; then
     echo "verify-archive-roundtrip: FAIL ($failures)"

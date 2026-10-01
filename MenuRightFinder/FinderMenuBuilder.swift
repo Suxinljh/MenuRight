@@ -187,6 +187,8 @@ enum FinderMenuTitles {
             return Localization.text(.finderMenuExtractHere, language: language)
         case .extractArchivesCustomize:
             return Localization.text(.finderMenuExtractCustom, language: language)
+        case .extractArchivesToFolder(_, let destination):
+            return Self.extractToFolderTitle(folderName: destination.lastPathComponent, language: language)
         case .compressItems(_, let format):
             return Self.compressionTitle(forFormat: format, language: language)
         case .compressItemsCustomize:
@@ -248,6 +250,26 @@ enum FinderMenuTitles {
         concreteLanguages.contains { title == Localization.text(.finderMenuExtractCustom, language: $0) }
     }
 
+    /// True when the clicked 解压 item is the literal "into the archive's own
+    /// folder" one.
+    static func isExtractHereTitle(_ title: String) -> Bool {
+        concreteLanguages.contains { title == Localization.text(.finderMenuExtractHere, language: $0) }
+    }
+
+    /// 解压 ▸ item for a folder named in 解压位置. The folder name is user data,
+    /// so the title is built by substitution rather than lookup.
+    static func extractToFolderTitle(folderName: String, language: AppLanguage) -> String {
+        String(format: Localization.text(.finderMenuExtractToFolder, language: language), folderName)
+    }
+
+    /// True when the clicked 解压 item means "into the folder configured in
+    /// 解压位置". The expected title is rebuilt from the *live* settings, exactly
+    /// like the menu was, so a settings change between build and click cannot
+    /// send the extraction to the wrong place.
+    static func isConfiguredFolderExtractionTitle(_ title: String, folderName: String) -> Bool {
+        concreteLanguages.contains { title == extractToFolderTitle(folderName: folderName, language: $0) }
+    }
+
     /// True when the clicked 压缩 item is the dialog one.
     static func isCustomCompressionTitle(_ title: String) -> Bool {
         concreteLanguages.contains { title == Localization.text(.finderMenuCompressCustom, language: $0) }
@@ -302,6 +324,9 @@ enum FinderMenuAction: Equatable {
     case extractArchives(archives: [URL], destination: URL?)
     /// P9 stage 4: 解压 ▸ → 解压到指定位置…, which asks the main app for a folder.
     case extractArchivesCustomize(archives: [URL])
+    /// 解压 ▸ → 解压到「<文件夹>」, when 解压位置 names a folder: the click goes
+    /// straight there instead of asking.
+    case extractArchivesToFolder(archives: [URL], destination: URL)
     /// P9: 压缩 ▸ — the whole selection, into `format`.
     case compressItems(items: [URL], format: String)
     /// P9 stage 3: 压缩 ▸ → 自定义压缩…, which opens the dialog in the main app.
@@ -340,8 +365,7 @@ enum FinderMenuPlanItem: Equatable {
 /// rule is drawn — measured on a real menu, it costs a whole blank row (~24pt)
 /// while the native separators above it keep their hairline. Dropping them makes
 /// the items contiguous instead of leaving gaps that read as a layout bug. Same
-/// process-boundary effect as the menu images; see README "Why the Finder context
-/// menu has no icons".
+/// process-boundary effect as the 常用项菜单图标; see README "常用项图标".
 enum FinderMenuBuilder {
     static func plan(
         for selection: FinderSelectionContext,
@@ -349,7 +373,9 @@ enum FinderMenuBuilder {
         hasCutPayload: Bool,
         newFileKinds: [NewFileKind] = NewFileKind.allCases,
         favorites: [FinderFavoriteEntry] = [],
-        archives: FinderArchiveSelection = .none
+        archives: FinderArchiveSelection = .none,
+        archiveDestination: FinderArchives.Destination = .ask,
+        compressionFormats: [String] = FinderArchives.compressionFormats
     ) -> [FinderMenuPlanItem] {
         if !containerMenu && selection.hasSelection {
             // P9: the archive actions are the only submenus in the selection
@@ -366,13 +392,25 @@ enum FinderMenuBuilder {
                 .action(.cut(items: selection.itemURLs)),
             ]
             if archives.canExtract {
-                items.append(.submenu(titleKey: .finderMenuExtract, actions: [
+                // 解压到当前文件夹 is a literal promise and never changes. The
+                // second item is 解压位置's: ask, go to the chosen folder, or —
+                // when the setting says "the archive's own folder", which is what
+                // the first item already does — not exist at all.
+                var extractItems: [FinderMenuAction] = [
                     .extractArchives(archives: archives.archives, destination: nil),
-                    .extractArchivesCustomize(archives: archives.archives),
-                ]))
+                ]
+                switch archiveDestination {
+                case .ask:
+                    extractItems.append(.extractArchivesCustomize(archives: archives.archives))
+                case .folder(let destination):
+                    extractItems.append(.extractArchivesToFolder(archives: archives.archives, destination: destination))
+                case .duplicatesFirstItem:
+                    break
+                }
+                items.append(.submenu(titleKey: .finderMenuExtract, actions: extractItems))
             }
             if archives.canCompress {
-                var compressionItems = FinderArchives.compressionFormats.map {
+                var compressionItems = compressionFormats.map {
                     FinderMenuAction.compressItems(items: archives.compressible, format: $0)
                 }
                 compressionItems.append(.compressItemsCustomize(items: archives.compressible))

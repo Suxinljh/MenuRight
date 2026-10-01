@@ -190,6 +190,10 @@ public enum FileOperationContract {
         case filesystemError = "filesystem_error"
         /// Anything not otherwise classified.
         case operationFailed = "operation_failed"
+        /// The user pressed 取消 in the progress window. Not a failure: the
+        /// extension must not pop an error dialog for something the user asked
+        /// for, and nothing was written (the archive is assembled in memory).
+        case cancelledByUser = "cancelled_by_user"
         /// P6: creating a Finder alias failed (bookmark creation or write).
         case aliasFailed = "alias_failed"
         /// P6: setting/clearing the immutable flag failed.
@@ -283,5 +287,40 @@ extension FileOperationContract.Response {
     public static func decode(fromIPC payload: String?) -> FileOperationContract.Response? {
         guard let payload, let data = payload.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(FileOperationContract.Response.self, from: data)
+    }
+}
+
+// MARK: - Progress-window controls
+
+/// What the progress window's buttons ask for.
+///
+/// Lives in the contract rather than next to the worker's control object
+/// because **both** sides need it: the extension sends it, the Main App
+/// applies it. `ArchiveOperationControl` (App-only, it touches `ArchiveError`)
+/// is the other half.
+public enum ArchiveControlAction: String, Codable, Equatable, Sendable {
+    case pause
+    case resume
+    case cancel
+
+    var titleKey: StringKey {
+        switch self {
+        case .pause: return .presenterProgressPause
+        case .resume: return .presenterProgressResume
+        case .cancel: return .presenterProgressCancel
+        }
+    }
+}
+
+/// Payload of the `fileOperationControl` IPC method.
+public struct ArchiveControlRequest: Codable, Equatable, Sendable {
+    /// The extension-generated id of the running operation — the only
+    /// identifier both sides already agree on.
+    public let clientRequestId: String
+    public let action: ArchiveControlAction
+
+    public init(clientRequestId: String, action: ArchiveControlAction) {
+        self.clientRequestId = clientRequestId
+        self.action = action
     }
 }

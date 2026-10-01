@@ -1070,6 +1070,60 @@ final class FileOperationDispatcherTests: XCTestCase {
         )
     }
 
+    /// 允许的压缩格式 filters the 压缩 ▸ menu; this is the app-side re-check that
+    /// catches a menu built before the setting changed.
+    func testCompressItemsRefusesAFormatTheSettingsTurnedOff() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let file = authorized.appendingPathComponent("a.txt")
+        try Data("A".utf8).write(to: file)
+
+        var settings = ArchiveSettings()
+        settings.enabledFormats = [.zip]
+        let scoped = dispatcher(archiveSettings: settings)
+
+        XCTAssertEqual(
+            failureCode(scoped.dispatch(payload: compressPayload(
+                sources: [file], destination: authorized, format: "tar", name: "a.tar"
+            ))),
+            .archiveUnsupported
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: authorized.appendingPathComponent("a.tar").path),
+            "a refused format must not leave an archive behind"
+        )
+        XCTAssertEqual(
+            successPath(scoped.dispatch(payload: compressPayload(
+                sources: [file], destination: authorized, format: "zip", name: "a.zip"
+            ))),
+            authorized.appendingPathComponent("a.zip").path
+        )
+    }
+
+    /// The custom-compression dialog names its own format, so the setting must
+    /// not turn that button into a failure.
+    func testCustomCompressionIsExemptFromTheFormatSetting() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let file = authorized.appendingPathComponent("a.txt")
+        try Data("A".utf8).write(to: file)
+
+        var settings = ArchiveSettings()
+        settings.enabledFormats = [.zip]
+        let response = dispatcher(archiveSettings: settings).dispatch(payload: payload(
+            .compressItems,
+            FileOperationContract.OperationArgs(
+                sourcePaths: [file.path],
+                destinationDirectory: authorized.path,
+                archiveFormat: "tar",
+                customize: true
+            )
+        ))
+        XCTAssertTrue(isSuccess(response), "the dialog owns the format choice")
+    }
+
     func testExtractArchiveExtractsIntoTheArchivesOwnFolderByDefault() throws {
         let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
         try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)

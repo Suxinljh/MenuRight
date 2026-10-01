@@ -14,6 +14,10 @@ enum ArchiveError: Error, Equatable {
     case conflict(String)
     case readFailed(String)
     case writeFailed(String)
+    /// The user cancelled the running compression. Not a failure: the archive
+    /// is assembled in memory and only written at the very end, so cancelling
+    /// cannot leave a half-written file behind.
+    case cancelled
 }
 
 /// Why an entry was left out.
@@ -314,7 +318,18 @@ enum ArchiveExtractor {
         )
 
         // Configured behaviour: remove the archive once it extracted cleanly.
-        if settings.deletesArchiveAfterExtraction, summary.failed == 0 {
+        //
+        // "Cleanly" means **nothing the user asked for was left behind**. A run
+        // whose entries were skipped for a content reason (a name conflict under
+        // the 跳过 policy, a symlink, an unsafe name, the archive itself) must
+        // keep the source, otherwise the skipped content is gone for good.
+        // Metadata noise (`__MACOSX/`, `._*`, `.DS_Store`) is not content and
+        // does not block the delete.
+        let leftOutContent = results.contains { result in
+            if case .skipped(let reason) = result.outcome, reason != .metadata { return true }
+            return false
+        }
+        if settings.deletesArchiveAfterExtraction, summary.failed == 0, !leftOutContent {
             try? manager.removeItem(at: archiveURL)
         }
 
@@ -419,6 +434,7 @@ enum ArchiveExtractor {
         case .conflict(let detail): return "A file with that name already exists: \(detail)"
         case .readFailed(let detail): return "Could not read the archive: \(detail)"
         case .writeFailed(let detail): return "Could not write the archive: \(detail)"
+        case .cancelled: return "Cancelled"
         }
     }
 

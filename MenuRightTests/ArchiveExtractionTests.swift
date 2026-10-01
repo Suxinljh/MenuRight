@@ -16,7 +16,14 @@ enum RawZipBuilder {
         build([(name: name, contents: Data(target.utf8), externalAttributes: 0xA1FF_0000)])
     }
 
-    static func build(_ entries: [(name: String, contents: Data, externalAttributes: UInt32)]) -> Data {
+    /// Full control over the raw name bytes and the general-purpose flags.
+    ///
+    /// The encoding tests need archives whose names are *not* UTF-8, and those
+    /// cannot be spelled as a Swift `String` — the whole point is the byte
+    /// sequence, not the text.
+    static func buildRaw(
+        _ entries: [(nameBytes: [UInt8], contents: Data, externalAttributes: UInt32, flags: UInt16)]
+    ) -> Data {
         func append16(_ value: UInt16, _ data: inout Data) {
             var little = value.littleEndian
             withUnsafeBytes(of: &little) { data.append(contentsOf: $0) }
@@ -29,14 +36,14 @@ enum RawZipBuilder {
         var output = Data()
         var central = Data()
         for entry in entries {
-            let nameBytes = Array(entry.name.utf8)
+            let nameBytes = entry.nameBytes
             let payload = entry.contents
             let crc = ZipWriter.crc32(payload)
             let offset = UInt32(output.count)
 
             append32(0x0403_4b50, &output)
             append16(20, &output)
-            append16(0, &output)
+            append16(entry.flags, &output)
             append16(0, &output)            // STORED
             append16(0, &output)            // time
             append16(0x0021, &output)       // date
@@ -51,7 +58,7 @@ enum RawZipBuilder {
             append32(0x0201_4b50, &central)
             append16(20, &central)
             append16(20, &central)
-            append16(0, &central)
+            append16(entry.flags, &central)
             append16(0, &central)
             append16(0, &central)
             append16(0x0021, &central)
@@ -79,6 +86,19 @@ enum RawZipBuilder {
         append32(directoryOffset, &output)
         append16(0, &output)
         return output
+    }
+
+    /// The common case: a UTF-8 name, no flags set — what our own `ZipWriter`
+    /// produces for ASCII names, and what most fixtures need.
+    static func build(_ entries: [(name: String, contents: Data, externalAttributes: UInt32)]) -> Data {
+        buildRaw(entries.map {
+            (
+                nameBytes: Array($0.name.utf8),
+                contents: $0.contents,
+                externalAttributes: $0.externalAttributes,
+                flags: 0
+            )
+        })
     }
 }
 
@@ -403,6 +423,162 @@ final class ArchiveExtractionTests: XCTestCase {
         )
         XCTAssertFalse(FileManager.default.fileExists(atPath: archive.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: out.appendingPathComponent("a.txt").path))
+    }
+
+    /// 解压后删除原包 must not fire when the run deliberately left content
+    /// behind — the archive is the only copy of what was skipped.
+    func testKeepsTheArchiveWhenAnEntryWasSkippedForAConflict() throws {
+        let archive = try write(RawZipBuilder.archive([("a.txt", "hello")]), as: "kept.zip")
+        let out = try destination()
+        try Data("already here".utf8).write(to: out.appendingPathComponent("a.txt"))
+
+        let (_, summary) = try ArchiveExtractor.extract(
+            archiveURL: archive,
+            to: out,
+            settings: policy(conflict: .skip, deletesArchive: true)
+        )
+
+        XCTAssertEqual(summary.written, 0)
+        XCTAssertEqual(summary.skipped, 1)
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: archive.path),
+            "a skipped run must keep the archive so the skipped content still exists"
+        )
+    }
+
+    /// A traversal entry is skipped, not extracted; deleting the archive would
+    /// destroy the only copy of it.
+    func testKeepsTheArchiveWhenAnEntryWasSkippedAsUnsafe() throws {
+        let archive = try write(RawZipBuilder.archive([("../escape.txt", "payload")]), as: "evil-kept.zip")
+        let out = try destination()
+
+        let (_, summary) = try ArchiveExtractor.extract(
+            archiveURL: archive,
+            to: out,
+            settings: policy(deletesArchive: true)
+        )
+
+        XCTAssertEqual(summary.skipped, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: archive.path))
+    }
+
+    /// Metadata noise (`__MACOSX/`, `._*`, `.DS_Store`) is not content, so a run
+    /// that only dropped those still counts as clean.
+    func testStillDeletesTheArchiveWhenOnlyMetadataWasSkipped() throws {
+        let archive = try write(
+            RawZipBuilder.archive([("__MACOSX/junk.txt", "junk"), ("a.txt", "hello")]),
+            as: "metadata.zip"
+        )
+        let out = try destination()
+
+        let (_, summary) = try ArchiveExtractor.extract(
+            archiveURL: archive,
+            to: out,
+            settings: policy(deletesArchive: true)
+        )
+
+        XCTAssertEqual(summary.written, 1)
+        XCTAssertEqual(summary.skipped, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: archive.path))
+    }
+
+    // MARK: - Entry-name encodings
+
+    /// `ZipNameDecoder` takes the reader's own slice type.
+    private func nameBytes(_ bytes: [UInt8]) -> ArraySlice<UInt8> { bytes[...] }
+
+    /// Windows' own「压缩」writes GBK names with general-purpose bit 11 **clear**.
+    /// Decoding those as CP437 — which is what the spec literally says — is the
+    /// mojibake every Chinese user has met (`新建文件夹` → `ÐÂ½¨ÎÄ¼þ¼Ð`), and it
+    /// lands in the file names on disk too, not just in a log line.
+    func testGBKEntryNameWithoutTheUTF8FlagIsDecodedAsChinese() throws {
+        // "新建文件夹" in GBK.
+        let gbk: [UInt8] = [208, 194, 189, 168, 206, 196, 188, 254, 188, 208]
+        let archive = try write(RawZipBuilder.buildRaw([
+            (nameBytes: gbk, contents: Data("x".utf8), externalAttributes: 0, flags: 0),
+        ]), as: "gbk.zip")
+        let out = try destination()
+
+        let (results, summary) = try ArchiveExtractor.extract(archiveURL: archive, to: out, settings: policy())
+
+        XCTAssertEqual(summary.written, 1)
+        XCTAssertEqual(results.first?.entryName, "新建文件夹")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: out.appendingPathComponent("新建文件夹").path),
+            "the decoded name is what gets written to disk"
+        )
+    }
+
+    /// The same for a name with an ASCII part, which is the usual shape
+    /// (`中文 文档.txt`).
+    func testMixedGBKNameKeepsItsASCIIParts() {
+        // "中文 文档.txt" in GBK.
+        let gbk: [UInt8] = [214, 208, 206, 196, 32, 206, 196, 181, 181, 46, 116, 120, 116]
+        XCTAssertEqual(ZipNameDecoder.decode(nameBytes(gbk), utf8Flag: false), "中文 文档.txt")
+    }
+
+    /// Plenty of tools write UTF-8 **without** setting the flag (Info-ZIP, older
+    /// macOS, our own early builds). Those must not fall through to a legacy
+    /// decoder.
+    func testUTF8EntryNameWithoutTheFlagIsStillUTF8() throws {
+        let archive = try write(RawZipBuilder.buildRaw([
+            (nameBytes: Array("中文.txt".utf8), contents: Data("x".utf8), externalAttributes: 0, flags: 0),
+        ]), as: "flagless-utf8.zip")
+        let out = try destination()
+
+        let (results, _) = try ArchiveExtractor.extract(archiveURL: archive, to: out, settings: policy())
+        XCTAssertEqual(results.first?.entryName, "中文.txt")
+    }
+
+    /// A genuine CP437 name is what the spec calls "the original encoding", and
+    /// it must stay Western. The byte-ratio guard on the GB18030 attempt is what
+    /// keeps `Übersicht` from being turned into Chinese: GB18030 accepts `9A 62`
+    /// as a two-byte sequence, so without the guard it would win.
+    func testLegacyCP437EntryNameStaysLatin() {
+        // "café.txt" — 0x82 is é.
+        XCTAssertEqual(ZipNameDecoder.decode(nameBytes([99, 97, 102, 130, 46, 116, 120, 116]), utf8Flag: false), "café.txt")
+        // "Übersicht.txt" — 0x9A is Ü, and 9A 62 is a legal GB18030 pair.
+        let ubersicht: [UInt8] = [154, 98, 101, 114, 115, 105, 99, 104, 116, 46, 116, 120, 116]
+        XCTAssertEqual(ZipNameDecoder.decode(nameBytes(ubersicht), utf8Flag: false), "Übersicht.txt")
+        XCTAssertFalse(ZipNameDecoder.looksLikeLegacyChinese(ubersicht))
+    }
+
+    /// The ratio guard's boundary: a short Chinese name is still mostly high
+    /// bytes, so a one-character name must not fall through to CP437.
+    func testShortChineseNameStillTakesTheChineseBranch() {
+        XCTAssertTrue(ZipNameDecoder.looksLikeLegacyChinese([214, 208, 46, 116, 120, 116]))   // 中.txt
+        XCTAssertEqual(ZipNameDecoder.decode(nameBytes([214, 208, 46, 116, 120, 116]), utf8Flag: false), "中.txt")
+    }
+
+    /// The documented cost of the heuristic: a *contrived* mixed-script CP437
+    /// name whose bytes are both mostly non-ASCII and valid GB18030 reads as
+    /// Chinese. Pinned here on purpose — the alternative (trying CP437 first)
+    /// would break every Windows-made Chinese zip, which is far more common.
+    func testMixedScriptCP437NameIsTheKnownCostOfPreferringChinese() {
+        let mixed: [UInt8] = [154, 110, 139, 99]   // "Ünïc" in CP437
+        XCTAssertTrue(ZipNameDecoder.looksLikeLegacyChinese(mixed))
+        XCTAssertNotEqual(ZipNameDecoder.decode(nameBytes(mixed), utf8Flag: false), "Ünïc")
+    }
+
+    /// Bit 11 is authoritative: a writer that set it but wrote garbage must still
+    /// yield *something* rather than throwing the entry away.
+    func testUTF8FlaggedNameThatIsNotUTF8StillDecodes() {
+        let decoded = ZipNameDecoder.decode(nameBytes([0xFF, 0xFE, 0x41]), utf8Flag: true)
+        XCTAssertFalse(decoded.isEmpty)
+        XCTAssertTrue(decoded.contains("A"))
+    }
+
+    func testASCIIEntryNameIsUnaffectedByTheFlag() {
+        XCTAssertEqual(ZipNameDecoder.decode(nameBytes(Array("folder/a.txt".utf8)), utf8Flag: false), "folder/a.txt")
+        XCTAssertEqual(ZipNameDecoder.decode(nameBytes(Array("folder/a.txt".utf8)), utf8Flag: true), "folder/a.txt")
+    }
+
+    func testTheCJKGuardRecognisesIdeographsAndPunctuation() {
+        XCTAssertTrue(ZipNameDecoder.containsCJK("新建文件夹"))
+        XCTAssertTrue(ZipNameDecoder.containsCJK("a（b）"))
+        XCTAssertFalse(ZipNameDecoder.containsCJK("café.txt"))
+        XCTAssertFalse(ZipNameDecoder.containsCJK("Проект"))
+        XCTAssertFalse(ZipNameDecoder.containsCJK(""))
     }
 
     // MARK: - Reader
