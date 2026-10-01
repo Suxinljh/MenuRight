@@ -4,7 +4,7 @@
 #
 # WHY THIS SCRIPT EXISTS
 # ----------------------
-# Two traps cost real debugging time on 2026-09-30:
+# Three traps cost real debugging time (2026-09-30 / 2026-10-01):
 #
 #  1. `cp -R` of an Xcode-built app bundle produces a copy that `codesign
 #     --verify` happily reports as "valid on disk", but the kernel kills it at
@@ -16,6 +16,19 @@
 #     system — not "the one you just built". If a stale copy exists elsewhere,
 #     you silently test old code and the app's own window shows
 #     "Finder Extension: Disabled".
+#
+#  3. Xcode.app and xcodebuild share ONE default DerivedData
+#     (~/Library/Developer/Xcode/DerivedData/<project>-<hash>). If both resolve
+#     Swift packages at the same time, they delete and re-create the same
+#     SourcePackages/checkouts working copies underneath each other, and the
+#     loser dies inside `git submodule update` with
+#       fatal: Unable to read current working directory: No such file or directory
+#       Couldn’t update repository submodules: ... / Could not resolve package
+#       dependencies: fatalError
+#     SWCompression carries the SWCompression-Test-Files submodule at
+#     'Tests/Test Files', which makes it the package that trips over this.
+#     Step 1 absorbs it: packages are resolved in a retried step, and the build
+#     runs with automatic package resolution off.
 #
 # So: exactly ONE installed copy, installed with ditto, re-registered and
 # re-enabled every time, and verified at the end.
@@ -35,22 +48,50 @@ LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Versions/A/Framewor
 
 cd "$PROJECT_DIR"
 
-echo "==> 1/6 Building $CONFIG (signed, provisioning updates allowed)"
+echo "==> 1/7 Resolving Swift packages (a concurrent Xcode resolve may have to be survived)"
+RESOLVE_LOG=/tmp/menuright-install-resolve.log
+RESOLVED=0
+for attempt in 1 2 3; do
+  if xcodebuild -project MenuRight.xcodeproj -scheme MenuRight -configuration "$CONFIG" \
+       -resolvePackageDependencies >"$RESOLVE_LOG" 2>&1; then
+    RESOLVED=1
+    [ "$attempt" -eq 1 ] || echo "    resolved on attempt $attempt — another SwiftPM process had clobbered the checkout"
+    break
+  fi
+  # The first attempt can lose the race described in trap 3 above, but the
+  # winner leaves a complete checkout behind, so a retry succeeds.
+  echo "    attempt $attempt failed (another SwiftPM process is using this DerivedData); retrying"
+  sleep 2
+done
+if [ "$RESOLVED" != 1 ]; then
+  echo "PACKAGE RESOLUTION FAILED — see $RESOLVE_LOG"
+  tail -20 "$RESOLVE_LOG"
+  echo "If Xcode is open on this project, quit it and run this script again:"
+  echo "two SwiftPM processes cannot share one DerivedData."
+  exit 1
+fi
+echo "    packages resolved"
+
+echo "==> 2/7 Building $CONFIG (signed, provisioning updates allowed)"
+# -disableAutomaticPackageResolution keeps the build from re-entering the
+# checkout/submodule path that step 1 just resolved.
 xcodebuild -project MenuRight.xcodeproj -scheme MenuRight -configuration "$CONFIG" \
+  -disableAutomaticPackageResolution \
   build -allowProvisioningUpdates >/tmp/menuright-install-build.log 2>&1 \
   || { echo "BUILD FAILED — see /tmp/menuright-install-build.log"; tail -20 /tmp/menuright-install-build.log; exit 1; }
 
 BUILT_DIR=$(xcodebuild -project MenuRight.xcodeproj -scheme MenuRight -configuration "$CONFIG" \
+  -disableAutomaticPackageResolution \
   -showBuildSettings 2>/dev/null | awk '/ BUILT_PRODUCTS_DIR =/{print $3; exit}')
 BUILT_APP="$BUILT_DIR/MenuRight.app"
 [ -d "$BUILT_APP" ] || { echo "built app not found at $BUILT_APP"; exit 1; }
 echo "    built: $BUILT_APP"
 
-echo "==> 2/6 Checking the built app's own signature"
+echo "==> 3/7 Checking the built app's own signature"
 codesign --verify --deep --strict "$BUILT_APP" || { echo "signature invalid"; exit 1; }
 echo "    signature valid"
 
-echo "==> 3/6 Installing with ditto (NOT cp -R) into $INSTALL_DIR"
+echo "==> 4/7 Installing with ditto (NOT cp -R) into $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 # Backups go OUTSIDE ~/Applications on purpose: LaunchServices scans that
 # directory, and a second copy carrying the same bundle id makes the extension
@@ -68,7 +109,7 @@ if [ -d "$INSTALLED_APP" ]; then
 fi
 ditto "$BUILT_APP" "$INSTALLED_APP"
 
-echo "==> 4/6 Verifying the INSTALLED copy launches (the cp -R trap)"
+echo "==> 5/7 Verifying the INSTALLED copy launches (the cp -R trap)"
 "$INSTALLED_APP/Contents/MacOS/MenuRight" >/tmp/menuright-installed-launch.log 2>&1 &
 LAUNCH_PID=$!
 sleep 3
@@ -94,7 +135,16 @@ else
   pgrep -lf "MenuRight.app/Contents/MacOS/MenuRight" || true
 fi
 
-echo "==> 5/6 Registering and enabling the Finder extension"
+echo "==> 6/7 Registering and enabling the Finder extension"
+
+# Exactly ONE registration for MenuRight.app. Xcode's own
+# `RegisterWithLaunchServices` build step adds its build product on every build,
+# and stale copies accumulate; System Settings reads its extension list from
+# pluginkit, so several registrations make the toggle point at a different copy
+# than the app that is running. The pruning lives in its own script because it is
+# also worth running after an Xcode build — see its header for the measurements.
+"$(dirname "${BASH_SOURCE[0]}")/prune-launchservices.sh" "$INSTALLED_APP"
+
 "$LSREGISTER" -f -R -trusted "$INSTALLED_APP"
 pluginkit -e use -i "$EXTENSION_ID"
 pkill -f MenuRightFinder 2>/dev/null || true   # Finder relaunches it on demand
@@ -106,7 +156,7 @@ pkill -f MenuRightFinder 2>/dev/null || true   # Finder relaunches it on demand
 killall Finder 2>/dev/null || true
 sleep 2
 
-echo "==> 6/6 Verifying the system state"
+echo "==> 7/7 Verifying the system state"
 STATE="?"
 for _ in 1 2 3 4 5; do
   LINE=$(pluginkit -m -p com.apple.FinderSync -v 2>/dev/null | grep "$EXTENSION_ID" | head -1)
