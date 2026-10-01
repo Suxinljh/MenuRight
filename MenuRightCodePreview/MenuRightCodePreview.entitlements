@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- The preview reads the highlight theme the main app stores in the App
+	     Group. Without this entitlement `UserDefaults(suiteName:)` returns nil,
+	     `CodePreviewSettings.load` falls back to defaults, and the preview would
+	     silently ignore the user's theme. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.xin.ljhsu.MenuRight</string>
+	</array>
+</dict>
+</plist>

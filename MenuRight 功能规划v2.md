@@ -89,21 +89,33 @@ App Group `UserDefaults(suiteName:)` 存设置 → 设置 UI(软件选择器、�
 **最高风险**,先跑 S2/S3。
 **人工门**:代码空格预览有高亮;切主题立即生效;大文件不卡;非代码文件回退系统预览。
 
-> **落地状态(2026-10-01 补记,原文保留在上)**:P8 的**第①步(高亮引擎 + 设置内真实预览)已交付**;
-> 第②步(Quick Look target)未开始,所以上面的人工门仍是 PENDING。
+> **落地状态(2026-10-01 补记,原文保留在上)**:P8 **两步都已交付**(引擎 + 设置内预览 → Quick Look 扩展)。
+> 自动化证据齐全;**唯一未验的是"看起来好不好看"**(配色/间距),见验证手册 §3.10 第 58–63 项。
 >
-> - 代码:`Shared/CodePreview/` —— `CodeLanguage`(扩展名/UTI/文件名识别,17 种语言 + 纯文本回退)、
->   `CodeSyntaxProfile`(按语言的数据驱动配置)、`CodeHighlighter`(单遍扫描 + 跨行状态,HTML/Markdown 专用模式)、
->   `CodePreviewSamples`(每种语言的示例源码)。只 `import Foundation`,可原样编进 appex。
-> - 接入点:`CodeThemeSettingsView` 的预览改为渲染**真实示例代码**(原来是一张手写 token 表),并新增
->   「示例语言」选择器;主题/字体/字号/行号仍是原有持久化设置,未改设置模型。
-> - 单测:`MenuRightTests/CodeHighlightTests.swift`,含「逐行无损」不变量(每行 token 拼回 == 源码)
->   与「示例文件名能反查回同一语言」。
-> - **仍未做**:第三个 target、扩展读 App Group 主题、S2/S3 Spike(能否取代系统纯文本预览、读文件是否需额外 entitlement)。
-> - 与原文的偏离:原文把"轻量高亮器"当成 P8 的一部分一次做完;实际拆成"引擎 + 预览"与"扩展"两步 ——
->   `project.pbxproj` 是手工合成 ID 结构,新增 target 风险高,先把可自动验证的部分落地。
+> - **第①步(引擎 + 设置内预览)**:`Shared/CodePreview/` 的 `CodeLanguage`(扩展名/UTI/文件名识别,
+>   17 种语言 + 纯文本回退)、`CodeSyntaxProfile`(按语言的数据驱动配置)、`CodeHighlighter`(单遍扫描 +
+>   跨行状态,HTML/Markdown 专用模式)、`CodePreviewSamples`(示例源码)。只 `import Foundation`。
+>   `CodeThemeSettingsView` 的预览改为渲染**真实示例代码**,并新增「示例语言」选择器(仅 UI 状态)。
+> - **第②步(Quick Look 扩展)**:第三个 target `MenuRightCodePreview`,嵌入主 App;
+>   `QLSupportedContentTypes` 声明 17 个稳定 UTI;`PreviewViewController` 复用同一高亮器 + App Group 主题;
+>   读取上限 1 MB / 5 000 行,超出在底部提示;`CodePreviewSettings` 只解 `codeTheme` 与 `general.language`
+>   两个子树,所以扩展**不需要**编译整个设置模型。
+> - **单测**:`CodeHighlightTests`(27 例)+ `CodePreviewDocumentTests`(17 例);全量 529 tests / 0 failures。
+>   含两条不变量:逐行无损、示例文件名能反查回同一语言;另覆盖主题取色、行号、截断、编码回退。
+> - **S2(能否取代系统纯文本预览)= 能**:`.swift` 按空格后扩展进程 `MenuRightCodePreview` 被拉起并渲染,
+>   系统 `Text.qlgenerator` 不再参与(日志实测)。
+> - **S3(沙箱扩展读被预览文件)= 不需要额外 entitlement**:Quick Look 会把文件访问权交给扩展,
+>   扩展仅带 `app-sandbox` + `application-groups`(模板默认的 `ENABLE_USER_SELECTED_FILES = readonly` 保留)。
+> - **与原文的偏离,三条**:
+>   1. 原文要求"先跑 S2/S3";实际是先落地引擎(可自动验证),再建 target 跑 S2/S3 —— 顺序反了但风险更低。
+>   2. `QLSupportedContentTypes` **不声明 `.ts`**:macOS 把 `.ts` 解析成 `public.mpeg-2-transport-stream`
+>      (MPEG-2 传输流),声明它会把视频文件抢过来。`.rs`/`.go`/`.sql` 是动态 UTI,同样不声明。
+>   3. 扩展**也编了** `AppLanguage.swift` + `Localization.swift`(为了截断提示与"无法读取"两句话的中英文),
+>      而不是原文设想的"只编 CodePreview + CodeTheme";Finder 扩展早就是同样的做法。
+> - **仍未做**:自行声明 `.ts`/`.rs`/`.go` 的 `UTImportedTypeDeclarations`(那要改主 App 的文档类型声明);
+>   缩略图(QLThumbnailProvider)不在此范围。
 
-#### P8 第②步落地方案(Quick Look 扩展,未开始)
+#### P8 第②步落地方案(Quick Look 扩展,**已落地**,下面是当初的方案,留档)
 
 1. **建 target**:用 Xcode GUI(`File → New → Target → macOS → Quick Look Preview Extension`)添加
    `MenuRightCodePreview`,并勾选嵌入 `MenuRight.app`(Embed Foundation Extensions);

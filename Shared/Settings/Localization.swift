@@ -283,6 +283,8 @@ enum StringKey: String, CaseIterable {
     case codeThemeNote
     case codePreviewLanguage
     case codePreviewPlainText
+    case codePreviewUnreadable
+    case codePreviewTruncated
 
     // MARK: Archives
     case archiveIntro
@@ -755,6 +757,15 @@ enum Localization {
         ),
         .codePreviewLanguage: Entry(zh: "示例语言", en: "Sample Language"),
         .codePreviewPlainText: Entry(zh: "纯文本", en: "Plain Text"),
+        // Shown inside the Quick Look panel, not in Settings.
+        .codePreviewUnreadable: Entry(
+            zh: "无法读取这个文件。",
+            en: "This file could not be read."
+        ),
+        .codePreviewTruncated: Entry(
+            zh: "文件较大,这里只显示前 %d 行。",
+            en: "Large file: only the first %d lines are shown."
+        ),
 
         // Archives
         .archiveIntro: Entry(

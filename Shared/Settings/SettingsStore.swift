@@ -17,7 +17,7 @@ import Combine
 /// A corrupt payload loads as defaults: the app must always be able to open its
 /// settings window and rewrite the value.
 final class SettingsStore: ObservableObject, @unchecked Sendable {
-    static let storageKey = "xin.ljhsu.MenuRight.settings"
+    static let storageKey = MenuRightAppGroup.settingsStorageKey
 
     /// Posted (on the main thread) after a change is applied and persisted, so
     /// a future extension-side cache can invalidate itself.

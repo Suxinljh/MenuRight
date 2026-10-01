@@ -22,12 +22,12 @@ import os
 ///      same-user process can unlink the socket file and bind its own path.
 public enum MenuRightIPC {
     /// Subsystem name used by all IPC-related log lines.
-    public static let subsystem = "xin.ljhsu.MenuRight"
+    public static let subsystem = MenuRightAppGroup.logSubsystem
 
-    /// App Group shared by the app and its Finder Sync extension. Single source
-    /// of truth for the container identifier — the socket and the
-    /// folder-authorization store must always live in the same container.
-    public static let appGroupIdentifier = "group.xin.ljhsu.MenuRight"
+    /// App Group shared by the app and its extensions. Single source of truth
+    /// for the container identifier — the socket and the folder-authorization
+    /// store must always live in the same container.
+    public static let appGroupIdentifier = MenuRightAppGroup.identifier
 
     /// App-Group Unix domain socket filename. The main app binds and listens
     /// here; the extension connects to it.

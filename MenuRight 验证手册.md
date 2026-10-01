@@ -331,6 +331,35 @@ python3 Scripts/figma-mcp.py call get_screenshot     '{"nodeId":"1430:75"}'
 > (「空格预览有高亮」)仍是 **PENDING**,不要按已通过记录。
 
 
+### 3.10 P8 第②步 Quick Look 空格预览(本轮改动)
+
+前置:`Scripts/install-dev-app.sh` 跑完(已装到 `~/Applications` 并注册扩展)。Quick Look 扩展**不需要**在系统设置里单独开启。
+
+| # | 操作 | 预期结果 | 失败时看什么 |
+| - | ---- | -------- | ------------ |
+| 58 | 在访达里选中一个 `.swift` 文件按空格 | 预览窗口里是**带高亮**的代码:行号在左侧,注释/关键字/类型/函数/字符串/数字各成一色,背景是当前主题的底色 | `log show --last 5m --predicate 'subsystem == "xin.ljhsu.MenuRight"'` 里没有 `preview rendered` → 扩展没被调用 |
+| 59 | 设置 → 代码主题 换成 Dracula,回到访达**重新**按空格(同一个文件) | 配色变成 Dracula | 配色没变 → 看日志里 `theme=` 是不是还是旧值 |
+| 60 | 换一套**浅色**主题(如 GitHub Light),重新按空格 | 预览是浅底深字;「跟随系统」则随系统浅/深色 | — |
+| 61 | 设置里关掉「显示行号」,重新按空格 | 左侧行号列消失 | — |
+| 62 | 把字号调到 32,重新按空格 | 预览字号明显变大,长行自动折行,折行部分对齐在代码列(不跑到行号下面) | 折行错位 → 段落缩进 |
+| 63 | 预览一个 6000 行的 `.swift`(可以 `seq` 造) | 窗口**不卡**,显示前 5000 行,底部一行小字「文件较大,这里只显示前 5000 行。」 | 卡住或白屏 |
+| 64 | 预览 `.json` / `.py` / `.md` / `.html` | 各自有对应语言的高亮(JSON 的键是类型色、布尔值是关键字色;Markdown 标题/行内代码/链接成色) | 整片同色 |
+| 65 | 预览一张 PNG / PDF / docx | 走**系统**预览,MenuRight 扩展**不参与** | 图片变成文字预览 → `QLSupportedContentTypes` 声明多了 |
+| 66 | 预览 `.ts` / `.rs` / `.go` | 走**系统**纯文本预览(刻意不接管;`.ts` 在 macOS 上是 MPEG-2 传输流类型) | — |
+| 67 | 预览一个中文注释的 UTF-8 文件;再预览一个 GB18030 的老文件 | 都不乱码 | 乱码 → 看 `CodePreviewFileReader.decode` |
+| 68 | 预览一个没有读权限的文件(如 `/private/etc/master.passwd`) | 窗口显示「无法读取这个文件。」,不是系统占位图 | 日志里应有 `preview unreadable … error=…` |
+
+> 自动化已覆盖的部分(本轮实测):扩展被调用、能读文件、能从 App Group 读到主题(`theme=xcode-light`)、
+> 6000 行截断为 5000 行且 `truncated=true`、PNG 不接管、JSON 语言识别正确。
+> 一键复现(不用按空格):
+> ```sh
+> qlmanage -p /path/to/SomeFile.swift          # 直接弹预览窗口
+> log show --last 2m --predicate 'subsystem == "xin.ljhsu.MenuRight"' --style compact
+> pluginkit -m -p com.apple.quicklook.preview | grep -i MenuRight
+> ```
+> **还没验的是"看起来对不对"**(配色是否好看、间距是否舒服)——这需要你的眼睛,即上表 58–63。
+
+
 ## 4. 这些现象**不是** bug(平台限制)
 
 - **只有一个 MenuRight 条目、里面是子菜单**:macOS 把扩展菜单挂在扩展名条目下,扩展无法创建顶层项、无法控制父级。需求里的"与 MenuRight 同级"在 FinderSync 下做不到;唯一的替代是 Accessibility/AppleScript 注入菜单,被 `AGENTS.md` 明令禁止。

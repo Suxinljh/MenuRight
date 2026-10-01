@@ -34,6 +34,20 @@
                ReferencedContainer = "container:MenuRight.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "18E64BDE306E2DCB00A3A3D0"
+               BuildableName = "MenuRightCodePreview.appex"
+               BlueprintName = "MenuRightCodePreview"
+               ReferencedContainer = "container:MenuRight.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction

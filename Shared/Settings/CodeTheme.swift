@@ -297,10 +297,13 @@ struct CodeThemeSettings: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        themeID = try container.decodeOr(String.self, .themeID, CodeThemeCatalog.systemID)
-        fontSize = try container.decodeOr(Double.self, .fontSize, CodeThemeSettings.defaultFontSize)
+        // `decodeIfPresent ?? default` (rather than the app-wide `decodeOr`
+        // helper) keeps this type free of any dependency on the settings model
+        // file, so the Quick Look extension can compile just this file.
+        themeID = try container.decodeIfPresent(String.self, forKey: .themeID) ?? CodeThemeCatalog.systemID
+        fontSize = try container.decodeIfPresent(Double.self, forKey: .fontSize) ?? CodeThemeSettings.defaultFontSize
         fontName = try container.decodeIfPresent(String.self, forKey: .fontName)
-        showsLineNumbers = try container.decodeOr(Bool.self, .showsLineNumbers, true)
+        showsLineNumbers = try container.decodeIfPresent(Bool.self, forKey: .showsLineNumbers) ?? true
     }
 
     func normalized() -> CodeThemeSettings {
