@@ -1,6 +1,7 @@
 <p align="center">
-  <img src="MenuRight/Resources/BrandAssets.xcassets/menuright-logo.imageset/menuright-logo.png" alt="MenuRight" width="128">
+  <img src="MenuRight/Resources/menuright-logo.png" alt="MenuRight" width="128">
 </p>
+
 
 
 <h1 align="center">MenuRight</h1>
@@ -44,14 +45,18 @@ MenuRight 由两部分组成：一个 **Finder 扩展**（负责在右键菜单�
 
 ### 代码预览（空格预览 + 设置内预览）
 
-**按空格预览代码文件时，MenuRight 用自己的高亮器上色**，配色与字体来自设置里的「代码主题」；设置面板里的预览用的是**同一个引擎、同一份配置**，两处不可能配色漂移。
+**按空格预览代码文件时，MenuRight 用自己的高亮器上色**，配色与字体来自设置里的「代码主题」；**Markdown 则是真正渲染出来的**（标题、加粗、列表、引用、代码块、表格），不是源码高亮。设置面板里的预览用的是**同一个引擎、同一份配置**，两处不可能漂移。
 
-- **接管哪些类型**：`.swift`、`.py`、`.js`/`.mjs`、`.tsx`、`.html`、`.css`、`.json`、`.yml`/`.yaml`、`.md`、`.sh`/`.bash`/`.zsh`、`.c`/`.h`、`.cpp`/`.hpp`、`.java`（`QLSupportedContentTypes` 里声明的 UTI）。**其余文件一律回退系统预览**——图片、PDF、Office 文档，以及 macOS 没有稳定 UTI 的 `.ts`/`.rs`/`.go`/`.sql` 都不接管。`.ts` 是特例：系统把 `.ts` 解析成 `public.mpeg-2-transport-stream`（MPEG-2 传输流），声明它会把视频文件抢过来，所以刻意不声明。
+- **接管哪些类型**：`.swift`、`.py`、`.js`/`.mjs`、`.tsx`、`.html`、`.css`、`.json`、`.yml`/`.yaml`、`.md`/`.markdown`、`.sh`/`.bash`/`.zsh`、`.c`/`.h`、`.cpp`/`.hpp`、`.java`（`QLSupportedContentTypes` 里声明的 UTI）。**其余文件一律回退系统预览**——图片、PDF、Office 文档，以及 macOS 没有稳定 UTI 的 `.ts`/`.rs`/`.go`/`.sql` 都不接管。
+- **Markdown 渲染**：用 Foundation 的 `AttributedString(markdown:)` 解析，再把块模型交给 AppKit 渲染。支持标题（六级，字号递减）、加粗/斜体、行内代码（等宽 + 主题色 + 淡底）、链接（主题 function 色 + 下划线）、有序/无序/嵌套列表、引用、围栏代码块（**按语言提示复用同一个高亮器**，整行淡底）、表格（按显示宽度对齐，中日韩字符按两列算）、分隔线。正文用系统字体（等宽字体读长段落很难受），代码部分用设置里的等宽字体。
+- **Markdown 为什么接管**：本机这个类型原本由 WPS Office 的快速查看扩展渲染。**Quick Look 没有"运行时交还"机制**——实测在扩展里对 `.md` 抛错并不会回退给别的渲染器，只会让面板空掉；`QLSupportedContentTypes` 又写死在签名后的 Info.plist 里，所以"按语言开关"做不到。既然接管了，就把它做成**渲染**而不是降级成源码高亮。
+- **`.ts` 不声明**：系统把 `.ts` 解析成 `public.mpeg-2-transport-stream`（MPEG-2 传输流），声明它会把视频文件抢过来。
+- **想整块关掉空格预览**：系统设置 → 通用 → 登录项与扩展 → 快速查看（macOS 15+），或 `pluginkit -e ignore -i xin.ljhsu.MenuRight.MenuRightCodePreview`。这是**全局**开关，Quick Look 不支持按语言单独开关。
 - **语言识别**：按扩展名（外加 UTI）选择；`Makefile`、`Dockerfile`、`CMakeLists.txt` 这类无扩展名文件按文件名识别；识别不出就回退**纯文本**，永远不报错。
-- **高亮器**（`Shared/CodePreview/`）零依赖、只 `import Foundation`：单遍扫描 + 跨行状态（块注释、多行字符串、JS 模板字符串、Markdown 围栏代码），每种语言由一份数据（`CodeSyntaxProfile`）驱动，HTML 与 Markdown 各有一个专用模式。它是**预览级**高亮器，不是解析器。
+- **高亮器**（`Shared/CodePreview/`）零依赖、只 `import Foundation`：单遍扫描 + 跨行状态（块注释、多行字符串、JS 模板字符串、Markdown 围栏代码），每种语言由一份数据（`CodeSyntaxProfile`）驱动，HTML 有一个专用模式。它是**预览级**高亮器，不是解析器。
 - **大文件不卡**：最多读 1 MB、最多渲染 5 000 行，超出时底部显示一行提示；读取发生在扩展进程里，不阻塞 Finder。
 - **主题怎么到扩展**：主 App 把设置写进 App Group，扩展读同一份 `UserDefaults`。所以扩展带 `com.apple.security.application-groups` 权限；**没有这个权限时它会静默回落到默认主题**（看起来像"切主题不生效"）。
-- **硬约束**：单测钉住「逐行无损」——每行的 token 拼回去必须与源码逐字符相同；任何语言漏字、串行都会挂测试。
+- **硬约束**：单测钉住「逐行无损」——代码路径每行的 token 拼回去必须与源码逐字符相同；任何语言漏字、串行都会挂测试。
 - **排障**：扩展没有自己的界面，出错只能看日志：
   ```sh
   log show --last 5m --predicate 'subsystem == "xin.ljhsu.MenuRight"' --style compact

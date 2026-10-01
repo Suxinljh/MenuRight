@@ -112,25 +112,18 @@ struct CodeThemeSettingsView: View {
 
     private var preview: some View {
         let theme = settings.resolvedTheme(prefersDark: colorScheme == .dark)
-        let lines = CodeHighlighter.highlight(
-            CodePreviewSamples.source(for: previewLanguage),
-            language: previewLanguage
-        )
         return VStack(alignment: .leading, spacing: 3) {
             Text(CodePreviewSamples.fileName(for: previewLanguage))
                 .font(.caption)
                 .foregroundStyle(Color(rgb: theme.rgb(for: .comment)))
                 .padding(.bottom, 4)
-            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                HStack(alignment: .top, spacing: 10) {
-                    if settings.showsLineNumbers {
-                        Text("\(index + 1)")
-                            .foregroundStyle(Color(rgb: theme.rgb(for: .comment)))
-                            .frame(width: 20, alignment: .trailing)
-                    }
-                    Text(attributed(line, theme: theme))
-                }
-                .font(previewFont)
+            if previewLanguage == .markdown {
+                // Same decision as the Quick Look panel: markdown is *rendered*,
+                // not highlighted, so this preview shows what a space-bar
+                // preview will actually look like.
+                markdownPreview(theme: theme)
+            } else {
+                highlightedPreview(theme: theme)
             }
         }
         .textSelection(.enabled)
@@ -144,6 +137,158 @@ struct CodeThemeSettingsView: View {
             RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(Color.secondary.opacity(0.3))
         )
+    }
+
+    @ViewBuilder
+    private func highlightedPreview(theme: CodeTheme) -> some View {
+        let lines = CodeHighlighter.highlight(
+            CodePreviewSamples.source(for: previewLanguage),
+            language: previewLanguage
+        )
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                HStack(alignment: .top, spacing: 10) {
+                    if settings.showsLineNumbers {
+                        Text("\(index + 1)")
+                            .foregroundStyle(Color(rgb: theme.rgb(for: .comment)))
+                            .frame(width: 20, alignment: .trailing)
+                    }
+                    Text(attributed(line, theme: theme))
+                }
+                .font(previewFont)
+            }
+        }
+    }
+
+    // MARK: - Markdown preview
+
+    @ViewBuilder
+    private func markdownPreview(theme: CodeTheme) -> some View {
+        let document = MarkdownAnalyzer.analyze(CodePreviewSamples.source(for: .markdown))
+        VStack(alignment: .leading, spacing: 7) {
+            ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
+                markdownBlock(block, theme: theme)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func markdownBlock(_ block: MarkdownDocument.Block, theme: CodeTheme) -> some View {
+        switch block {
+        case .heading(let level, let runs):
+            // The size is passed into the runs too: a per-run font would
+            // otherwise override the heading font applied to the `Text`.
+            Text(markdownText(runs, theme: theme, size: markdownHeadingSize(level), weight: .semibold))
+
+        case .paragraph(let runs):
+            Text(markdownText(runs, theme: theme, size: settings.fontSize))
+
+        case .listItem(let depth, let marker, let runs):
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(marker)
+                    .font(.system(size: settings.fontSize))
+                    .foregroundStyle(Color(rgb: theme.rgb(for: .keyword)))
+                Text(markdownText(runs, theme: theme, size: settings.fontSize))
+            }
+            .padding(.leading, CGFloat(max(0, depth - 1)) * 16)
+
+        case .blockQuote(let runs):
+            HStack(alignment: .top, spacing: 6) {
+                Text("▎")
+                    .font(.system(size: settings.fontSize))
+                    .foregroundStyle(Color(rgb: theme.rgb(for: .comment)))
+                Text(markdownText(
+                    runs,
+                    theme: theme,
+                    size: settings.fontSize,
+                    defaultColor: Color(rgb: theme.rgb(for: .comment))
+                ))
+            }
+
+        case .codeBlock(let hint, let code):
+            markdownCodeBlock(code, languageHint: hint, theme: theme)
+
+        case .table(let table):
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Array(table.alignedLines.enumerated()), id: \.offset) { _, line in
+                    Text(line.text)
+                        .font(line.kind == .header ? previewFont.bold() : previewFont)
+                        .foregroundStyle(markdownTableColor(line.kind, theme: theme))
+                }
+            }
+
+        case .thematicBreak:
+            Text("⸻")
+                .font(.system(size: settings.fontSize))
+                .foregroundStyle(Color(rgb: theme.rgb(for: .comment)))
+        }
+    }
+
+    @ViewBuilder
+    private func markdownCodeBlock(_ code: String, languageHint: String?, theme: CodeTheme) -> some View {
+        let language = markdownCodeLanguage(for: languageHint)
+        let lines = CodeHighlighter.highlight(code, language: language)
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                Text(attributed(line, theme: theme))
+            }
+        }
+        .font(previewFont)
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color(rgb: theme.rgb(for: .foreground)).opacity(0.08))
+        )
+    }
+
+    private func markdownCodeLanguage(for hint: String?) -> CodeLanguage {
+        guard let hint, !hint.isEmpty else { return .plainText }
+        if let exact = CodeLanguage(rawValue: hint.lowercased()) { return exact }
+        return CodeLanguage.detect(fileExtension: hint)
+    }
+
+    private func markdownHeadingSize(_ level: Int) -> CGFloat {
+        let scales: [CGFloat] = [1.7, 1.45, 1.25, 1.1, 1.0, 1.0]
+        return (settings.fontSize * scales[min(max(level, 1), 6) - 1]).rounded()
+    }
+
+    private func markdownTableColor(_ kind: MarkdownDocument.MarkdownTable.AlignedLineKind, theme: CodeTheme) -> Color {
+        switch kind {
+        case .header: return Color(rgb: theme.rgb(for: .keyword))
+        case .separator: return Color(rgb: theme.rgb(for: .comment))
+        case .row: return Color(rgb: theme.rgb(for: .foreground))
+        }
+    }
+
+    /// Inline runs → `AttributedString`. Bold/italic come from the font rather
+    /// than `inlinePresentationIntent`, which `Text` does not consistently honour.
+    private func markdownText(
+        _ runs: [MarkdownDocument.InlineRun],
+        theme: CodeTheme,
+        size: Double,
+        weight: Font.Weight = .regular,
+        defaultColor: Color? = nil
+    ) -> AttributedString {
+        let bodyColor = defaultColor ?? Color(rgb: theme.rgb(for: .foreground))
+        var result = AttributedString()
+
+        for run in runs {
+            var piece = AttributedString(run.text)
+            if run.isInlineCode {
+                piece.font = previewFont
+                piece.foregroundColor = Color(rgb: theme.rgb(for: .string))
+            } else {
+                var font = Font.system(size: size, weight: run.isStrong ? .semibold : weight)
+                if run.isEmphasis { font = font.italic() }
+                piece.font = font
+                piece.foregroundColor = run.isLink ? Color(rgb: theme.rgb(for: .function)) : bodyColor
+                if run.isLink { piece.underlineStyle = .single }
+            }
+            result.append(piece)
+        }
+        return result
     }
 
     private var previewFont: Font {

@@ -343,11 +343,15 @@ python3 Scripts/figma-mcp.py call get_screenshot     '{"nodeId":"1430:75"}'
 | 61 | 设置里关掉「显示行号」,重新按空格 | 左侧行号列消失 | — |
 | 62 | 把字号调到 32,重新按空格 | 预览字号明显变大,长行自动折行,折行部分对齐在代码列(不跑到行号下面) | 折行错位 → 段落缩进 |
 | 63 | 预览一个 6000 行的 `.swift`(可以 `seq` 造) | 窗口**不卡**,显示前 5000 行,底部一行小字「文件较大,这里只显示前 5000 行。」 | 卡住或白屏 |
-| 64 | 预览 `.json` / `.py` / `.md` / `.html` | 各自有对应语言的高亮(JSON 的键是类型色、布尔值是关键字色;Markdown 标题/行内代码/链接成色) | 整片同色 |
+| 64 | 预览 `.json` / `.py` / `.html` | 各自有对应语言的高亮(JSON 的键是类型色、布尔值是关键字色) | 整片同色 |
 | 65 | 预览一张 PNG / PDF / docx | 走**系统**预览,MenuRight 扩展**不参与** | 图片变成文字预览 → `QLSupportedContentTypes` 声明多了 |
 | 66 | 预览 `.ts` / `.rs` / `.go` | 走**系统**纯文本预览(刻意不接管;`.ts` 在 macOS 上是 MPEG-2 传输流类型) | — |
 | 67 | 预览一个中文注释的 UTF-8 文件;再预览一个 GB18030 的老文件 | 都不乱码 | 乱码 → 看 `CodePreviewFileReader.decode` |
 | 68 | 预览一个没有读权限的文件(如 `/private/etc/master.passwd`) | 窗口显示「无法读取这个文件。」,不是系统占位图 | 日志里应有 `preview unreadable … error=…` |
+| 69 | 预览一个 `.md`(标题 / 加粗 / 行内代码 / 链接 / 列表 / 引用 / 围栏代码 / 表格 各来一个) | 是**渲染**结果:标题更大更粗、加粗变粗体、行内代码等宽带底色、链接带下划线、列表有项目符号或编号、引用有竖条、代码块按语言高亮且整行带底色、表格按列对齐、`---` 变成一条横线 | 还能看见 `#` / `**` → 走了源码高亮分支 |
+| 70 | 换一套主题后再预览同一个 `.md` | 标题、正文、引用、代码块、表格**全部**跟着换色(代码块内部的高亮也用该主题) | 只有背景变 |
+| 71 | 预览一个含中文表格的 `.md` | 中文列不会把后面的列挤歪(中文按两列宽计算) | 列错位 |
+| 72 | 想整块关掉空格预览 | 系统设置 → 通用 → 登录项与扩展 → 快速查看里关掉;或 `pluginkit -e ignore -i xin.ljhsu.MenuRight.MenuRightCodePreview`(恢复用 `-e use`) | 关不掉 → 用命令行那条 |
 
 > 自动化已覆盖的部分(本轮实测):扩展被调用、能读文件、能从 App Group 读到主题(`theme=xcode-light`)、
 > 6000 行截断为 5000 行且 `truncated=true`、PNG 不接管、JSON 语言识别正确。
@@ -358,6 +362,13 @@ python3 Scripts/figma-mcp.py call get_screenshot     '{"nodeId":"1430:75"}'
 > pluginkit -m -p com.apple.quicklook.preview | grep -i MenuRight
 > ```
 > **还没验的是"看起来对不对"**(配色是否好看、间距是否舒服)——这需要你的眼睛,即上表 58–63。
+>
+> **Markdown 为什么是"渲染"而不是"高亮"(2026-10-01 实测)**:本机 `net.daringfireball.markdown` 原本由
+> **WPS Office 的快速查看扩展**渲染。Quick Look **没有运行时交还机制** —— 实验:在扩展里对 `.md` 抛错,
+> 进程起来了但没有任何渲染,`WPSQuickLook` 也不会被拉起(对照组:禁用 MenuRight 扩展后 WPS 正常渲染);
+> 而 `QLSupportedContentTypes` 写死在签名后的 Info.plist 里,所以"按语言开关"做不到。
+> 结论:既然接管了这个类型,就把它做成**真正的渲染**(`AttributedString(markdown:)` 解析 + AppKit 渲染),
+> 而不是把渲染器降级成源码高亮。设置面板里的示例预览也走同一条渲染路径,两处一致。
 
 
 ## 4. 这些现象**不是** bug(平台限制)

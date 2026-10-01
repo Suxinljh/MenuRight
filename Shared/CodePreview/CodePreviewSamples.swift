@@ -139,12 +139,21 @@ enum CodePreviewSamples {
         .markdown: """
         # MenuRight
 
-        Code preview with **syntax highlighting**.
+        Markdown is **rendered**, not highlighted: headings, `inline code`,
+        lists, quotes and tables all follow the theme.
 
         - `space` opens the preview
         - themes come from Settings
 
-        [Documentation](https://example.com)
+        > 引用也会用主题配色。
+
+        ```swift
+        let theme = CodeThemeCatalog.monokai
+        ```
+
+        | 主题 | 背景 |
+        | --- | --- |
+        | Monokai | #272822 |
         """,
 
         .shell: """

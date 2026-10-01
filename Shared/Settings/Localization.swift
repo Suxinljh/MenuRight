@@ -752,8 +752,8 @@ enum Localization {
         .codeThemeFontSystem: Entry(zh: "系统等宽字体", en: "System Monospaced"),
         .codeThemeLineNumbers: Entry(zh: "显示行号", en: "Show Line Numbers"),
         .codeThemeNote: Entry(
-            zh: "高亮器已经按扩展名 / UTI 识别语言，并渲染真实示例代码；当前版本它只出现在这个设置预览里，Quick Look 扩展的接入属于 P8。",
-            en: "The highlighter already detects languages by extension/UTI and renders real sample code; for now it only appears in this settings preview. Wiring it into the Quick Look extension is part of P8."
+            zh: "空格预览接管这些类型：Swift / Python / JavaScript / TypeScript / HTML / CSS / JSON / YAML / Shell / C / C++ / Java。Markdown 刻意不接管——系统或第三方（WPS、Typora…）的渲染预览更有用，而 Quick Look 没有运行时「交还」机制，排除类型是唯一办法。其余类型一律回退系统预览。",
+            en: "Space-bar preview takes over: Swift / Python / JavaScript / TypeScript / HTML / CSS / JSON / YAML / Shell / C / C++ / Java. Markdown is deliberately left alone — the system or a third-party renderer (WPS, Typora …) does more with it, and Quick Look has no runtime hand-back hook, so excluding the type is the only way. Everything else keeps the system preview."
         ),
         .codePreviewLanguage: Entry(zh: "示例语言", en: "Sample Language"),
         .codePreviewPlainText: Entry(zh: "纯文本", en: "Plain Text"),

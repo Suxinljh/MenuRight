@@ -125,6 +125,12 @@
 		ABCPREVT5 /* CodePreviewSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV06 /* CodePreviewSettings.swift */; };
 		ABCPREVT6 /* CodePreviewDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV07 /* CodePreviewDocument.swift */; };
 		ABCPREVT7 /* CodePreviewDocumentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV08 /* CodePreviewDocumentTests.swift */; };
+		ABCPREVB1 /* MarkdownDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV09 /* MarkdownDocument.swift */; };
+		ABCPREVA10 /* MarkdownDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV09 /* MarkdownDocument.swift */; };
+		ABCPREVA11 /* CodePreviewMarkdownBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV0A /* CodePreviewMarkdownBuilder.swift */; };
+		ABCPREVT8 /* MarkdownDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV09 /* MarkdownDocument.swift */; };
+		ABCPREVT9 /* CodePreviewMarkdownBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV0A /* CodePreviewMarkdownBuilder.swift */; };
+		ABCPREVTA /* CodeMarkdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV0B /* CodeMarkdownTests.swift */; };
 		ABCTLAPP1 /* ArchiveOperationControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACTL001 /* ArchiveOperationControl.swift */; };
 		ABCTLTST1 /* ArchiveOperationControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACTL001 /* ArchiveOperationControl.swift */; };
 		ABEXTMT002 /* ExtensionMainThreadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAEXTMT001 /* ExtensionMainThreadTests.swift */; };
@@ -317,6 +323,9 @@
 		AACPREV06 /* CodePreviewSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodePreviewSettings.swift; sourceTree = "<group>"; };
 		AACPREV07 /* CodePreviewDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodePreviewDocument.swift; sourceTree = "<group>"; };
 		AACPREV08 /* CodePreviewDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodePreviewDocumentTests.swift; sourceTree = "<group>"; };
+		AACPREV09 /* MarkdownDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownDocument.swift; sourceTree = "<group>"; };
+		AACPREV0A /* CodePreviewMarkdownBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodePreviewMarkdownBuilder.swift; sourceTree = "<group>"; };
+		AACPREV0B /* CodeMarkdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeMarkdownTests.swift; sourceTree = "<group>"; };
 		AACTL001 /* ArchiveOperationControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveOperationControl.swift; sourceTree = "<group>"; };
 		AAEXTMT001 /* ExtensionMainThreadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionMainThreadTests.swift; sourceTree = "<group>"; };
 		AAFAVICON1 /* FavoriteIconProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoriteIconProvider.swift; sourceTree = "<group>"; };
@@ -528,6 +537,7 @@
 				AAARC07 /* FinderArchivesTests.swift */,
 				AACPREV05 /* CodeHighlightTests.swift */,
 				AACPREV08 /* CodePreviewDocumentTests.swift */,
+				AACPREV0B /* CodeMarkdownTests.swift */,
 			);
 			path = MenuRightTests;
 			sourceTree = "<group>";
@@ -623,6 +633,8 @@
 				AACPREV04 /* CodePreviewSamples.swift */,
 				AACPREV06 /* CodePreviewSettings.swift */,
 				AACPREV07 /* CodePreviewDocument.swift */,
+				AACPREV09 /* MarkdownDocument.swift */,
+				AACPREV0A /* CodePreviewMarkdownBuilder.swift */,
 			);
 			path = CodePreview;
 			sourceTree = "<group>";
@@ -883,6 +895,8 @@
 				ABCPREVA7 /* Localization.swift in Sources */,
 				ABCPREVA8 /* CodePreviewSettings.swift in Sources */,
 				ABCPREVA9 /* CodePreviewDocument.swift in Sources */,
+				ABCPREVA10 /* MarkdownDocument.swift in Sources */,
+				ABCPREVA11 /* CodePreviewMarkdownBuilder.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -950,6 +964,7 @@
 				ABCPREV02 /* CodeSyntaxProfile.swift in Sources */,
 				ABCPREV03 /* CodeHighlighter.swift in Sources */,
 				ABCPREV04 /* CodePreviewSamples.swift in Sources */,
+				ABCPREVB1 /* MarkdownDocument.swift in Sources */,
 				ABSHARED1 /* MenuRightAppGroup.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1076,6 +1091,9 @@
 				ABCPREVT5 /* CodePreviewSettings.swift in Sources */,
 				ABCPREVT6 /* CodePreviewDocument.swift in Sources */,
 				ABCPREVT7 /* CodePreviewDocumentTests.swift in Sources */,
+				ABCPREVT8 /* MarkdownDocument.swift in Sources */,
+				ABCPREVT9 /* CodePreviewMarkdownBuilder.swift in Sources */,
+				ABCPREVTA /* CodeMarkdownTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

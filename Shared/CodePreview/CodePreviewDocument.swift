@@ -113,6 +113,9 @@ enum CodePreviewFileReader {
 /// `CodeHighlighter` and the same `CodeThemeSettings` as the settings preview,
 /// which is what keeps the two surfaces from drifting apart.
 enum CodePreviewDocumentBuilder {
+    /// Dispatches to the Markdown renderer or the highlighter. Markdown is
+    /// rendered rather than highlighted: the extension claims that type, so
+    /// showing raw source would be worse than the renderer it replaced.
     static func makeDocument(
         source: String,
         fileName: String,
@@ -120,8 +123,35 @@ enum CodePreviewDocumentBuilder {
         prefersDark: Bool,
         limits: CodePreviewLimits = .default
     ) -> CodePreviewDocument {
-        let theme = settings.theme.resolvedTheme(prefersDark: prefersDark)
         let language = CodeLanguage.detect(fileName: fileName)
+        if language == .markdown {
+            return makeMarkdownDocument(
+                source: source,
+                fileName: fileName,
+                settings: settings,
+                prefersDark: prefersDark,
+                limits: limits
+            )
+        }
+        return makeHighlightedDocument(
+            source: source,
+            language: language,
+            fileName: fileName,
+            settings: settings,
+            prefersDark: prefersDark,
+            limits: limits
+        )
+    }
+
+    static func makeHighlightedDocument(
+        source: String,
+        language: CodeLanguage,
+        fileName: String,
+        settings: CodePreviewSettings,
+        prefersDark: Bool,
+        limits: CodePreviewLimits = .default
+    ) -> CodePreviewDocument {
+        let theme = settings.theme.resolvedTheme(prefersDark: prefersDark)
 
         let allLines = CodeHighlighter.splitLines(source)
         let isTruncated = allLines.count > limits.maxLines

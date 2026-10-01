@@ -112,6 +112,15 @@ App Group `UserDefaults(suiteName:)` 存设置 → 设置 UI(软件选择器、�
 >      (MPEG-2 传输流),声明它会把视频文件抢过来。`.rs`/`.go`/`.sql` 是动态 UTI,同样不声明。
 >   3. 扩展**也编了** `AppLanguage.swift` + `Localization.swift`(为了截断提示与"无法读取"两句话的中英文),
 >      而不是原文设想的"只编 CodePreview + CodeTheme";Finder 扩展早就是同样的做法。
+> - **Markdown 改为"渲染"(2026-10-01 追加)**:`net.daringfireball.markdown` **保留在接管列表里**,但渲染方式
+>   从"源码高亮"换成**真正的渲染**(`MarkdownDocument` 解析 + `CodePreviewMarkdownBuilder` 用 AppKit 排版):
+>   标题、加粗/斜体、行内代码、链接、有序/无序/嵌套列表、引用、围栏代码块(复用 `CodeHighlighter`)、
+>   表格(按显示宽度对齐,中文按两列算)、分隔线。
+>   - 起因:本机该类型原本由 **WPS Office 的快速查看扩展**渲染,用户反馈被"降级成源码高亮"。
+>   - **"按语言勾选开关"在 Quick Look 层面做不到**:`QLSupportedContentTypes` 写死在签名后的 Info.plist;
+>     Quick Look 也没有运行时交还机制 —— 实测在扩展里对 `.md` 抛错,进程起来了但**没有任何渲染**,
+>     `WPSQuickLook` 不会被拉起(对照组:禁用 MenuRight 扩展后 WPS 正常渲染)。
+>   - 因此结论是"既然接管就做到不降级":自己渲染。设置面板的示例预览走同一条渲染路径。
 > - **仍未做**:自行声明 `.ts`/`.rs`/`.go` 的 `UTImportedTypeDeclarations`(那要改主 App 的文档类型声明);
 >   缩略图(QLThumbnailProvider)不在此范围。
 
