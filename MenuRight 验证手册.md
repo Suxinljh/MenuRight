@@ -987,6 +987,33 @@ Manual:
       预期:窗口消失,**不弹任何错误框**,不产生压缩包
 ```
 
+### 2026-10-01 — 解压也有真实进度、暂停与取消
+
+```
+Automated: PASS  (484/484 XCTest,+4:解压进度/切片/暂停/取消)
+Automated: PASS  (Release 构建;已安装;扩展已启用)
+Manual:    PENDING(H4)
+```
+
+- **要求**:解压按压缩那套来 —— 真实进度条 + 暂停 + 取消。
+- **改法**:进度/控制的基础设施上一轮已经建好,这次是把解压接上去:
+  - `ArchiveExtractor.extract` 增加 `control:` 与 `progressRange:`。`steps` 是**先规划好再循环**的,
+    所以 `count` 就是真实分母,直接逐条目 `checkpoint()` + 上报。
+  - **一个请求可能解压多个压缩包**(菜单多选),而进度条只有一条,所以每个包各自上报到
+    自己在 `progressRange` 里的那一段切片。
+  - `FinderSync.showProgress` 现在对 `.extractArchive` 也开同一个窗口,标题「正在解压」。
+- **测试抓到的真问题**:循环里报的是每个条目的**开始**,最后一维只到 `(n-1)/n = 0.83`,
+  进度条永远差一截;已改为循环结束后补报 1。`testExtractionReportsProgressUpToOne` /
+  `testExtractionProgressStaysInsideItsSliceOfTheRequest` 就是为这两点写的。
+- **已知粒度**:与压缩一致,按条目;单个巨大成员在写完前不会响应暂停/取消。
+
+```
+Manual:
+  H4  右键一个压缩包 → 解压到当前文件夹                                        PENDING
+      预期:出现「正在解压」进度窗口(同一套样式),进度条真实推进,
+      可暂停/继续/取消;完成后窗口自动消失
+```
+
 ### 结论怎么写
 
 ```
