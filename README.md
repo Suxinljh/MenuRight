@@ -94,13 +94,18 @@ Scripts/check-version.sh            # 断言 4 个 target 版本一致
 - 想看它实际跑起来：`Scripts/release.sh` 的 `--publish` 会把版本发布到 GitHub Releases，客户端随后就能查到。
 
 ```sh
-Scripts/release.sh                  # 打两个架构的 ZIP，并打印发布命令
+Scripts/release.sh                  # 构建两个架构，出 DMG + ZIP + 源码 ZIP + SHA256SUMS
 Scripts/release.sh --publish        # 建 tag + gh release create（需要 gh 已登录）
 ```
 
+发布资产：每个架构一个 `.dmg`（内含 MenuRight.app 与「应用程序」快捷方式）和一个 `.zip`，
+外加 `MenuRight-<版本>-source.zip`（`git archive` 出的源码）与 `SHA256SUMS.txt`。
+发布说明末尾会自动附一段「构建与验证说明」——**发布机只能运行自己的架构**，另一个架构属于
+交叉编译，只会做静态检查，因此必须被明确标注为「未经测试」，由脚本自动生成而不是手写。
+
 ## 安装与使用
 
-1. 下载对应架构的压缩包（Apple Silicon 或 Intel），解压后把 **MenuRight.app** 拖进「应用程序」。
+1. 下载对应架构的安装包（Apple Silicon 或 Intel；DMG 或 ZIP 任选），打开后把 **MenuRight.app** 拖进「应用程序」。
 2. 首次打开：如果系统提示无法验证开发者，请在「访达」里右键应用 → **打开**（本项目未做公证，属于预期行为）。
 3. 在 MenuRight 的**首次使用引导**里点「打开系统设置…」，在「隐私与安全性 → 扩展 → 已添加的扩展」中启用 **MenuRight 扩展**。这是本应用唯一需要的系统权限。
 4. 打开「文件夹权限」，授权你希望 MenuRight 操作的文件夹（可批量添加）。**未授权的路径无法写入**——这是 macOS 沙箱的限制，不是 bug。
@@ -128,7 +133,7 @@ xcodebuild -project MenuRight.xcodeproj -scheme MenuRight -configuration Release
 - 唯一的第三方依赖是 [SWCompression](https://github.com/tsolomko/SWCompression)（MIT，仅主应用与测试 target 链接）。
 - 测试：`xcodebuild -project MenuRight.xcodeproj -scheme MenuRight test`
 - 版本：改 `Config/Version.xcconfig`（或 `Scripts/version.sh`），改完跑 `Scripts/check-version.sh`。
-- 发版：`Scripts/release.sh`（两个架构的 ZIP + tag + GitHub Release）。
+- 发版：`Scripts/release.sh`（两个架构的 DMG + ZIP + 源码 ZIP + tags + GitHub Release）。
 - 可复现的验证脚本见 `Scripts/`（`verify-archive-roundtrip.sh`、`preview-finder-menu.sh`、`check-icons.sh`、`version.sh`、`check-version.sh`、`release.sh` 等）。
 
 ## 开源许可
