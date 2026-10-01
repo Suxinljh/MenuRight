@@ -251,13 +251,28 @@ private struct SidebarCategoryRow: View {
         RoundedRectangle(cornerRadius: SettingsMetrics.sidebarSelectionCornerRadius, style: .continuous)
     }
 
+    /// Selected rows are white-on-accent; idle rows follow the label colour.
+    private var foreground: Color { isSelected ? .white : .primary }
+
     var body: some View {
         Label {
             Text(title)
         } icon: {
+            // The style has to sit on the icon itself; it is *not* redundant with
+            // the `.foregroundStyle(foreground)` further down.
+            //
+            // `.listStyle(.sidebar)` re-applies its own foreground style to a
+            // label's icon slot from the outside, so the row-level style reaches
+            // the text but never the glyph: the selected row drew white text next
+            // to a black icon on the accent pill. Measured 2026-10-01 by
+            // offscreen-rendering this row inside a sidebar `List` — row-level
+            // style only gave rgb(0,0,0), style on the icon gives white.
+            // `.tint()` does not help; an explicit `HStack` does, but then the
+            // row loses `Label`'s spacing and accessibility semantics.
             AssetIcon(assetName: assetName)
+                .foregroundStyle(foreground)
         }
-        .foregroundStyle(isSelected ? Color.white : Color.primary)
+        .foregroundStyle(foreground)
         .padding(.vertical, 5)
         .padding(.horizontal, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
