@@ -122,6 +122,8 @@ for source in \
     Shared/Archive/ArchiveMemberSource.swift \
     Shared/Archive/ArchiveExtractor.swift \
     Shared/Archive/ArchiveCompressor.swift \
+    Shared/Archive/ArchiveOperationControl.swift \
+    Shared/IPC/FileOperationContract.swift \
     Shared/FileOperations/ZipWriter.swift \
     Shared/FileOperations/FileNameResolver.swift \
     Shared/Settings/ArchiveSettings.swift \
