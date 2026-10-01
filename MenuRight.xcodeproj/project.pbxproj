@@ -57,7 +57,6 @@
 		AB0000000000000000000AF4 /* FileMovePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A4 /* FileMovePlanner.swift */; };
 		AB0000000000000000000AF5 /* CutPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A5 /* CutPayload.swift */; };
 		AB0000000000000000000AF6 /* CutPasteboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A6 /* CutPasteboard.swift */; };
-		AB0000000000000000000AF7 /* OperationPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* OperationPresenter.swift */; };
 		AB0000000000000000000S01 /* SystemOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000S01 /* SystemOpener.swift */; };
 		AB0000000000000000000S02 /* SystemOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000S01 /* SystemOpener.swift */; };
 		AB0000000000000000000AF8 /* FileOperationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* FileOperationService.swift */; };
@@ -104,11 +103,14 @@
 		ABSETAPP025 /* FavoriteSettingsViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR025 /* FavoriteSettingsViews.swift */; };
 		ABSETAPP026 /* CodeThemeSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR026 /* CodeThemeSettingsView.swift */; };
 		ABSETAPP027 /* ArchiveSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR027 /* ArchiveSettingsView.swift */; };
+		ABFAVAPP01 /* FavoriteIconProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFAVICON1 /* FavoriteIconProvider.swift */; };
+		ABFAVTST01 /* FavoriteIconProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFAVICON1 /* FavoriteIconProvider.swift */; };
 		ABSETTST001 /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR001 /* AppLanguage.swift */; };
 		ABSETTST002 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR002 /* Localization.swift */; };
 		ABSETTST003 /* MenuRightSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR003 /* MenuRightSettings.swift */; };
 		ABSETTST004 /* NewFileType.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR004 /* NewFileType.swift */; };
 		ABSETTST005 /* FavoriteEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR005 /* FavoriteEntry.swift */; };
+		ABEXTMT002 /* ExtensionMainThreadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAEXTMT001 /* ExtensionMainThreadTests.swift */; };
 		ABSETTST006 /* CodeTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR006 /* CodeTheme.swift */; };
 		ABSETTST007 /* ArchiveSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR007 /* ArchiveSettings.swift */; };
 		ABSETTST008 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR008 /* SettingsStore.swift */; };
@@ -125,6 +127,10 @@
 		ABFEXT01 /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR001 /* AppLanguage.swift */; };
 		ABFEXT02 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR002 /* Localization.swift */; };
 		ABFEXT03 /* FinderMenuLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFREF01 /* FinderMenuLanguage.swift */; };
+		ABTSTPW01 /* ArchiveProgressWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFPRW01 /* ArchiveProgressWindow.swift */; };
+		ABTSTPW02 /* ArchiveProgressWindowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFPWT01 /* ArchiveProgressWindowTests.swift */; };
+		ABFPRW01 /* ArchiveProgressWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFPRW01 /* ArchiveProgressWindow.swift */; };
+		ABFPRW02 /* archive-zip-7z.png in Resources */ = {isa = PBXBuildFile; fileRef = AAFPRW02 /* archive-zip-7z.png */; };
 		ABFTST01 /* FinderMenuLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFREF01 /* FinderMenuLanguage.swift */; };
 		ABFTST02 /* FinderMenuLocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFREF02 /* FinderMenuLocalizationTests.swift */; };
 		ABONB01 /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAONB01 /* OnboardingFlow.swift */; };
@@ -156,9 +162,11 @@
 		ABARC12 /* ArchiveFormats.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC08 /* ArchiveFormats.swift */; };
 		ABARC13 /* ArchiveMemberSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC09 /* ArchiveMemberSource.swift */; };
 		ABARC14 /* ArchiveCompressor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC10 /* ArchiveCompressor.swift */; };
+		ABCTLAPP1 /* ArchiveOperationControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACTL001 /* ArchiveOperationControl.swift */; };
 		ABARC15 /* ArchiveFormats.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC08 /* ArchiveFormats.swift */; };
 		ABARC16 /* ArchiveMemberSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC09 /* ArchiveMemberSource.swift */; };
 		ABARC17 /* ArchiveCompressor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC10 /* ArchiveCompressor.swift */; };
+		ABCTLTST1 /* ArchiveOperationControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACTL001 /* ArchiveOperationControl.swift */; };
 		ABARC18 /* ArchiveCompressorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC11 /* ArchiveCompressorTests.swift */; };
 		ABARC07 /* FinderArchives.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC04 /* FinderArchives.swift */; };
 		ABARC08 /* FinderArchives.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC04 /* FinderArchives.swift */; };
@@ -260,6 +268,7 @@
 		AASETR003 /* MenuRightSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuRightSettings.swift; sourceTree = "<group>"; };
 		AASETR004 /* NewFileType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFileType.swift; sourceTree = "<group>"; };
 		AASETR005 /* FavoriteEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoriteEntry.swift; sourceTree = "<group>"; };
+		AAEXTMT001 /* ExtensionMainThreadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionMainThreadTests.swift; sourceTree = "<group>"; };
 		AASETR006 /* CodeTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeTheme.swift; sourceTree = "<group>"; };
 		AASETR007 /* ArchiveSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveSettings.swift; sourceTree = "<group>"; };
 		AASETR008 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
@@ -274,6 +283,7 @@
 		AASETR025 /* FavoriteSettingsViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoriteSettingsViews.swift; sourceTree = "<group>"; };
 		AASETR026 /* CodeThemeSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeThemeSettingsView.swift; sourceTree = "<group>"; };
 		AASETR027 /* ArchiveSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveSettingsView.swift; sourceTree = "<group>"; };
+		AAFAVICON1 /* FavoriteIconProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoriteIconProvider.swift; sourceTree = "<group>"; };
 		AASETR031 /* SettingsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStoreTests.swift; sourceTree = "<group>"; };
 		AASETR032 /* MenuRightSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuRightSettingsTests.swift; sourceTree = "<group>"; };
 		AASETR033 /* LocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTests.swift; sourceTree = "<group>"; };
@@ -283,6 +293,9 @@
 		AARES003 /* BrandAssets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = BrandAssets.xcassets; sourceTree = "<group>"; };
 		AARES004 /* SettingsIcons.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = SettingsIcons.xcassets; sourceTree = "<group>"; };
 		AAFREF01 /* FinderMenuLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderMenuLanguage.swift; sourceTree = "<group>"; };
+		AAFPRW01 /* ArchiveProgressWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveProgressWindow.swift; sourceTree = "<group>"; };
+		AAFPWT01 /* ArchiveProgressWindowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveProgressWindowTests.swift; sourceTree = "<group>"; };
+		AAFPRW02 /* archive-zip-7z.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "archive-zip-7z.png"; sourceTree = "<group>"; };
 		AAFREF02 /* FinderMenuLocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderMenuLocalizationTests.swift; sourceTree = "<group>"; };
 		AAONB01 /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
 		AAONB02 /* OnboardingFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowTests.swift; sourceTree = "<group>"; };
@@ -304,6 +317,7 @@
 		AAARC08 /* ArchiveFormats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveFormats.swift; sourceTree = "<group>"; };
 		AAARC09 /* ArchiveMemberSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveMemberSource.swift; sourceTree = "<group>"; };
 		AAARC10 /* ArchiveCompressor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveCompressor.swift; sourceTree = "<group>"; };
+		AACTL001 /* ArchiveOperationControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveOperationControl.swift; sourceTree = "<group>"; };
 		AASHEET1 /* CustomCompressionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomCompressionSheet.swift; sourceTree = "<group>"; };
 		AAARC11 /* ArchiveCompressorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveCompressorTests.swift; sourceTree = "<group>"; };
 		AAARC04 /* FinderArchives.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderArchives.swift; sourceTree = "<group>"; };
@@ -383,6 +397,7 @@
 				AA00000000000000000000C6 /* FolderAccessView.swift */,
 				AAGROUPSET002 /* Settings */,
 				AAONB04 /* FolderAuthorizationAction.swift */,
+				AAFAVICON1 /* FavoriteIconProvider.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -391,6 +406,8 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000071 /* FinderSync.swift */,
+				AAFPRW01 /* ArchiveProgressWindow.swift */,
+				AAFPRW02 /* archive-zip-7z.png */,
 				AA0000000000000000000072 /* FinderSelectionContext.swift */,
 				AA0000000000000000000073 /* FinderMenuBuilder.swift */,
 				AA0000000000000000000074 /* PasteboardWriter.swift */,
@@ -409,6 +426,8 @@
 			children = (
 				AA0000000000000000000081 /* FinderSelectionContextTests.swift */,
 				AA0000000000000000000082 /* FinderMenuBuilderTests.swift */,
+				AAEXTMT001 /* ExtensionMainThreadTests.swift */,
+				AAFPWT01 /* ArchiveProgressWindowTests.swift */,
 				AA00000000000000000000B1 /* FileNameResolverTests.swift */,
 				AA00000000000000000000B2 /* CutPayloadTests.swift */,
 				AA00000000000000000000B3 /* FileMovePlannerTests.swift */,
@@ -487,6 +506,7 @@
 				AAARC08 /* ArchiveFormats.swift */,
 				AAARC09 /* ArchiveMemberSource.swift */,
 				AAARC10 /* ArchiveCompressor.swift */,
+				AACTL001 /* ArchiveOperationControl.swift */,
 				AAARC02 /* ArchiveExtractor.swift */,
 			);
 			path = Archive;
@@ -740,6 +760,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ABFPRW02 /* archive-zip-7z.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -779,8 +800,7 @@
 				AB0000000000000000000AF4 /* FileMovePlanner.swift in Sources */,
 				AB0000000000000000000AF5 /* CutPayload.swift in Sources */,
 				AB0000000000000000000AF6 /* CutPasteboard.swift in Sources */,
-				AB0000000000000000000AF7 /* OperationPresenter.swift in Sources */,
-				ABSETAPP001 /* AppLanguage.swift in Sources */,
+						ABSETAPP001 /* AppLanguage.swift in Sources */,
 				ABSETAPP002 /* Localization.swift in Sources */,
 				ABSETAPP003 /* MenuRightSettings.swift in Sources */,
 				ABSETAPP004 /* NewFileType.swift in Sources */,
@@ -799,6 +819,7 @@
 				ABSETAPP025 /* FavoriteSettingsViews.swift in Sources */,
 				ABSETAPP026 /* CodeThemeSettingsView.swift in Sources */,
 				ABSETAPP027 /* ArchiveSettingsView.swift in Sources */,
+				ABFAVAPP01 /* FavoriteIconProvider.swift in Sources */,
 				ABONB01 /* OnboardingFlow.swift in Sources */,
 				ABONB04 /* OnboardingView.swift in Sources */,
 				ABONB05 /* FolderAuthorizationAction.swift in Sources */,
@@ -812,6 +833,7 @@
 				ABARC12 /* ArchiveFormats.swift in Sources */,
 				ABARC13 /* ArchiveMemberSource.swift in Sources */,
 				ABARC14 /* ArchiveCompressor.swift in Sources */,
+				ABCTLAPP1 /* ArchiveOperationControl.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -835,6 +857,7 @@
 				ABFEXT01 /* AppLanguage.swift in Sources */,
 				ABFEXT02 /* Localization.swift in Sources */,
 				ABFEXT03 /* FinderMenuLanguage.swift in Sources */,
+				ABFPRW01 /* ArchiveProgressWindow.swift in Sources */,
 				ABP6B09 /* NewFileAvailability.swift in Sources */,
 				ABP6B14 /* FinderFavorites.swift in Sources */,
 				ABARC08 /* FinderArchives.swift in Sources */,
@@ -847,6 +870,7 @@
 			files = (
 				AB00000000000000000000C1 /* FinderSelectionContextTests.swift in Sources */,
 				AB00000000000000000000C2 /* FinderMenuBuilderTests.swift in Sources */,
+				ABEXTMT002 /* ExtensionMainThreadTests.swift in Sources */,
 				AB00000000000000000000C3 /* FinderSelectionContext.swift in Sources */,
 				AB00000000000000000000C4 /* FinderMenuBuilder.swift in Sources */,
 				AB00000000000000000000F1 /* FileNameResolverTests.swift in Sources */,
@@ -898,6 +922,8 @@
 				ABSETTST101 /* SettingsCategory.swift in Sources */,
 				ABSETTST102 /* SettingsCategoryTests.swift in Sources */,
 				ABFTST01 /* FinderMenuLanguage.swift in Sources */,
+				ABTSTPW01 /* ArchiveProgressWindow.swift in Sources */,
+		ABTSTPW02 /* ArchiveProgressWindowTests.swift in Sources */,
 				ABFTST02 /* FinderMenuLocalizationTests.swift in Sources */,
 				ABONB02 /* OnboardingFlow.swift in Sources */,
 				ABONB03 /* OnboardingFlowTests.swift in Sources */,
@@ -916,9 +942,11 @@
 				ABARC15 /* ArchiveFormats.swift in Sources */,
 				ABARC16 /* ArchiveMemberSource.swift in Sources */,
 				ABARC17 /* ArchiveCompressor.swift in Sources */,
+				ABCTLTST1 /* ArchiveOperationControl.swift in Sources */,
 				ABARC07 /* FinderArchives.swift in Sources */,
 				ABARC09 /* ArchiveExtractionTests.swift in Sources */,
 				ABSHEET2 /* CustomCompressionSheet.swift in Sources */,
+				ABFAVTST01 /* FavoriteIconProvider.swift in Sources */,
 				ABARC18 /* ArchiveCompressorTests.swift in Sources */,
 				ABARC11 /* FinderArchivesTests.swift in Sources */,
 			);
