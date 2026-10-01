@@ -308,8 +308,72 @@ final class MenuRightSettingsTests: XCTestCase {
         XCTAssertEqual(settings.sizeLimitMB, ArchiveSettings.sizeLimitRange.lowerBound)
     }
 
-    func testArchiveFormatSuffixes() {
-        XCTAssertEqual(ArchiveFormat.zip.pathExtensions, ["zip"])
+    /// The 体积上限 field takes typed input now, so the rule that decides what
+    /// gets stored is the interesting part: the user must be told the maximum
+    /// instead of having a too-large number silently clamped (which is what the
+    /// stepper-only row did — the arrow simply did nothing).
+    func testSizeLimitEntryAcceptsValuesInsideTheRange() {
+        XCTAssertEqual(
+            ArchiveSettings.interpretSizeLimit("\(ArchiveSettings.defaultSizeLimitMB)"),
+            .accepted(ArchiveSettings.defaultSizeLimitMB)
+        )
+        XCTAssertEqual(
+            ArchiveSettings.interpretSizeLimit("\(ArchiveSettings.sizeLimitRange.lowerBound)"),
+            .accepted(ArchiveSettings.sizeLimitRange.lowerBound)
+        )
+        XCTAssertEqual(
+            ArchiveSettings.interpretSizeLimit("\(ArchiveSettings.sizeLimitRange.upperBound)"),
+            .accepted(ArchiveSettings.sizeLimitRange.upperBound)
+        )
+    }
+
+    func testSizeLimitEntryReportsTheMaximumInsteadOfStoringTooLargeAValue() {
+        let above = ArchiveSettings.sizeLimitRange.upperBound + 1
+        XCTAssertEqual(
+            ArchiveSettings.interpretSizeLimit("\(above)"),
+            .aboveMaximum(stored: ArchiveSettings.sizeLimitRange.upperBound)
+        )
+        // The user's example: 10000 is past this build's ceiling.
+        if ArchiveSettings.sizeLimitRange.upperBound < 10_000 {
+            XCTAssertEqual(
+                ArchiveSettings.interpretSizeLimit("10000"),
+                .aboveMaximum(stored: ArchiveSettings.sizeLimitRange.upperBound)
+            )
+        }
+        // Digits that overflow `Int` are above the maximum too, not "not a number".
+        XCTAssertEqual(
+            ArchiveSettings.interpretSizeLimit("999999999999999999999999"),
+            .aboveMaximum(stored: ArchiveSettings.sizeLimitRange.upperBound)
+        )
+    }
+
+    func testSizeLimitEntryReportsTheMinimum() {
+        XCTAssertEqual(
+            ArchiveSettings.interpretSizeLimit("0"),
+            .belowMinimum(stored: ArchiveSettings.sizeLimitRange.lowerBound)
+        )
+        XCTAssertEqual(
+            ArchiveSettings.interpretSizeLimit("-5"),
+            .unusable
+        )
+    }
+
+    func testSizeLimitEntryRejectsWhatIsNotANumber() {
+        for text in ["", "   ", "abc", "12abc", "MB", "1.5", "١٢"] {
+            XCTAssertEqual(ArchiveSettings.interpretSizeLimit(text), .unusable, "unexpectedly accepted \(text.debugDescription)")
+        }
+    }
+
+    /// The row displays the grouped form ("1,024 MB") while unfocused, so what is
+    /// on screen has to survive being selected, retyped over, or pasted back in.
+    func testSizeLimitEntryToleratesGroupedAndUnitSuffixedInput() {
+        XCTAssertEqual(ArchiveSettings.interpretSizeLimit("1,024"), .accepted(1024))
+        XCTAssertEqual(ArchiveSettings.interpretSizeLimit("1,024 MB"), .accepted(1024))
+        XCTAssertEqual(ArchiveSettings.interpretSizeLimit(" 1024 mb "), .accepted(1024))
+        XCTAssertEqual(ArchiveSettings.interpretSizeLimit("1，024"), .accepted(1024))
+    }
+
+    func testArchiveFormatSuffixes() {        XCTAssertEqual(ArchiveFormat.zip.pathExtensions, ["zip"])
         XCTAssertEqual(ArchiveFormat.sevenZip.pathExtensions, ["7z"])
         XCTAssertEqual(ArchiveFormat.gzip.pathExtensions, ["gz", "tgz"])
         XCTAssertEqual(ArchiveFormat.xz.pathExtensions, ["xz", "txz"])

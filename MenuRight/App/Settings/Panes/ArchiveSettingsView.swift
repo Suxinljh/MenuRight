@@ -8,8 +8,31 @@ import AppKit
 /// entry is explained rather than mysterious (decision D5-R1).
 struct ArchiveSettingsView: View {
     @EnvironmentObject private var store: SettingsStore
+    /// Read-only peek at the folder authorizations, used for one warning: a
+    /// chosen destination outside every authorized folder cannot be written to.
+    @State private var authStore: FolderAuthorizationStore? = FolderAuthorizationStore.appGroupDefault()
+
+    /// The size limit as the user is typing it. Kept separate from the stored
+    /// value so an out-of-range number can be *shown while it is being typed*
+    /// instead of being silently clamped mid-keystroke.
+    @State private var sizeLimitText = ""
+    /// Why the current `sizeLimitText` is not what will be stored; nil when it is.
+    @State private var sizeLimitHint: String?
+    @FocusState private var sizeLimitIsFocused: Bool
 
     private var settings: ArchiveSettings { store.settings.archives }
+
+    /// True when 解压位置 points somewhere the sandbox will actually allow. An
+    /// unreadable authorization list means "cannot tell", which must not produce
+    /// a warning the user cannot act on.
+    private var customDestinationIsAuthorized: Bool {
+        guard settings.destination == .customFolder,
+              let path = settings.customDestinationPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !path.isEmpty,
+              let folders = authStore?.loadFolders()
+        else { return true }
+        return AuthorizedURLResolver.folderMatching(URL(fileURLWithPath: path), folders: folders) != nil
+    }
 
     var body: some View {
         SettingsPane(
@@ -70,6 +93,17 @@ struct ArchiveSettingsView: View {
                         chooseCustomDestination()
                     }
                 }
+                if !customDestinationIsAuthorized {
+                    SettingsRowDivider()
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label(store.text(.archiveDestinationNotAuthorized), systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text(store.text(.archiveDestinationNotAuthorizedDetail))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                }
             }
             SettingsRowDivider()
             SettingsRow(title: store.text(.archiveConflict)) {
@@ -95,21 +129,113 @@ struct ArchiveSettingsView: View {
         }
     }
 
+    /// 体积上限, as an editable field rather than a stepper-only readout.
+    ///
+    /// The value is typed far more often than it is nudged, and a stepper alone
+    /// silently *refused* anything past its range — tap the up arrow at the
+    /// maximum and nothing happens, with no explanation. Here the field takes
+    /// what the user types, says which limit it hit, and stores the clamped
+    /// value on commit.
+    ///
+    /// The hint therefore does double duty: it names the allowed range at rest
+    /// (so the maximum is discoverable before typing anything) and replaces
+    /// itself with the specific limit the moment the input breaks it.
     private var sizeLimitGroup: some View {
         SettingsGroup(
             title: store.text(.archiveSizeLimit),
             footer: store.text(.archiveFormatsFooter)
         ) {
-            SettingsRow(title: store.text(.archiveSizeLimit), systemImage: "gauge.with.dots.needle.33percent") {
-                Stepper(
-                    value: store.binding(\.archives.sizeLimitMB),
-                    in: ArchiveSettings.sizeLimitRange
-                ) {
-                    Text("\(store.settings.archives.sizeLimitMB) \(store.text(.archiveSizeLimitUnit))")
+            SettingsRow(
+                title: store.text(.archiveSizeLimit),
+                subtitle: sizeLimitHint ?? sizeLimitRangeHint,
+                systemImage: "gauge.with.dots.needle.33percent"
+            ) {
+                HStack(spacing: 6) {
+                    TextField("", text: $sizeLimitText)
+                        .textFieldStyle(.plain)
+                        .multilineTextAlignment(.trailing)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(width: 76)
+                        .focused($sizeLimitIsFocused)
+                        .onSubmit { commitSizeLimit() }
+                        .accessibilityLabel(store.text(.archiveSizeLimit))
+                    Text(store.text(.archiveSizeLimitUnit))
                         .font(.system(.body, design: .monospaced))
                         .foregroundStyle(.secondary)
+                    Stepper(
+                        "",
+                        value: store.binding(\.archives.sizeLimitMB),
+                        in: ArchiveSettings.sizeLimitRange
+                    )
+                    .labelsHidden()
+                    .accessibilityLabel(store.text(.archiveSizeLimit))
                 }
             }
+        }
+        .onAppear { sizeLimitText = formattedSizeLimit(settings.sizeLimitMB) }
+        // The stepper, another window, or a launch marker can all change the
+        // stored value; the field follows it.
+        .onChange(of: settings.sizeLimitMB) { _, new in
+            guard !sizeLimitIsFocused else { return }
+            sizeLimitText = formattedSizeLimit(new)
+            sizeLimitHint = nil
+        }
+        // Live, so 10000 tells the user the maximum while they are still typing.
+        .onChange(of: sizeLimitText) { _, new in
+            sizeLimitHint = hint(for: ArchiveSettings.interpretSizeLimit(new))
+        }
+        .onChange(of: sizeLimitIsFocused) { _, focused in
+            // Editing works on plain digits; at rest the row shows the grouped
+            // form ("1,024 MB") that matches the rest of the pane.
+            sizeLimitText = focused ? String(settings.sizeLimitMB) : formattedSizeLimit(settings.sizeLimitMB)
+            if !focused { commitSizeLimit() }
+        }
+    }
+
+    /// "可输入 1–8,192 MB" — the allowed range, always visible.
+    private var sizeLimitRangeHint: String {
+        String(
+            format: store.text(.archiveSizeLimitRangeHint),
+            formattedSizeLimit(ArchiveSettings.sizeLimitRange.lowerBound),
+            formattedSizeLimit(ArchiveSettings.sizeLimitRange.upperBound)
+        )
+    }
+
+    private func formattedSizeLimit(_ value: Int) -> String {
+        value.formatted(.number.grouping(.automatic))
+    }
+
+    /// The message for an entry that will not be stored as typed.
+    private func hint(for entry: ArchiveSettings.SizeLimitEntry) -> String? {
+        switch entry {
+        case .accepted:
+            return nil
+        case .aboveMaximum:
+            return String(
+                format: store.text(.archiveSizeLimitMaxHint),
+                formattedSizeLimit(ArchiveSettings.sizeLimitRange.upperBound)
+            )
+        case .belowMinimum:
+            return String(
+                format: store.text(.archiveSizeLimitMinHint),
+                formattedSizeLimit(ArchiveSettings.sizeLimitRange.lowerBound)
+            )
+        case .unusable:
+            return store.text(.archiveSizeLimitInvalidHint)
+        }
+    }
+
+    /// Applies what is in the field. Never leaves an invalid setting behind: the
+    /// clamped value is stored and the text is rewritten to match, so the field
+    /// and the setting cannot drift apart.
+    private func commitSizeLimit() {
+        switch ArchiveSettings.interpretSizeLimit(sizeLimitText) {
+        case .accepted(let value), .aboveMaximum(let value), .belowMinimum(let value):
+            store.mutate { $0.archives.sizeLimitMB = value }
+            sizeLimitText = formattedSizeLimit(value)
+        case .unusable:
+            // Revert to what is stored rather than guessing a number.
+            sizeLimitText = formattedSizeLimit(settings.sizeLimitMB)
         }
     }
 

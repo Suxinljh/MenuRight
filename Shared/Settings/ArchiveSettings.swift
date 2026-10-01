@@ -153,3 +153,56 @@ struct ArchiveSettings: Codable, Equatable, Sendable {
         ArchiveFormat.allCases.filter { isEnabled($0) }
     }
 }
+
+extension ArchiveSettings {
+    /// What the size-limit field should do with the text the user typed.
+    ///
+    /// The rule lives next to `sizeLimitRange` on purpose: the field and
+    /// `normalized()` must never disagree about the bound, and the decoder's
+    /// silent clamp is exactly what the field has to explain out loud instead.
+    ///
+    /// Pure, so it is testable without a UI — the pane can only be checked by
+    /// hand in Finder-facing terms.
+    enum SizeLimitEntry: Equatable {
+        /// Inside `sizeLimitRange`; store it as typed.
+        case accepted(Int)
+        /// Above the maximum. `stored` is the clamped value to save, so the
+        /// caller can both keep the setting valid and name the real limit.
+        case aboveMaximum(stored: Int)
+        /// Below the minimum, same contract as above.
+        case belowMinimum(stored: Int)
+        /// Empty, not a number, or a mix the user probably did not mean.
+        case unusable
+    }
+
+    /// Interprets text typed into the 体积上限 field.
+    ///
+    /// Thousands separators and a trailing unit are tolerated so the value this
+    /// same row displays while unfocused (`1,024 MB`) can be selected, retyped
+    /// over, or pasted straight back in.
+    static func interpretSizeLimit(_ text: String) -> SizeLimitEntry {
+        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        for unit in ["MB", "mb", "Mb", "mB", "兆"] {
+            cleaned = cleaned.replacingOccurrences(of: unit, with: "")
+        }
+        cleaned = cleaned
+            .replacingOccurrences(of: ",", with: "")
+            .replacingOccurrences(of: "，", with: "")
+            .replacingOccurrences(of: " ", with: "")
+
+        // ASCII digits only. `Character.isNumber` is also true for Arabic-Indic
+        // and full-width digits, but `Int(_:)` cannot parse those, and treating
+        // them as an overflowing number (the branch below) would report ١٢ as
+        // "above the maximum" — a wrong explanation for a wrong reason.
+        guard !cleaned.isEmpty, cleaned.allSatisfy({ $0.isASCII && $0.isNumber }) else { return .unusable }
+        // An ASCII digit run too long for `Int` is certainly past the maximum,
+        // and saying "not a number" there would be wrong.
+        guard let value = Int(cleaned) else {
+            return .aboveMaximum(stored: sizeLimitRange.upperBound)
+        }
+
+        if value < sizeLimitRange.lowerBound { return .belowMinimum(stored: sizeLimitRange.lowerBound) }
+        if value > sizeLimitRange.upperBound { return .aboveMaximum(stored: sizeLimitRange.upperBound) }
+        return .accepted(value)
+    }
+}
