@@ -125,6 +125,66 @@ App Group `UserDefaults(suiteName:)` 存设置 → 设置 UI(软件选择器、�
 6. **风险与回退**:若 S2 证明扩展无法取代系统纯文本预览(系统自带文本 QL 生成器优先),则 P8 降级为
    "设置内预览 + 复制高亮",或改走 data-based preview(`QLIsDataBasedPreview = true`)。
 
+**建 target 逐项清单(Xcode 26.1 实测,2026-10-01)**
+
+1. `File → New → Target…` → macOS → Application Extension → **Quick Look Preview Extension**;
+   Product Name `MenuRightCodePreview`,Language **Swift**,**Embed in Application = MenuRight**。
+   模板会生成 `MenuRightCodePreview/{PreviewViewController.swift, PreviewProvider.swift, Info.plist,
+   Base.lproj/PreviewViewController.xib}` —— 一次给两条路(view-based / data-based),我们要 **view-based**,
+   `PreviewProvider.swift` 与 xib 不用(可删,或改成程序化建视图)。
+2. Build Settings 对齐:见下表。
+3. **App Group**:QL 扩展要读 `group.xin.ljhsu.MenuRight`;没有该 entitlement 时 `SettingsStore` 会回落到
+   `.standard`,预览永远是默认主题。照抄 `MenuRightFinder/MenuRightFinder.entitlements`(app-sandbox + application-groups)。
+4. **Info.plist**:`NSExtensionPointIdentifier = com.apple.quicklook.preview`,principal class
+   `$(PRODUCT_MODULE_NAME).PreviewViewController`,`QLIsDataBasedPreview = false`。
+5. **`QLSupportedContentTypes`** 按实测 UTI 填(见下表);`.ts / .rs / .go / .sql` 先不声明。
+6. 复核主 App 的 **Build Phases → Embed Foundation Extensions** 里出现 `MenuRightCodePreview.appex`
+   (选了 Embed in Application 后 Xcode 自动注入,与现有 `MenuRightFinder.appex` 那条并列)。
+7. **Target Membership** 只勾 `Shared/CodePreview/*`、`Shared/Settings/CodeTheme.swift`、App Group 常量所在文件;
+   **不要**勾 `Shared/Archive/*`、`Shared/FileOperations/*`、SWCompression(appex 必须零第三方依赖)。
+8. **校验**:`plutil -lint` → `xcodebuild -list` → 三 target 构建 → `Scripts/install-dev-app.sh` →
+   `pluginkit -m -p com.apple.quicklook.preview | grep -i MenuRight` → `qlmanage -r && qlmanage -p <file.swift>`。
+
+| 设置 | 值 | 依据 |
+| --- | --- | --- |
+| PRODUCT_BUNDLE_IDENTIFIER | `xin.ljhsu.MenuRight.CodePreview` | 与现有 `xin.ljhsu.MenuRight` / `…FinderSync` 命名一致,须以上级 App bundle id 为前缀 |
+| MACOSX_DEPLOYMENT_TARGET | `14.0` | 项目级已设 |
+| SWIFT_VERSION | `5.0` | 三个 target 都是 5.0 |
+| MARKETING_VERSION / CURRENT_PROJECT_VERSION | `1.0` / `1` | 与主 App 一致,否则嵌入校验报版本不匹配 |
+| GENERATE_INFOPLIST_FILE / INFOPLIST_FILE | `NO` / `MenuRightCodePreview/Info.plist` | 与 MenuRightFinder 一致 |
+| ENABLE_APP_SANDBOX | `YES` | 模板默认;扩展必须沙箱化 |
+| ENABLE_HARDENED_RUNTIME | `YES` | 与另外两个 target 一致 |
+| SKIP_INSTALL | `YES` | 模板默认 |
+| CODE_SIGN_STYLE / DEVELOPMENT_TEAM | `Automatic` / `92X76S5UFL` | 项目级已设 |
+
+**实测 UTI(`UTType(filenameExtension:)`,Xcode 26.1 / macOS 26)**
+
+| 扩展名 | UTI | 可声明? |
+| --- | --- | --- |
+| .swift | `public.swift-source` | ✅ |
+| .py / .pyw | `public.python-script` | ✅ |
+| .js / .mjs | `com.netscape.javascript-source` | ✅ |
+| .tsx | `com.microsoft.typescript` | ✅ |
+| .html / .htm | `public.html` | ✅ |
+| .css | `public.css` | ✅ |
+| .json | `public.json` | ✅ |
+| .yml / .yaml | `public.yaml` | ✅ |
+| .md / .markdown | `net.daringfireball.markdown` | ✅ |
+| .sh / .bash / .zsh | `public.shell-script` / `public.bash-script` / `public.zsh-script` | ✅ |
+| .c / .h | `public.c-source` / `public.c-header` | ✅ |
+| .cpp / .cc / .hpp | `public.c-plus-plus-source` / `public.c-plus-plus-header` | ✅ |
+| .java | `com.sun.java-source` | ✅ |
+| **.ts** | **`public.mpeg-2-transport-stream`** | ❌ 这是 MPEG-2 传输流,声明了会把视频文件抢过来 |
+| .rs / .go / .sql / .scss / .toml | `dyn.ah62d4rv4…`(动态 UTI) | ❌ 不稳定,先回退系统预览 |
+| .txt / .log / .csv | `public.plain-text` 等 | ⚠️ 备选:声明 `public.plain-text` 可接管全部纯文本,代价是所有文本文件都归我们(正是 S2 要回答的取舍) |
+
+> 系统自带的 `Text.qlgenerator` 目前声明了 `public.plain-text`、`public.json`、`public.xml`、`public.rtf` 等
+> (`qlmanage -m plugins` 实测);扩展声明的类型优先于 qlgenerator —— 这正是 S2 要验证的点。
+>
+> ⚠️ `CodeTheme.swift` 的 `CodeThemeSettings.init(from:)` 用到 `decodeOr`,而它定义在 `MenuRightSettings.swift`:
+> appex 要编 `CodeTheme.swift` 就得连设置模型文件一起勾(会带进 FavoriteEntry / ArchiveSettings 一串)。
+> 更省事的做法:把那几处改成 `decodeIfPresent(...) ?? 默认值`,`CodeThemeSettings` 就不再依赖设置模型文件。
+
 ### P9 — 解压(原 P1)
 
 `ArchiveExtractor`(策略层,纯 Swift、零依赖:Zip Slip 校验、不覆盖策略、逐项结果聚合)+ `ArchiveBackend`(适配 SWCompression)。
