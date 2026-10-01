@@ -281,6 +281,8 @@ enum StringKey: String, CaseIterable {
     case codeThemeFontSystem
     case codeThemeLineNumbers
     case codeThemeNote
+    case codePreviewLanguage
+    case codePreviewPlainText
 
     // MARK: Archives
     case archiveIntro
@@ -738,8 +740,8 @@ enum Localization {
 
         // Code theme
         .codeThemeIntro: Entry(
-            zh: "选择代码预览的高亮主题与字体。主题配色由主应用保存，Quick Look 扩展在 P8 接入后读取同一份配置。",
-            en: "Pick the highlight theme and font for code previews. The palette is stored by the main app; the Quick Look extension will read the same settings once P8 lands."
+            zh: "选择代码预览的高亮主题与字体。预览用的是与 Quick Look 扩展同一套轻量高亮器；配色由主应用保存，扩展在 P8 接入后读取同一份配置。",
+            en: "Pick the highlight theme and font for code previews. The preview runs the same lightweight highlighter the Quick Look extension will use; the palette is stored by the main app and read by the extension once P8 lands."
         ),
         .codeThemeTheme: Entry(zh: "主题", en: "Theme"),
         .codeThemePreview: Entry(zh: "预览", en: "Preview"),
@@ -748,9 +750,11 @@ enum Localization {
         .codeThemeFontSystem: Entry(zh: "系统等宽字体", en: "System Monospaced"),
         .codeThemeLineNumbers: Entry(zh: "显示行号", en: "Show Line Numbers"),
         .codeThemeNote: Entry(
-            zh: "当前版本的高亮只用于此预览；真正的 Quick Look 代码高亮属于 P8。",
-            en: "Highlighting here is preview-only; real Quick Look highlighting is part of P8."
+            zh: "高亮器已经按扩展名 / UTI 识别语言，并渲染真实示例代码；当前版本它只出现在这个设置预览里，Quick Look 扩展的接入属于 P8。",
+            en: "The highlighter already detects languages by extension/UTI and renders real sample code; for now it only appears in this settings preview. Wiring it into the Quick Look extension is part of P8."
         ),
+        .codePreviewLanguage: Entry(zh: "示例语言", en: "Sample Language"),
+        .codePreviewPlainText: Entry(zh: "纯文本", en: "Plain Text"),
 
         // Archives
         .archiveIntro: Entry(

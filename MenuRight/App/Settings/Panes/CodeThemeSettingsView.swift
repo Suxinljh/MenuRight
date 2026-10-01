@@ -3,12 +3,15 @@ import SwiftUI
 /// Code theme pane: palette selection, typography, and a live preview rendered
 /// with the theme's own colours.
 ///
-/// The preview is a fixed sample with explicit token kinds, not a tokenizer:
-/// real highlighting belongs to the Quick Look extension (P8), and showing the
-/// palette accurately is what this pane is for.
+/// The preview runs the real `CodeHighlighter` over a sample document instead
+/// of a hand-written token list, so what is shown here is what the Quick Look
+/// extension will draw in P8 — one engine, one theme model, no drift. The
+/// language picker only changes the sample; it is not a persisted setting.
 struct CodeThemeSettingsView: View {
     @EnvironmentObject private var store: SettingsStore
     @Environment(\.colorScheme) private var colorScheme
+
+    @State private var previewLanguage: CodeLanguage = .swift
 
     private static let fontOptions: [String?] = [nil, "SF Mono", "Menlo", "Monaco", "Courier New"]
 
@@ -78,6 +81,20 @@ struct CodeThemeSettingsView: View {
 
     private var previewGroup: some View {
         SettingsGroup(title: store.text(.codeThemePreview)) {
+            SettingsRow(
+                title: store.text(.codePreviewLanguage),
+                systemImage: "chevron.left.forwardslash.chevron.right"
+            ) {
+                Picker("", selection: $previewLanguage) {
+                    ForEach(CodeLanguage.allCases, id: \.self) { language in
+                        Text(languageName(language)).tag(language)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(width: 220, alignment: .trailing)
+            }
+            SettingsRowDivider()
             preview
         }
     }
@@ -95,8 +112,16 @@ struct CodeThemeSettingsView: View {
 
     private var preview: some View {
         let theme = settings.resolvedTheme(prefersDark: colorScheme == .dark)
+        let lines = CodeHighlighter.highlight(
+            CodePreviewSamples.source(for: previewLanguage),
+            language: previewLanguage
+        )
         return VStack(alignment: .leading, spacing: 3) {
-            ForEach(Array(CodeThemePreviewSample.lines.enumerated()), id: \.offset) { index, line in
+            Text(CodePreviewSamples.fileName(for: previewLanguage))
+                .font(.caption)
+                .foregroundStyle(Color(rgb: theme.rgb(for: .comment)))
+                .padding(.bottom, 4)
+            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                 HStack(alignment: .top, spacing: 10) {
                     if settings.showsLineNumbers {
                         Text("\(index + 1)")
@@ -108,6 +133,7 @@ struct CodeThemeSettingsView: View {
                 .font(previewFont)
             }
         }
+        .textSelection(.enabled)
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
@@ -127,9 +153,13 @@ struct CodeThemeSettingsView: View {
         return .system(size: settings.fontSize, design: .monospaced)
     }
 
-    private func attributed(_ line: [CodeThemePreviewSample.Token], theme: CodeTheme) -> AttributedString {
+    private func attributed(_ line: CodeHighlightedLine, theme: CodeTheme) -> AttributedString {
+        // An empty `Text` collapses and would make the preview lose blank
+        // lines; a single space keeps the line height of the sample.
+        if line.text.isEmpty { return AttributedString(" ") }
+
         var result = AttributedString()
-        for token in line {
+        for token in line.tokens {
             var piece = AttributedString(token.text)
             piece.foregroundColor = Color(rgb: theme.rgb(for: token.kind))
             result.append(piece)
@@ -137,50 +167,15 @@ struct CodeThemeSettingsView: View {
         return result
     }
 
+    private func languageName(_ language: CodeLanguage) -> String {
+        // Code languages are product names and stay untranslated; plain text is
+        // a real label and goes through the catalog.
+        language == .plainText ? store.text(.codePreviewPlainText) : language.displayName
+    }
+
     private func themeDisplayName(_ theme: CodeTheme) -> String {
         // The dynamic entry has a translatable name; the palettes are product
         // names and stay as they are.
         theme.appearance == .dynamic ? store.text(.generalLanguageSystem) : theme.name
     }
-}
-
-/// Fixed sample used by the preview. Token kinds are explicit so the palette is
-/// shown exactly; nothing here parses code.
-enum CodeThemePreviewSample {
-    struct Token {
-        let text: String
-        let kind: CodeThemeToken
-    }
-
-    static let lines: [[Token]] = [
-        [Token(text: "// MenuRight code preview", kind: .comment)],
-        [
-            Token(text: "struct ", kind: .keyword),
-            Token(text: "Greeting", kind: .type),
-            Token(text: " {", kind: .foreground),
-        ],
-        [
-            Token(text: "    let ", kind: .keyword),
-            Token(text: "count", kind: .foreground),
-            Token(text: ": ", kind: .foreground),
-            Token(text: "Int", kind: .type),
-            Token(text: " = ", kind: .foreground),
-            Token(text: "42", kind: .number),
-        ],
-        [
-            Token(text: "    func ", kind: .keyword),
-            Token(text: "hello", kind: .function),
-            Token(text: "(name: ", kind: .foreground),
-            Token(text: "String", kind: .type),
-            Token(text: ") -> ", kind: .foreground),
-            Token(text: "String", kind: .type),
-            Token(text: " {", kind: .foreground),
-        ],
-        [
-            Token(text: "        return ", kind: .keyword),
-            Token(text: "\"Hello, \\(name)!\"", kind: .string),
-        ],
-        [Token(text: "    }", kind: .foreground)],
-        [Token(text: "}", kind: .foreground)],
-    ]
 }

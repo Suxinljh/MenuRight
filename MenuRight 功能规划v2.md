@@ -89,6 +89,42 @@ App Group `UserDefaults(suiteName:)` 存设置 → 设置 UI(软件选择器、�
 **最高风险**,先跑 S2/S3。
 **人工门**:代码空格预览有高亮;切主题立即生效;大文件不卡;非代码文件回退系统预览。
 
+> **落地状态(2026-10-01 补记,原文保留在上)**:P8 的**第①步(高亮引擎 + 设置内真实预览)已交付**;
+> 第②步(Quick Look target)未开始,所以上面的人工门仍是 PENDING。
+>
+> - 代码:`Shared/CodePreview/` —— `CodeLanguage`(扩展名/UTI/文件名识别,17 种语言 + 纯文本回退)、
+>   `CodeSyntaxProfile`(按语言的数据驱动配置)、`CodeHighlighter`(单遍扫描 + 跨行状态,HTML/Markdown 专用模式)、
+>   `CodePreviewSamples`(每种语言的示例源码)。只 `import Foundation`,可原样编进 appex。
+> - 接入点:`CodeThemeSettingsView` 的预览改为渲染**真实示例代码**(原来是一张手写 token 表),并新增
+>   「示例语言」选择器;主题/字体/字号/行号仍是原有持久化设置,未改设置模型。
+> - 单测:`MenuRightTests/CodeHighlightTests.swift`,含「逐行无损」不变量(每行 token 拼回 == 源码)
+>   与「示例文件名能反查回同一语言」。
+> - **仍未做**:第三个 target、扩展读 App Group 主题、S2/S3 Spike(能否取代系统纯文本预览、读文件是否需额外 entitlement)。
+> - 与原文的偏离:原文把"轻量高亮器"当成 P8 的一部分一次做完;实际拆成"引擎 + 预览"与"扩展"两步 ——
+>   `project.pbxproj` 是手工合成 ID 结构,新增 target 风险高,先把可自动验证的部分落地。
+
+#### P8 第②步落地方案(Quick Look 扩展,未开始)
+
+1. **建 target**:用 Xcode GUI(`File → New → Target → macOS → Quick Look Preview Extension`)添加
+   `MenuRightCodePreview`,并勾选嵌入 `MenuRight.app`(Embed Foundation Extensions);
+   加完 review `project.pbxproj` 的 diff,跑 `plutil -lint` + `xcodebuild -list` + 三 target 构建。
+2. **Info.plist**:`NSExtensionPointIdentifier = com.apple.quicklook.preview`;
+   `QLSupportedContentTypes` 只声明我们真正支持的类型(`public.swift-source` / `public.python-script` /
+   `public.json` / `public.html` / `public.css` / `public.yaml` / `public.shell-script` / `public.c-source` …);
+   `QLIsDataBasedPreview = false`;主类是 `$(PRODUCT_MODULE_NAME).PreviewViewController`。
+   **不声明**的类型(图片、PDF、Office…)自动回退系统预览,这正是"非代码文件回退"的实现方式。
+3. **控制器**:实现 `QLPreviewingController.preparePreviewOfFile(at:)`:读取被预览文件(S3:先跑最小 Spike,
+   记录沙箱读文件是否需要额外 entitlement 与具体错误码)→ `CodeHighlighter.highlight(_:fileName:)` →
+   按 App Group 里的 `CodeThemeSettings` 上色渲染。行数/体积设上限(例如 > 20 000 行只渲染前 N 行并提示),
+   保证"大文件不卡"。
+4. **共享代码边界**:appex 只编入 `Shared/CodePreview/*` 与 `Shared/Settings/CodeTheme.swift`
+   (+ `MenuRightIPC.appGroupIdentifier` 所在文件);**不要**把 SWCompression、`Shared/FileOperations`、
+   AppKit 相关代码带进扩展(扩展二进制必须保持无第三方依赖)。
+5. **验证**:`xcodebuild -project MenuRight.xcodeproj -scheme MenuRight build` 三个 target 全绿;
+   人工门按原文(空格预览有高亮 / 切主题立即生效 / 大文件不卡 / 非代码回退)。
+6. **风险与回退**:若 S2 证明扩展无法取代系统纯文本预览(系统自带文本 QL 生成器优先),则 P8 降级为
+   "设置内预览 + 复制高亮",或改走 data-based preview(`QLIsDataBasedPreview = true`)。
+
 ### P9 — 解压(原 P1)
 
 `ArchiveExtractor`(策略层,纯 Swift、零依赖:Zip Slip 校验、不覆盖策略、逐项结果聚合)+ `ArchiveBackend`(适配 SWCompression)。

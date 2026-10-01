@@ -168,6 +168,15 @@
 		ABARC17 /* ArchiveCompressor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC10 /* ArchiveCompressor.swift */; };
 		ABCTLTST1 /* ArchiveOperationControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACTL001 /* ArchiveOperationControl.swift */; };
 		ABARC18 /* ArchiveCompressorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC11 /* ArchiveCompressorTests.swift */; };
+		ABCPREV01 /* CodeLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV01 /* CodeLanguage.swift */; };
+		ABCPREV02 /* CodeSyntaxProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV02 /* CodeSyntaxProfile.swift */; };
+		ABCPREV03 /* CodeHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV03 /* CodeHighlighter.swift */; };
+		ABCPREV04 /* CodePreviewSamples.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV04 /* CodePreviewSamples.swift */; };
+		ABCPREV05 /* CodeHighlightTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV05 /* CodeHighlightTests.swift */; };
+		ABCPREVT1 /* CodeLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV01 /* CodeLanguage.swift */; };
+		ABCPREVT2 /* CodeSyntaxProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV02 /* CodeSyntaxProfile.swift */; };
+		ABCPREVT3 /* CodeHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV03 /* CodeHighlighter.swift */; };
+		ABCPREVT4 /* CodePreviewSamples.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACPREV04 /* CodePreviewSamples.swift */; };
 		ABARC07 /* FinderArchives.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC04 /* FinderArchives.swift */; };
 		ABARC08 /* FinderArchives.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC04 /* FinderArchives.swift */; };
 		ABARC09 /* ArchiveExtractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAARC05 /* ArchiveExtractionTests.swift */; };
@@ -318,6 +327,11 @@
 		AAARC09 /* ArchiveMemberSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveMemberSource.swift; sourceTree = "<group>"; };
 		AAARC10 /* ArchiveCompressor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveCompressor.swift; sourceTree = "<group>"; };
 		AACTL001 /* ArchiveOperationControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveOperationControl.swift; sourceTree = "<group>"; };
+		AACPREV01 /* CodeLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeLanguage.swift; sourceTree = "<group>"; };
+		AACPREV02 /* CodeSyntaxProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeSyntaxProfile.swift; sourceTree = "<group>"; };
+		AACPREV03 /* CodeHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeHighlighter.swift; sourceTree = "<group>"; };
+		AACPREV04 /* CodePreviewSamples.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodePreviewSamples.swift; sourceTree = "<group>"; };
+		AACPREV05 /* CodeHighlightTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeHighlightTests.swift; sourceTree = "<group>"; };
 		AASHEET1 /* CustomCompressionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomCompressionSheet.swift; sourceTree = "<group>"; };
 		AAARC11 /* ArchiveCompressorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveCompressorTests.swift; sourceTree = "<group>"; };
 		AAARC04 /* FinderArchives.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderArchives.swift; sourceTree = "<group>"; };
@@ -456,6 +470,7 @@
 				AAARC05 /* ArchiveExtractionTests.swift */,
 				AAARC11 /* ArchiveCompressorTests.swift */,
 				AAARC07 /* FinderArchivesTests.swift */,
+				AACPREV05 /* CodeHighlightTests.swift */,
 			);
 			path = MenuRightTests;
 			sourceTree = "<group>";
@@ -492,6 +507,7 @@
 			children = (
 				AA0000000000000000000043 /* Authorization */,
 				AAGROUPARC1 /* Archive */,
+				AACPREVG1 /* CodePreview */,
 				AA0000000000000000000041 /* FileOperations */,
 				AA0000000000000000IPC7 /* IPC */,
 				AAGROUPSET001 /* Settings */,
@@ -510,6 +526,17 @@
 				AAARC02 /* ArchiveExtractor.swift */,
 			);
 			path = Archive;
+			sourceTree = "<group>";
+		};
+		AACPREVG1 /* CodePreview */ = {
+			isa = PBXGroup;
+			children = (
+				AACPREV01 /* CodeLanguage.swift */,
+				AACPREV02 /* CodeSyntaxProfile.swift */,
+				AACPREV03 /* CodeHighlighter.swift */,
+				AACPREV04 /* CodePreviewSamples.swift */,
+			);
+			path = CodePreview;
 			sourceTree = "<group>";
 		};
 		AA0000000000000000000043 /* Authorization */ = {
@@ -834,6 +861,10 @@
 				ABARC13 /* ArchiveMemberSource.swift in Sources */,
 				ABARC14 /* ArchiveCompressor.swift in Sources */,
 				ABCTLAPP1 /* ArchiveOperationControl.swift in Sources */,
+				ABCPREV01 /* CodeLanguage.swift in Sources */,
+				ABCPREV02 /* CodeSyntaxProfile.swift in Sources */,
+				ABCPREV03 /* CodeHighlighter.swift in Sources */,
+				ABCPREV04 /* CodePreviewSamples.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -949,6 +980,11 @@
 				ABFAVTST01 /* FavoriteIconProvider.swift in Sources */,
 				ABARC18 /* ArchiveCompressorTests.swift in Sources */,
 				ABARC11 /* FinderArchivesTests.swift in Sources */,
+				ABCPREVT1 /* CodeLanguage.swift in Sources */,
+				ABCPREVT2 /* CodeSyntaxProfile.swift in Sources */,
+				ABCPREVT3 /* CodeHighlighter.swift in Sources */,
+				ABCPREVT4 /* CodePreviewSamples.swift in Sources */,
+				ABCPREV05 /* CodeHighlightTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
