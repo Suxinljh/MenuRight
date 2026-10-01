@@ -119,7 +119,26 @@ final class UpdateChecker: ObservableObject {
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("MenuRight/\(currentVersion)", forHTTPHeaderField: "User-Agent")
 
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError {
+            // "The request never got there" is not the same failure as "the
+            // server said no", and the user's next move differs: fix the network
+            // versus wait for the quota. Keep the two apart here, at the only
+            // place that still knows which one happened.
+            switch error.code {
+            case .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost,
+                 .cannotFindHost, .dnsLookupFailed, .dataNotAllowed, .internationalRoamingOff:
+                throw UpdateCheckError.offline
+            case .timedOut:
+                throw UpdateCheckError.timedOut
+            default:
+                throw UpdateCheckError.transport(error.localizedDescription)
+            }
+        }
+
         guard let http = response as? HTTPURLResponse else {
             throw UpdateCheckError.transport("no HTTP response")
         }
@@ -129,29 +148,98 @@ final class UpdateChecker: ObservableObject {
         case 404:
             // A public repository with no published release answers 404.
             throw UpdateRelease.DecodingFailure.noPublishedRelease
+        case 403, 429:
+            // Unauthenticated GitHub allows 60 requests per hour and answers 403
+            // (429 when it feels like it) once that is gone — including right
+            // now, from a shared IP. The reset stamp is what makes the message
+            // actionable, so it is read rather than guessed.
+            throw UpdateCheckError.rateLimited(resetAt: Self.rateLimitReset(in: http))
         default:
             throw UpdateCheckError.httpStatus(http.statusCode)
         }
     }
 
-    private func message(for error: Error) -> String {
-        let language = store.settings.general.language
-        if case UpdateRelease.DecodingFailure.noPublishedRelease = error {
-            return Localization.text(.generalUpdateNoReleases, language: language)
+    /// When the unauthenticated quota comes back: `retry-after` (seconds) wins
+    /// over `x-ratelimit-reset` (epoch seconds); `nil` when GitHub sent neither.
+    nonisolated static func rateLimitReset(in http: HTTPURLResponse, now: Date = Date()) -> Date? {
+        if let raw = http.value(forHTTPHeaderField: "Retry-After"), let seconds = TimeInterval(raw) {
+            return now.addingTimeInterval(seconds)
         }
-        let format = Localization.text(.generalUpdateFailed, language: language)
-        return String(format: format, error.localizedDescription)
+        if let raw = http.value(forHTTPHeaderField: "X-RateLimit-Reset"), let epoch = TimeInterval(raw) {
+            return Date(timeIntervalSince1970: epoch)
+        }
+        return nil
+    }
+
+    private func message(for error: Error) -> String {
+        UpdateFailureMessage.make(for: error, language: store.settings.general.language)
     }
 }
 
 enum UpdateCheckError: LocalizedError, Equatable {
     case httpStatus(Int)
+    /// 403/429: GitHub answered, but refused — the unauthenticated hourly quota
+    /// is gone. `resetAt` is when it comes back, when GitHub said so.
+    case rateLimited(resetAt: Date?)
+    /// The request never left the machine: no route, DNS failure, interface down.
+    case offline
+    /// A connection was established but GitHub did not answer in time.
+    case timedOut
     case transport(String)
 
     var errorDescription: String? {
         switch self {
         case .httpStatus(let code): return "HTTP \(code)"
+        case .rateLimited(let resetAt):
+            return resetAt.map { "rate limited until \($0)" } ?? "rate limited"
+        case .offline: return "network unreachable"
+        case .timedOut: return "request timed out"
         case .transport(let detail): return detail
         }
+    }
+}
+
+/// The sentence the user is shown when a check fails.
+///
+/// Pure, and deliberately outside `UpdateChecker` (which owns the URLSession):
+/// these are wording rules, and the whole point of them is that "rate limited",
+/// "no network" and "nothing published yet" are three different problems that
+/// must not collapse into one "检查更新失败：HTTP 403". The settings row and the
+/// menu bar alert both come through here, so they cannot drift apart.
+enum UpdateFailureMessage {
+    static func make(for error: Error, language: AppLanguage) -> String {
+        switch error {
+        case UpdateRelease.DecodingFailure.noPublishedRelease:
+            return Localization.text(.generalUpdateNoReleases, language: language)
+        case UpdateCheckError.offline:
+            return Localization.text(.generalUpdateOffline, language: language)
+        case UpdateCheckError.timedOut:
+            return Localization.text(.generalUpdateTimedOut, language: language)
+        case UpdateCheckError.rateLimited(let resetAt):
+            guard let resetAt else {
+                return Localization.text(.generalUpdateRateLimited, language: language)
+            }
+            return String(
+                format: Localization.text(.generalUpdateRateLimitedUntil, language: language),
+                clockTime(resetAt)
+            )
+        default:
+            return String(
+                format: Localization.text(.generalUpdateFailed, language: language),
+                error.localizedDescription
+            )
+        }
+    }
+
+    /// "21:05" — the reset stamp is the one piece of a rate-limit response that
+    /// tells the user whether to retry in a minute or in an hour. Localised, so
+    /// it reads the way every other time on their Mac does.
+    static func clockTime(_ date: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 }

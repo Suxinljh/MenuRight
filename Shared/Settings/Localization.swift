@@ -95,6 +95,16 @@ enum StringKey: String, CaseIterable {
     case generalUpdateSkip
     case generalUpdateFailed
     case generalUpdateNoReleases
+    /// The request never left the machine (or never came back): DNS, no route,
+    /// interface down. Distinct from a rate limit, which is a *successful*
+    /// connection the server refused to answer.
+    case generalUpdateOffline
+    /// Connected, but GitHub did not answer in time.
+    case generalUpdateTimedOut
+    /// 403/429 from GitHub's unauthenticated quota, with no reset stamp.
+    case generalUpdateRateLimited
+    /// Same, but GitHub told us when the quota comes back (`%@` = a clock time).
+    case generalUpdateRateLimitedUntil
     case generalLicenses
     case generalLicensesFooter
     case generalLicensesEmpty
@@ -508,6 +518,26 @@ enum Localization {
         .generalUpdateNoReleases: Entry(
             zh: "还没有发布任何版本。",
             en: "No release has been published yet."
+        ),
+        // The three ways a check fails are three different problems for the user:
+        // fix the network, wait for the quota, or read the status code. Saying
+        // "HTTP 403" to someone whose DNS is down (or the reverse) is what this
+        // separation exists to avoid.
+        .generalUpdateOffline: Entry(
+            zh: "网络不通：连不上 GitHub。请检查网络后重试。",
+            en: "No network: GitHub cannot be reached. Check your connection and try again."
+        ),
+        .generalUpdateTimedOut: Entry(
+            zh: "连接 GitHub 超时，请稍后重试。",
+            en: "GitHub did not answer in time. Please try again."
+        ),
+        .generalUpdateRateLimited: Entry(
+            zh: "GitHub 的匿名访问次数已达上限（每小时 60 次），请稍后再试。",
+            en: "GitHub's unauthenticated rate limit (60 requests per hour) is exhausted. Try again later."
+        ),
+        .generalUpdateRateLimitedUntil: Entry(
+            zh: "GitHub 的匿名访问次数已达上限，约 %@ 之后可重试（每小时 60 次）。",
+            en: "GitHub's unauthenticated rate limit is exhausted (60 per hour). Try again after %@."
         ),
         .generalLicenses: Entry(zh: "开源许可", en: "Open Source Licenses"),
         .generalLicensesFooter: Entry(
