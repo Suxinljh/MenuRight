@@ -136,10 +136,11 @@ enum FileAction: String, Codable, CaseIterable, Sendable {
 
     /// Lucide asset for the row in 文件权限.
     ///
-    /// Settings UI only: the Finder context menu deliberately shows no icons,
-    /// because Finder draws extension menu item images without the highlighted
-    /// or disabled text tint (and a menu with icons also reserves an icon
-    /// column). See README "Settings and right-click icons".
+    /// Settings UI only. The Finder context menu does now draw icons, but only
+    /// for the 常用文件夹/软件/网页 entries, and those come from the PNGs the app
+    /// renders into the App Group (`FavoriteIconProvider`) — not from this
+    /// catalog, which the sandboxed appex cannot read, and whose **template**
+    /// images are exactly what Finder blits untinted. See README "常用项图标".
     ///
     /// Every action has its own icon. The five that had none assigned
     /// (`createAlias`, `copyFileURL`, `lockUnlock`, `extractArchive`,

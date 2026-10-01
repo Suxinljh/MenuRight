@@ -1,4 +1,5 @@
 import XCTest
+import AppKit
 
 /// P7-b: the extension-side reader for the three favorite lists.
 ///
@@ -161,5 +162,166 @@ final class FinderFavoritesTests: XCTestCase {
         XCTAssertEqual(entries.count, 1)
         XCTAssertEqual(entries.first?.menuTitle, "Docs")
         XCTAssertEqual(entries.first?.kind, .folder)
+    }
+
+    // MARK: - Favorite icons (extension side)
+
+    /// The main app renders one PNG per entry; the file name travels in the same
+    /// payload the menu is built from.
+    func testIconFileNameFlowsThroughTheDecoder() throws {
+        var settings = MenuRightSettings.default
+        settings.favoriteFolders = [FavoriteFolder(displayName: "Docs", path: "/tmp/docs", iconFile: "folder-abc.png")]
+        settings.favoriteApps = [
+            FavoriteApp(displayName: "Safari", path: "/Applications/Safari.app", iconFile: "application-abc.png"),
+        ]
+        settings.favoriteWebsites = [
+            FavoriteWebsite(displayName: "GitHub", urlString: "https://github.com", iconFile: "website-abc.png"),
+        ]
+        try write(settings)
+
+        XCTAssertEqual(
+            FinderFavorites.entries(from: defaults).map(\.iconFile),
+            ["folder-abc.png", "application-abc.png", "website-abc.png"]
+        )
+    }
+
+    /// A payload from a build without icons must still produce a menu — with
+    /// titles only, exactly as before the feature existed.
+    func testEntriesWithoutIconsDecodeWithNoIconFile() throws {
+        var settings = MenuRightSettings.default
+        settings.favoriteFolders = [FavoriteFolder(displayName: "Docs", path: "/tmp/docs")]
+        try write(settings)
+        XCTAssertNil(FinderFavorites.entries(from: defaults).first?.iconFile)
+    }
+
+    private func makeIconDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mr-icons-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private func pngData(_ color: NSColor = .systemBlue) throws -> Data {
+        let image = NSImage(size: NSSize(width: 8, height: 8), flipped: false) { rect in
+            color.setFill()
+            rect.fill()
+            return true
+        }
+        return try XCTUnwrap(FavoriteIconProvider.pngData(from: image))
+    }
+
+    func testMenuIconIsLoadedFromTheIconFolder() throws {
+        let directory = try makeIconDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try pngData().write(to: directory.appendingPathComponent("folder-x.png"))
+
+        let image = try XCTUnwrap(FinderFavoriteIcons.image(named: "folder-x.png", in: directory))
+        XCTAssertEqual(image.size, NSSize(width: 16, height: 16), "menu icons render at 16 pt")
+    }
+
+    func testMenuIconIsNilWhenThereIsNoFile() throws {
+        let directory = try makeIconDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        XCTAssertNil(FinderFavoriteIcons.image(named: nil, in: directory))
+        XCTAssertNil(FinderFavoriteIcons.image(named: "", in: directory))
+        XCTAssertNil(FinderFavoriteIcons.image(named: "missing.png", in: directory))
+    }
+
+    /// The name round-trips through a JSON payload, so it must not be able to
+    /// reach a file outside the icon folder.
+    func testMenuIconRefusesAPathOutsideTheFolder() throws {
+        let directory = try makeIconDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let outside = directory.deletingLastPathComponent()
+            .appendingPathComponent("escape-\(UUID().uuidString).png")
+        try pngData().write(to: outside)
+        defer { try? FileManager.default.removeItem(at: outside) }
+
+        XCTAssertNil(FinderFavoriteIcons.image(named: "../\(outside.lastPathComponent)", in: directory))
+        XCTAssertNil(FinderFavoriteIcons.image(named: outside.path, in: directory))
+    }
+
+    // MARK: - Favorite icons (app side)
+
+    func testIconFileNamesCarryTheKindAndStayStable() {
+        let id = UUID()
+        XCTAssertEqual(FavoriteIconProvider.fileName(for: id, kind: .folder), "folder-\(id.uuidString.lowercased()).png")
+        XCTAssertEqual(
+            FavoriteIconProvider.fileName(for: id, kind: .application),
+            "application-\(id.uuidString.lowercased()).png"
+        )
+        XCTAssertEqual(
+            FavoriteIconProvider.fileName(for: id, kind: .website),
+            "website-\(id.uuidString.lowercased()).png"
+        )
+        XCTAssertEqual(FavoriteIconProvider.fileName(for: id, kind: .folder), FavoriteIconProvider.fileName(for: id, kind: .folder))
+    }
+
+    func testIconFileNamesAreCheckedBeforeTheyReachTheFilesystem() {
+        for name in ["folder-x.png", "a b.png", "…"] {
+            XCTAssertTrue(FavoriteIconProvider.isSafeFileName(name), name)
+        }
+        for name in ["", "../x.png", "a/b.png", "a\\b.png", "..", "."] {
+            XCTAssertFalse(FavoriteIconProvider.isSafeFileName(name), name)
+        }
+    }
+
+    /// Everything stored is a fixed-size PNG, whatever the source icon's size —
+    /// a menu row must not inherit a 512 px app icon's scale.
+    func testStoredIconIsAPngAtTheFixedSize() throws {
+        let source = NSImage(size: NSSize(width: 512, height: 512), flipped: false) { rect in
+            NSColor.red.setFill()
+            rect.fill()
+            return true
+        }
+        let data = try XCTUnwrap(FavoriteIconProvider.pngData(from: source))
+        XCTAssertTrue(FaviconLoader.isImage(data), "the stored bytes must still be a recognisable image")
+
+        let decoded = try XCTUnwrap(NSImage(data: data))
+        let side = CGFloat(FavoriteIconProvider.pixelSize)
+        XCTAssertEqual(decoded.size, NSSize(width: side, height: side))
+    }
+
+    // MARK: - Favicon loading
+
+    func testFaviconURLKeepsTheSchemeAndAnswersAtTheRoot() {
+        XCTAssertEqual(
+            FaviconLoader.faviconURL(for: URL(string: "https://github.com/foo/bar?x=1")!)?.absoluteString,
+            "https://github.com/favicon.ico"
+        )
+        XCTAssertEqual(
+            FaviconLoader.faviconURL(for: URL(string: "http://example.com")!)?.absoluteString,
+            "http://example.com/favicon.ico"
+        )
+    }
+
+    func testDeclaredIconIsReadFromEitherAttributeOrder() {
+        let page = URL(string: "https://example.com/a/b")!
+        XCTAssertEqual(
+            FaviconLoader.declaredIconURL(inHTML: #"<link rel="icon" href="/i.png">"#, pageURL: page)?.absoluteString,
+            "https://example.com/i.png"
+        )
+        XCTAssertEqual(
+            FaviconLoader.declaredIconURL(inHTML: #"<link href="fav.ico" rel="shortcut icon">"#, pageURL: page)?.absoluteString,
+            "https://example.com/a/fav.ico"
+        )
+        XCTAssertEqual(
+            FaviconLoader.declaredIconURL(inHTML: "<link rel='apple-touch-icon' href='t.png'>", pageURL: page)?.absoluteString,
+            "https://example.com/a/t.png"
+        )
+        XCTAssertNil(FaviconLoader.declaredIconURL(inHTML: #"<link rel="stylesheet" href="a.css">"#, pageURL: page))
+        XCTAssertNil(FaviconLoader.declaredIconURL(inHTML: "<html><head></head></html>", pageURL: page))
+    }
+
+    func testImageSniffingAcceptsFaviconFormatsAndRejectsMarkup() {
+        XCTAssertTrue(FaviconLoader.isImage(Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])), "PNG")
+        XCTAssertTrue(FaviconLoader.isImage(Data([0xFF, 0xD8, 0xFF, 0xE0])), "JPEG")
+        XCTAssertTrue(FaviconLoader.isImage(Data([0x00, 0x00, 0x01, 0x00, 0x01])), "ICO")
+        XCTAssertTrue(FaviconLoader.isImage(Data([0x47, 0x49, 0x46, 0x38, 0x39, 0x61])), "GIF")
+        XCTAssertFalse(FaviconLoader.isImage(Data("<!DOCTYPE html><html>".utf8)), "an HTML error page is not an icon")
+        // NSImage cannot decode SVG, so those sites fall back to the plain title.
+        XCTAssertFalse(FaviconLoader.isImage(Data("<svg xmlns=\"http://www.w3.org/2000/svg\">".utf8)))
     }
 }
