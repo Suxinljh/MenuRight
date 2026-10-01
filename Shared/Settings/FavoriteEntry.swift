@@ -19,16 +19,23 @@ struct FavoriteFolder: FavoriteEntry {
     var displayName: String
     var path: String
     var isEnabled: Bool
+    /// File name — inside the App Group `FavoritesIcons/` folder — of the PNG the
+    /// main app generated for this row, or nil before it has ever been made.
+    ///
+    /// Deliberately **not** part of `identityKey` or `resolvedDisplayName`: it is
+    /// a cache key shared with the Finder extension, not part of who the entry is.
+    var iconFile: String?
 
-    init(id: UUID = UUID(), displayName: String, path: String, isEnabled: Bool = true) {
+    init(id: UUID = UUID(), displayName: String, path: String, isEnabled: Bool = true, iconFile: String? = nil) {
         self.id = id
         self.displayName = displayName
         self.path = path
         self.isEnabled = isEnabled
+        self.iconFile = iconFile
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, displayName, path, isEnabled
+        case id, displayName, path, isEnabled, iconFile
     }
 
     init(from decoder: Decoder) throws {
@@ -37,6 +44,7 @@ struct FavoriteFolder: FavoriteEntry {
         displayName = try container.decodeOr(String.self, .displayName, "")
         path = try container.decodeOr(String.self, .path, "")
         isEnabled = try container.decodeOr(Bool.self, .isEnabled, true)
+        iconFile = try container.decodeIfPresent(String.self, forKey: .iconFile)
     }
 
     /// Standardized path, so "/Users/me/Docs/" and "/Users/me/Docs" dedupe.
@@ -60,23 +68,27 @@ struct FavoriteApp: FavoriteEntry {
     var path: String
     var bundleIdentifier: String?
     var isEnabled: Bool
+    /// See `FavoriteFolder.iconFile`.
+    var iconFile: String?
 
     init(
         id: UUID = UUID(),
         displayName: String,
         path: String,
         bundleIdentifier: String? = nil,
-        isEnabled: Bool = true
+        isEnabled: Bool = true,
+        iconFile: String? = nil
     ) {
         self.id = id
         self.displayName = displayName
         self.path = path
         self.bundleIdentifier = bundleIdentifier
         self.isEnabled = isEnabled
+        self.iconFile = iconFile
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, displayName, path, bundleIdentifier, isEnabled
+        case id, displayName, path, bundleIdentifier, isEnabled, iconFile
     }
 
     init(from decoder: Decoder) throws {
@@ -86,6 +98,7 @@ struct FavoriteApp: FavoriteEntry {
         path = try container.decodeOr(String.self, .path, "")
         bundleIdentifier = try container.decodeIfPresent(String.self, forKey: .bundleIdentifier)
         isEnabled = try container.decodeOr(Bool.self, .isEnabled, true)
+        iconFile = try container.decodeIfPresent(String.self, forKey: .iconFile)
     }
 
     /// Bundle identifier when known, otherwise the standardized bundle path —
@@ -109,16 +122,20 @@ struct FavoriteWebsite: FavoriteEntry {
     var displayName: String
     var urlString: String
     var isEnabled: Bool
+    /// See `FavoriteFolder.iconFile`. For a website this is the site's favicon,
+    /// fetched by the main app (the Finder extension has no network access).
+    var iconFile: String?
 
-    init(id: UUID = UUID(), displayName: String, urlString: String, isEnabled: Bool = true) {
+    init(id: UUID = UUID(), displayName: String, urlString: String, isEnabled: Bool = true, iconFile: String? = nil) {
         self.id = id
         self.displayName = displayName
         self.urlString = urlString
         self.isEnabled = isEnabled
+        self.iconFile = iconFile
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, displayName, urlString, isEnabled
+        case id, displayName, urlString, isEnabled, iconFile
     }
 
     init(from decoder: Decoder) throws {
@@ -127,6 +144,7 @@ struct FavoriteWebsite: FavoriteEntry {
         displayName = try container.decodeOr(String.self, .displayName, "")
         urlString = try container.decodeOr(String.self, .urlString, "")
         isEnabled = try container.decodeOr(Bool.self, .isEnabled, true)
+        iconFile = try container.decodeIfPresent(String.self, forKey: .iconFile)
     }
 
     var identityKey: String { urlString.lowercased() }

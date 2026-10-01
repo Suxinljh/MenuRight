@@ -11,6 +11,7 @@ import UniformTypeIdentifiers
 struct FavoriteFoldersSettingsView: View {
     @EnvironmentObject private var store: SettingsStore
     @State private var missingIDs: Set<UUID> = []
+    @State private var icons: [UUID: NSImage] = [:]
     @State private var lastCheck: Date?
 
     private var folders: [FavoriteFolder] { store.settings.favoriteFolders }
@@ -32,6 +33,7 @@ struct FavoriteFoldersSettingsView: View {
                             title: folder.resolvedDisplayName,
                             subtitle: folder.path,
                             systemImage: "folder",
+                            icon: icons[folder.id],
                             isMissing: missingIDs.contains(folder.id),
                             missingText: store.text(.commonMissingOnDisk),
                             missingHelp: store.text(.favoriteFoldersMissing),
@@ -51,14 +53,14 @@ struct FavoriteFoldersSettingsView: View {
                 checkBar
             }
         }
-        .onAppear { check() }
+        .onAppear { check(); refreshIcons() }
     }
 
     private var checkBar: some View {
         HStack {
             Button(store.text(.favoriteFoldersAdd)) { addFolder() }
             Spacer()
-            Button(store.text(.commonRefresh)) { check() }
+            Button(store.text(.commonRefresh)) { check(); refreshIcons(force: true) }
                 .buttonStyle(.link)
         }
     }
@@ -90,11 +92,44 @@ struct FavoriteFoldersSettingsView: View {
             }
         }
         check()
+        refreshIcons()
     }
 
     private func remove(_ id: UUID) {
+        let iconFile = folders.first { $0.id == id }?.iconFile
         store.mutate { $0.favoriteFolders.removeFavorite(id: id) }
+        FavoriteIconProvider.delete(fileName: iconFile)
+        icons[id] = nil
         check()
+    }
+
+    /// Renders each row's real folder icon into the App Group so the Finder
+    /// submenu can show the same picture, then loads it back for the list.
+    ///
+    /// Runs off the render path (and off the menu-build path): this is the only
+    /// side that may touch `NSWorkspace`.
+    private func refreshIcons(force: Bool = false) {
+        var resolved: [UUID: NSImage] = [:]
+        var updates: [UUID: String] = [:]
+        for folder in folders {
+            let expected = FavoriteIconProvider.fileName(for: folder.id, kind: .folder)
+            var name = folder.iconFile
+            let cached = FavoriteIconProvider.image(named: name)
+            if force || name != expected || cached == nil {
+                name = FavoriteIconProvider.refresh(folder: folder) ?? name
+                if let name, name != folder.iconFile { updates[folder.id] = name }
+            }
+            if let name, let image = FavoriteIconProvider.image(named: name) { resolved[folder.id] = image }
+        }
+        if !updates.isEmpty {
+            store.mutate { settings in
+                for (id, name) in updates {
+                    guard let index = settings.favoriteFolders.firstIndex(where: { $0.id == id }) else { continue }
+                    settings.favoriteFolders[index].iconFile = name
+                }
+            }
+        }
+        icons = resolved
     }
 
     private func check() {
@@ -110,7 +145,7 @@ struct FavoriteFoldersSettingsView: View {
 struct FavoriteAppsSettingsView: View {
     @EnvironmentObject private var store: SettingsStore
     @State private var missingIDs: Set<UUID> = []
-    @State private var icons: [String: NSImage] = [:]
+    @State private var icons: [UUID: NSImage] = [:]
     @State private var lastCheck: Date?
 
     private var apps: [FavoriteApp] { store.settings.favoriteApps }
@@ -132,7 +167,7 @@ struct FavoriteAppsSettingsView: View {
                             title: app.resolvedDisplayName,
                             subtitle: app.path,
                             systemImage: "app",
-                            icon: icons[app.path],
+                            icon: icons[app.id],
                             isMissing: missingIDs.contains(app.id),
                             missingText: store.text(.commonMissingOnDisk),
                             missingHelp: store.text(.favoriteAppsMissing),
@@ -159,7 +194,7 @@ struct FavoriteAppsSettingsView: View {
         HStack {
             Button(store.text(.favoriteAppsAdd)) { addApps() }
             Spacer()
-            Button(store.text(.commonRefresh)) { check(); refreshIcons() }
+            Button(store.text(.commonRefresh)) { check(); refreshIcons(force: true) }
                 .buttonStyle(.link)
         }
     }
@@ -203,7 +238,10 @@ struct FavoriteAppsSettingsView: View {
     }
 
     private func remove(_ id: UUID) {
+        let iconFile = apps.first { $0.id == id }?.iconFile
         store.mutate { $0.favoriteApps.removeFavorite(id: id) }
+        FavoriteIconProvider.delete(fileName: iconFile)
+        icons[id] = nil
         check()
     }
 
@@ -218,10 +256,27 @@ struct FavoriteAppsSettingsView: View {
         lastCheck = Date()
     }
 
-    private func refreshIcons() {
-        var resolved: [String: NSImage] = [:]
-        for app in apps where FileManager.default.fileExists(atPath: app.path) {
-            resolved[app.path] = NSWorkspace.shared.icon(forFile: app.path)
+    /// Renders the real app icon into the App Group (so the Finder submenu can
+    /// show it) and loads it back for the row.
+    private func refreshIcons(force: Bool = false) {
+        var resolved: [UUID: NSImage] = [:]
+        var updates: [UUID: String] = [:]
+        for app in apps {
+            let expected = FavoriteIconProvider.fileName(for: app.id, kind: .application)
+            var name = app.iconFile
+            if force || name != expected || FavoriteIconProvider.image(named: name) == nil {
+                name = FavoriteIconProvider.refresh(app: app) ?? name
+                if let name, name != app.iconFile { updates[app.id] = name }
+            }
+            if let name, let image = FavoriteIconProvider.image(named: name) { resolved[app.id] = image }
+        }
+        if !updates.isEmpty {
+            store.mutate { settings in
+                for (id, name) in updates {
+                    guard let index = settings.favoriteApps.firstIndex(where: { $0.id == id }) else { continue }
+                    settings.favoriteApps[index].iconFile = name
+                }
+            }
         }
         icons = resolved
     }
@@ -230,6 +285,7 @@ struct FavoriteAppsSettingsView: View {
 struct FavoriteWebsitesSettingsView: View {
     @EnvironmentObject private var store: SettingsStore
     @State private var invalidIDs: Set<UUID> = []
+    @State private var icons: [UUID: NSImage] = [:]
     @State private var lastCheck: Date?
     @State private var editor: WebsiteEditorMode?
 
@@ -252,6 +308,7 @@ struct FavoriteWebsitesSettingsView: View {
                             title: website.resolvedDisplayName,
                             subtitle: website.urlString,
                             systemImage: "globe",
+                            icon: icons[website.id],
                             isMissing: invalidIDs.contains(website.id),
                             missingText: store.text(.favoriteWebsitesInvalidURL),
                             missingHelp: store.text(.favoriteWebsitesInvalidURL),
@@ -272,12 +329,12 @@ struct FavoriteWebsitesSettingsView: View {
                 HStack {
                     Button(store.text(.favoriteWebsitesAdd)) { editor = .add }
                     Spacer()
-                    Button(store.text(.commonRefresh)) { check() }
+                    Button(store.text(.commonRefresh)) { check(); refreshIcons(force: true) }
                         .buttonStyle(.link)
                 }
             }
         }
-        .onAppear { check() }
+        .onAppear { check(); refreshIcons() }
         .sheet(item: $editor) { mode in
             WebsiteEditorSheet(mode: mode) { name, urlString in
                 apply(name: name, urlString: urlString, mode: mode)
@@ -310,10 +367,14 @@ struct FavoriteWebsitesSettingsView: View {
             }
         }
         check()
+        refreshIcons()
     }
 
     private func remove(_ id: UUID) {
+        let iconFile = websites.first { $0.id == id }?.iconFile
         store.mutate { $0.favoriteWebsites.removeFavorite(id: id) }
+        FavoriteIconProvider.delete(fileName: iconFile)
+        icons[id] = nil
         check()
     }
 
@@ -324,6 +385,36 @@ struct FavoriteWebsitesSettingsView: View {
         }
         invalidIDs = invalid
         lastCheck = Date()
+    }
+
+    /// Fetches each site's favicon — the only network access in the app — and
+    /// stores it in the App Group for the Finder submenu to read.
+    ///
+    /// A site with no reachable favicon keeps no file and the menu shows the
+    /// plain title, so a failed fetch never blocks adding a favorite.
+    private func refreshIcons(force: Bool = false) {
+        Task { @MainActor in
+            var resolved: [UUID: NSImage] = [:]
+            var updates: [UUID: String] = [:]
+            for website in websites {
+                let expected = FavoriteIconProvider.fileName(for: website.id, kind: .website)
+                var name = website.iconFile
+                if force || name != expected || FavoriteIconProvider.image(named: name) == nil {
+                    name = await FavoriteIconProvider.refresh(website: website) ?? name
+                    if let name, name != website.iconFile { updates[website.id] = name }
+                }
+                if let name, let image = FavoriteIconProvider.image(named: name) { resolved[website.id] = image }
+            }
+            if !updates.isEmpty {
+                store.mutate { settings in
+                    for (id, name) in updates {
+                        guard let index = settings.favoriteWebsites.firstIndex(where: { $0.id == id }) else { continue }
+                        settings.favoriteWebsites[index].iconFile = name
+                    }
+                }
+            }
+            icons = resolved
+        }
     }
 }
 

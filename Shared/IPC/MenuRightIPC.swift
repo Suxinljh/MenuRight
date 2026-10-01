@@ -91,6 +91,39 @@ public enum MenuRightIPC {
         else { return nil }
         return container.appendingPathComponent(diagnosticsFilename)
     }
+
+    /// Folder inside the App Group container holding the PNG icons of the
+    /// favorite entries.
+    ///
+    /// This is the one cross-process piece of the favorite-icon feature: the
+    /// **main app** renders the icons (it can reach `NSWorkspace` for app and
+    /// folder icons, and it is the only side with network access for favicons),
+    /// and the **sandboxed Finder extension** only reads them back by the file
+    /// name the app stored in the settings payload. Both sides therefore need
+    /// the directory, and nothing else.
+    public static let favoriteIconsDirectoryName = "FavoritesIcons"
+
+    /// How long the extension waits for the reply to a *file operation*.
+    ///
+    /// The generic frame budget is 5 s, which is right for a ping or a settings
+    /// read but wrong for work: a file-operation reply is only written when the
+    /// compression or extraction is **finished**, and that is not a five-second
+    /// job. Measured 2026-10-01, a folder compression outlived the 5 s budget and
+    /// the extension reported "Menu Right not running" — twice — while the app
+    /// was still working and then wrote the archive anyway.
+    ///
+    /// Ten minutes is a ceiling meant to be reached only by a genuinely stuck
+    /// peer. Both sides read it from here so the budget cannot drift apart.
+    public static let fileOperationTimeoutSeconds: TimeInterval = 600
+
+    /// URL of the favorite-icon folder, or nil if the App Group is unavailable.
+    /// The caller decides whether to create it.
+    public static func favoriteIconsDirectoryURL() -> URL? {
+        guard let container = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
+        else { return nil }
+        return container.appendingPathComponent(favoriteIconsDirectoryName, isDirectory: true)
+    }
 }
 
 /// Lifecycle / IPC diagnostics — writes structured records to BOTH the system

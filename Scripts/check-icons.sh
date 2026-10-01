@@ -11,8 +11,10 @@
 #   MenuRight/Resources/SettingsIcons.xcassets     新建文件 types + 文件权限 actions
 #   MenuRight/Resources/BrandAssets.xcassets       sidebar brand lockup
 #
-# The Finder context menu carries no icons on purpose (see README), so the
-# extension has no catalog to check.
+# The Finder context menu carries no *catalog* icons: the only images it draws
+# are the 常用项 PNGs the app renders into the App Group at runtime
+# (`FavoriteIconProvider`), and the sandboxed extension cannot read an asset
+# catalog at all — so there is no fourth catalog to check here.
 #
 # Why this lives here and not in XCTest: MenuRightTests is a host-less logic test
 # bundle, so it cannot see any asset catalog. And a missing asset is not a crash

@@ -8,5 +8,9 @@
 	</array>
 	<key>com.apple.security.files.bookmarks.app-scope</key>
 	<true/>
+	<!-- 常用网页的 favicon 由主 App 抓取：Finder 扩展没有（也不该有）网络权限，
+	     它只从 App Group 读缓存好的 PNG。 -->
+	<key>com.apple.security.network.client</key>
+	<true/>
 </dict>
 </plist>

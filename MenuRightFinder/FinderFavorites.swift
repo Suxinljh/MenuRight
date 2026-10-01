@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 /// One favorite as the Finder submenu needs it: what to show and what to open.
 ///
@@ -23,6 +24,18 @@ struct FinderFavoriteEntry: Equatable {
     /// Folder path, application path or bundle identifier, or an http(s) URL.
     /// `FileOperationDispatcher` decides how to open it by shape.
     let target: String
+    /// PNG file name inside the App Group `FavoritesIcons/` folder, written by
+    /// the main app, or nil when there is none (yet). The extension never
+    /// renders an icon itself: it has neither `NSWorkspace` reach for arbitrary
+    /// paths nor network access for favicons.
+    let iconFile: String?
+
+    init(kind: Kind, menuTitle: String, target: String, iconFile: String? = nil) {
+        self.kind = kind
+        self.menuTitle = menuTitle
+        self.target = target
+        self.iconFile = iconFile
+    }
 }
 
 /// The three favorite lists in the language-free form the menu needs.
@@ -43,6 +56,7 @@ enum FinderFavorites {
             let displayName: String?
             let path: String?
             let isEnabled: Bool?
+            let iconFile: String?
         }
 
         struct Application: Decodable {
@@ -50,12 +64,14 @@ enum FinderFavorites {
             let path: String?
             let bundleIdentifier: String?
             let isEnabled: Bool?
+            let iconFile: String?
         }
 
         struct Website: Decodable {
             let displayName: String?
             let urlString: String?
             let isEnabled: Bool?
+            let iconFile: String?
         }
 
         let favoriteFolders: [Folder]?
@@ -74,12 +90,17 @@ enum FinderFavorites {
               let envelope = try? JSONDecoder().decode(Envelope.self, from: data)
         else { return [] }
 
-        var raw: [(kind: FinderFavoriteEntry.Kind, name: String, target: String)] = []
+        var raw: [(kind: FinderFavoriteEntry.Kind, name: String, target: String, iconFile: String?)] = []
 
         for folder in envelope.favoriteFolders ?? [] where folder.isEnabled ?? true {
             let path = trimmed(folder.path)
             guard !path.isEmpty else { continue }
-            raw.append((.folder, name(folder.displayName, fallback: URL(fileURLWithPath: path).lastPathComponent), path))
+            raw.append((
+                .folder,
+                name(folder.displayName, fallback: URL(fileURLWithPath: path).lastPathComponent),
+                path,
+                trimmed(folder.iconFile).isEmpty ? nil : trimmed(folder.iconFile)
+            ))
         }
 
         for app in envelope.favoriteApps ?? [] where app.isEnabled ?? true {
@@ -87,14 +108,24 @@ enum FinderFavorites {
             let identifier = trimmed(app.bundleIdentifier)
             guard let target = path.isEmpty ? (identifier.isEmpty ? nil : identifier) : path else { continue }
             let fallback = URL(fileURLWithPath: target).deletingPathExtension().lastPathComponent
-            raw.append((.application, name(app.displayName, fallback: fallback), target))
+            raw.append((
+                .application,
+                name(app.displayName, fallback: fallback),
+                target,
+                trimmed(app.iconFile).isEmpty ? nil : trimmed(app.iconFile)
+            ))
         }
 
         for website in envelope.favoriteWebsites ?? [] where website.isEnabled ?? true {
             let rawURL = trimmed(website.urlString)
             guard let target = webURLString(rawURL) else { continue }
             let host = URL(string: target)?.host ?? target
-            raw.append((.website, name(website.displayName, fallback: host), target))
+            raw.append((
+                .website,
+                name(website.displayName, fallback: host),
+                target,
+                trimmed(website.iconFile).isEmpty ? nil : trimmed(website.iconFile)
+            ))
         }
 
         return titled(raw)
@@ -146,7 +177,7 @@ enum FinderFavorites {
     /// resort. The result is a pure function of the payload, so action dispatch
     /// re-deriving the list reaches the same titles.
     private static func titled(
-        _ raw: [(kind: FinderFavoriteEntry.Kind, name: String, target: String)]
+        _ raw: [(kind: FinderFavoriteEntry.Kind, name: String, target: String, iconFile: String?)]
     ) -> [FinderFavoriteEntry] {
         var counts: [String: Int] = [:]
         for item in raw { counts[item.name, default: 0] += 1 }
@@ -164,7 +195,12 @@ enum FinderFavorites {
                 index += 1
             }
             used.insert(title)
-            return FinderFavoriteEntry(kind: item.kind, menuTitle: title, target: item.target)
+            return FinderFavoriteEntry(
+                kind: item.kind,
+                menuTitle: title,
+                target: item.target,
+                iconFile: item.iconFile
+            )
         }
     }
 
@@ -182,5 +218,32 @@ enum FinderFavorites {
             let parent = url.deletingLastPathComponent().lastPathComponent
             return parent.isEmpty ? target : "\(parent)/\(url.lastPathComponent)"
         }
+    }
+}
+
+/// Reads the PNG icons the main app renders for the favorite entries.
+///
+/// The Finder extension is sandboxed with **no** `NSWorkspace` reach for the
+/// user's folders and **no** network access, so it never draws an icon itself:
+/// the app writes one PNG per entry into the App Group container and stores the
+/// file name in the settings payload, and this reads it back.
+///
+/// One small file per favorite is read while the menu is built. There is
+/// deliberately no cache: a 32×32 PNG decodes in well under a millisecond, and a
+/// stale icon after the user changes a favorite is worse than those microseconds.
+enum FinderFavoriteIcons {
+    /// The icon for one entry, or nil when it has none — the menu item then
+    /// shows its title alone, exactly as it did before icons existed.
+    static func image(
+        named fileName: String?,
+        in directory: URL? = MenuRightIPC.favoriteIconsDirectoryURL()
+    ) -> NSImage? {
+        guard let fileName, !fileName.isEmpty, let directory else { return nil }
+        // The name comes from a JSON payload, so it must never be able to walk
+        // out of the icon folder.
+        guard !fileName.contains("/"), !fileName.contains("\\"), fileName != ".." else { return nil }
+        guard let image = NSImage(contentsOf: directory.appendingPathComponent(fileName)) else { return nil }
+        image.size = NSSize(width: 16, height: 16)
+        return image
     }
 }

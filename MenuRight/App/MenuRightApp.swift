@@ -97,14 +97,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let parts = spec.lowercased().split(separator: "x").compactMap { Double($0) }
         guard parts.count == 2, parts[0] > 200, parts[1] > 200 else { return }
         let size = NSSize(width: parts[0], height: parts[1])
-        // SwiftUI creates the window around didFinishLaunching; retry once.
-        for delay in [0.0, 0.4] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                guard let window = NSApp.windows.first(where: { $0.isVisible }) else { return }
+        // SwiftUI creates its window some time after didFinishLaunching, and how
+        // long that takes is not fixed. The original two-shot retry (0 and 0.4 s)
+        // could miss the window entirely and leave this a silent no-op: measured
+        // 2026-10-01, a 1100x1200 request left the 960x692 default in place.
+        // Keep insisting rather than resizing once — SwiftUI also re-applies its
+        // own default size while the scene settles, so a single set is not enough.
+        var attempts = 0
+        func resize() {
+            attempts += 1
+            // Prefer the visible window, but do not require it: a SwiftUI window
+            // can still report `isVisible == false` while it is being brought up,
+            // and filtering on it was enough to make this hook a silent no-op.
+            let windows = NSApp.windows
+            if let window = windows.first(where: { $0.isVisible }) ?? windows.first {
                 window.setContentSize(size)
                 window.center()
+                NSLog("[MenuRight] review window sized to %@ after %d attempt(s)",
+                      NSStringFromSize(size), attempts)
+                return
             }
+            guard attempts < 50 else { return }     // ~5 s, then leave the user alone
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: resize)
         }
+        resize()
     }
 
     /// Exercises the App-Group settings path under the real sandbox, without the
@@ -249,6 +265,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // start() is idempotent and serialized internally, so we never read its
         // lifecycle state from this thread.
         ipcServer.start()
+        // Make sure every favorite has its PNG in the App Group. The Finder
+        // submenu reads those files, and without this the icons would be missing
+        // until the user happened to open each favorites pane. A no-op (one file
+        // check per entry) once the icons are in place.
+        FavoriteIconBootstrap.run(store: SettingsStore.shared)
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
