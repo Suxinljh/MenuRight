@@ -129,7 +129,7 @@ stat -f "%Lp %Su:%Sg %N" ~/Library/Group\ Containers/group.xin.ljhsu.MenuRight/i
 | D | 多选两个文件 Paste | 两个都移动;部分失败会列出 |
 | E | 目标目录已有同名 | 现有文件**不被覆盖**,源保留,报错 |
 | F | 把文件夹 A 拖进 A/Sub(或多选父与子) | 被拒绝 |
-| G | 退出 MenuRight 后右键 | 几秒内弹 "Menu Right not running",**Finder 不卡死**(H1) |
+| G | 退出 MenuRight 后右键 | 几秒内弹 "Menu Right not running",**Finder 不卡死**,且**弹框还在时再右键,MenuRight 菜单依然出现**(H1;2026-10-01 修过一次"提示框把扩展主线程停住"的 bug,见 §6 同日的记录) |
 | H | 用 `nc -lU <container>/ipc.sock` 占位后点 New File | 扩展拒绝并报不可用,**绝不**出现"假的成功"(H2) |
 | I | 授权 `~/Desktop/t` → 在 Finder 里改名为 `t2` → 进去 New File | **成功**(H3 透明续期),不是 "Folder Access Required";`FolderAuthorization.json` 里书签已刷新 |
 | J | 扩展已无文件权限:上面所有复制/剪切/新建/粘贴仍正常 | 全部通过(L5 最小权限) |
@@ -318,7 +318,8 @@ python3 Scripts/figma-mcp.py call get_screenshot     '{"nodeId":"1430:75"}'
 - **"选中后不显示级联"** = 选中态菜单**平铺无二级**(已实现);外层那个 MenuRight 包装去不掉。
 - **新建文件后不会自动进入重命名状态**:Finder 只对自己创建的项进入内联重命名,没有 API 可以触发。需要改名请按回车。
 - **`Open Terminal` 不需要授权**:见 3.1 第 11 项,这是刻意设计,不是漏了检查。
-- **7Z/RAR/XZ 解压**:P9 才做(且 RAR 按决策不做)。
+- **RAR 解压**:按决策 D5-R1 不做(没有 MIT / 纯 Swift 实现)。7Z / XZ **已经支持**解压,
+  证据见 `Scripts/verify-archive-roundtrip.sh` 的 format coverage 段;它们**不能创建**,菜单里不会出现。
 
 ## 5. 失败时请回报这些
 
@@ -663,6 +664,328 @@ Manual:
 - 加密压缩 / 分卷压缩 / 固实压缩**未实现**,第③步的自定义压缩对话框里会置灰并写明原因。
 - 选中态菜单原有的 7 项保持**平铺**;新增的 `解压 ▸` / `压缩 ▸` 是仅有的一处二级菜单,
   因为这两个动作各有多个变体。
+
+### 2026-10-01 — 解压/压缩修复 + 常用项图标
+
+```
+Automated: PASS  (449/449 XCTest;两个 target 均构建成功)
+Manual:    PENDING(下面 5 项只能在 Finder / 真机上确认)
+```
+
+**A. 解压/压缩的修复**
+
+| 修的东西 | 之前的行为 | 现在的行为 |
+| --- | --- | --- |
+| 解压位置设置 | `ArchiveSettings.destination` / `customDestinationPath` 运行时**没有任何代码读取**,设置面板是装饰品 | 作用于「解压到指定位置…」一项:每次询问→弹面板;指定文件夹→该项标题变成「解压到「文件夹名」」并直接解压过去;压缩包所在文件夹→与「解压到当前文件夹」重复,该项隐藏。**「解压到当前文件夹」始终保持字面行为**(用户选定的语义) |
+| 允许的压缩格式 | 只过滤解压菜单,`压缩 ▸` 永远显示全部 4 种 | `压缩 ▸` 与自定义压缩对话框的格式下拉都跟随该设置;主 App 派发时再复检一次(菜单可能是设置变更前构建的) |
+| 自定义压缩的「取消」 | 只关闭对话框,后台继续压缩 | 真正中止遍历。归档在内存里组装、最后才落盘,所以不会留下半个文件 |
+| 解压后删除原包 | `failed == 0` 就删 —— 全部条目被「跳过」时也会把压缩包删掉 | 仅在该次解压**没有任何内容被跳过**时删;`__MACOSX` / `._*` / `.DS_Store` 这类元数据跳过不算 |
+| 压缩读不到源文件 | 静默写入 0 字节条目(归档看起来成功,内容已丢) | 整个压缩失败,错误里指明是哪个文件 |
+| 设置页文案 | 「解压执行会在 P9 落地」(早已落地) | 改为说明「解压位置」的实际作用 |
+
+**B. 常用项图标(设置列表 + Finder 子菜单)**
+
+- 主 App 把每个收藏项渲染成 **64×64 PNG** 写进 `<App Group>/FavoritesIcons/`,文件名回写到收藏项的 `iconFile`;沙箱扩展只按文件名读回(`FinderFavoriteIcons`)。扩展既读不到主 App 的资源目录,也没有网络权限。
+- favicon 由主 App 抓取(`/favicon.ico`,失败再看页面里的 `<link rel="…icon…">`),因此主 App 新增 `com.apple.security.network.client`;扩展仍然没有任何网络权限。抓不到就退回纯文字,不影响打开。
+- 图标在每次启动补齐(`FavoriteIconBootstrap`),不需要先访问设置面板。
+- **这推翻了 2026-09-30「菜单不放图标」的决定**,差别见下。
+
+```
+Manual:
+  B1  常用软件 ▸ 里 Clash Verge / Chrome 左侧显示各自 App 图标        PENDING
+  B2  常用文件夹 ▸ 里两个文件夹显示真实文件夹图标                     PENDING
+  B3  常用网页 ▸ 里 Bluetful 显示站点 favicon                         PENDING
+  B4  菜单为图标预留了一列内边距,文字缩进与原生项不同                 PENDING
+  A1  解压位置=指定文件夹时,第二项变成「解压到「xxx」」并直接解压     PENDING
+```
+
+- 与上一版的关键差别:上一版用的是**模板(template)图片**,而 Finder 绘制扩展菜单的图片时不做高亮/禁用染色,
+  于是选中行上是一个黑图标;全彩 PNG 没有"染色"这一步,不受该限制。**图标列内边距的代价仍然存在**(B4),
+  上一版正是把这条和染色问题一起解决才撤掉图标的。
+- 自动化能证到的部分(已证):PNG 确实按 64×64 生成且有真实内容(Chrome 彩色图标、bluetful 的 favicon)、
+  `iconFile` 已写回设置载荷、扩展侧解码与加载有单测覆盖、扩展侧拒绝对 `../` 这类文件名取值。
+  **唯一没被证到的是:Finder 是否真的把这张图画在菜单项左侧。**
+
+### 2026-10-01 — P9 收口:7Z/XZ 拿到证据 + ZIP 文件名编码
+
+```
+Automated: PASS  (458/458 XCTest)
+Automated: PASS  (Scripts/verify-archive-roundtrip.sh — 六种格式现在都有"外来样本"证据)
+Manual:    PENDING(§3.8 的 38/40/43 项,以及下面新增的 E1/E2,仍需在真机上点一遍)
+```
+
+对着「规划 vs 现状」差距清单逐条收口:
+
+| 差距 | 处置 |
+| --- | --- |
+| **7Z / XZ 解压零证据**(规划 S6 要求六种格式全部实测通过) | 验证脚本现在自己造外来样本:**xz** 走 python3 的 `lzma`(本机没装 xz CLI,所以不再自动跳过),**7z** 走 macOS `bsdtar --format=7zip`(libarchive 3.7.4 自带 7-Zip 写入器,项目里没有任何 7z 写入能力)。两条断言都是 `OK`,脚本末尾新增 `format coverage` 段,缺失时打 `!! NOT TESTED` |
+| **Windows GBK 中文包文件名乱码**(人工门第 38 项在真实场景下会 FAIL) | 新增 `ZipNameDecoder`,解码顺序:标志位 → 纯 ASCII → 合法 UTF-8 → 「以非 ASCII 为主 + 合法 GB18030 + 真的含中日韩」→ CP437。9 个新单测覆盖,含一个**刻意钉住取舍**的用例(见下) |
+| 规划文档 / 手册过期 | 手册 §4 的「7Z/RAR/XZ 解压:P9 才做」已改;`功能规划v2.md` 的 P9 补了落地状态 |
+| 1GB 大包(S8)、只读目标目录(人工门) | **仍未验**。前者需要真的造一个 1GB 包;后者需要只读卷、或把目标目录 `chmod 0555` 后走一次真实解压 |
+
+```
+Manual:
+  E1  用 Windows 造的 GBK 中文名 zip 解压 → 目录名正确,不是 ÐÂ½¨ÎÄ¼þ¼Ð        PENDING
+  E2  解压一个 .7z / .tar.xz → 正常解出(自动化已证,这里只确认 Finder 那条路)   PENDING
+```
+
+- **文件名编码的取舍**(单测 `testMixedScriptCP437NameIsTheKnownCostOfPreferringChinese` 钉住):
+  GB18030 会接受很大一部分字节对,所以"能不能按 GB18030 解"本身不足以判断。真正起作用的是
+  "非 ASCII 字节是否占多数"这道闸门——中文名大多是多字节,西文名是 ASCII 字母加一两个重音。
+  极端情况下(一个以非 ASCII 为主、又恰好是合法 GB18030 的西文名)仍会被读成中文;选这个方向是因为
+  反过来的代价是**每一个 Windows 中文包都乱码**。
+- 我们自己写出的 ZIP **已经**正确设置 UTF-8 标志位(`ZipWriter` 对非 ASCII 名设 bit 11),
+  所以这一改动只影响"读别人的包"。
+
+### 2026-10-01 — 修:失败提示框阻塞扩展主线程(右键菜单会消失)
+
+```
+Automated: PASS  (460/460 XCTest,含新增的源码级守卫 ExtensionMainThreadTests)
+Automated: PASS  (实测:菜单构建 4ms;扩展可达源码里已无 runModal/beginSheetModal)
+Manual:    PENDING(F1/F2)
+```
+
+- **现象**（用户报告）:在一个压缩包上点「解压到当前文件夹」→ **无任何反应** →
+  右键里 MenuRight 的条目**整个消失** → 过一会才回来。
+- **取证**:10:21:48 / 10:24:16 两次点击时**主 App 根本没在运行**。诊断日志是
+  `extension: connect failed: connect() failed: No such file or directory` 与
+  `file operation unavailable`（socket 文件随 App 退出而消失）。这条路径会走
+  `OperationPresenter.presentMainAppUnavailable` → `NSAlert.runModal()`。
+- **机制**:`runModal()` 在扩展的**主线程**上开嵌套消息循环,而 Finder 调 `menu(for:)` 用的就是这条线程。
+  提示框一旦被压在 Finder 或其他窗口后面,主线程就**无限期停在那里**;期间 Finder 拿不到菜单,
+  于是 MenuRight 条目静默消失,直到用户点到那个框、或 Finder 把扩展替换掉。
+  这正是 `FinderSync.ipcQueue` 当初要修的那一类 bug(见其注释),而提示框是**最后一条**漏网的。
+  顺带排除另一个嫌疑:**菜单构建实测只要 4ms**(10:25:12.380 → 12.384),所以不是图标 IO 拖的。
+- **修法**:`OperationPresenter` 不再 `runModal()`。改为把 alert 自己的窗口
+  `makeKeyAndOrderFront` + `level = .floating` + `canJoinAllSpaces`,OK 按钮挂自己的 action
+  (`AlertDismisser`,因为非模态下 NSAlert 的内置按钮是 no-op),20 秒自动关闭,同一时刻只留一个。
+  控制流立刻回到 run loop。
+- **守卫**:新增 `MenuRightTests/ExtensionMainThreadTests.swift` —— 源码级断言
+  `MenuRightFinder/**.swift` 与 `Shared/FileOperations/OperationPresenter.swift` 里不得出现
+  `runModal`/`beginSheetModal`(忽略注释行)。这类 bug 运行时测不出来:它表现成"Finder 没显示菜单",
+  没有任何断言能观察到主线程被停住,只能用源码断言钉住。
+
+```
+Manual:
+  F1  退出 MenuRight 后,右键一个压缩包 → 解压到当前文件夹                     PASS(部分)
+      用户实测 2026-10-01:「弹出没问题,拉起宿主 app 成功」
+      → 中文文案、两个按钮、无勾选框/空按钮  ✅;「打开 MenuRight」能拉起宿主 App ✅
+      仍待确认:弹框还在时再右键,MenuRight 菜单是否依然出现(上一轮修的主线程阻塞)
+  F2  打开 MenuRight 后重复 F1                                                PENDING
+      预期:解压成功,文件出现在压缩包旁边
+```
+
+### 2026-10-01 — 修:提示框的模板残留 + 文案本地化
+
+```
+Automated: PASS  (460/460 XCTest;LocalizationTests 覆盖新增 30 个 key 的中英文与占位符一致性)
+Automated: PASS  (探针 dump NSAlert 视图层级确认,见下;无需截图)
+Manual:    PENDING(F1/F2 的最终外观)
+```
+
+- **现象**（用户截图）:提示框是英文,而且多出「不再显示此信息」勾选框、一个空按钮、一个帮助按钮。
+- **根因**:`NSAlert` 只有在**模态**展示（`runModal()` / `beginSheetModal`）时才跑那次布局整理,
+  把 `NSAlertPanel.nib` 中本次用不到的控件收起来。上一轮为了不阻塞主线程改成了直接
+  `orderFront`,于是这些模板槽位全露出来了——**不是我们加了按钮,是没让 AppKit 收起来**。
+- **修法**:显示前显式 `alert.layout()`,并加 `showsSuppressionButton = false` /
+  `showsHelp = false` / "隐藏无标题按钮"兜底。文案全部走 `Localization` +
+  `FinderMenuLanguage.resolve()`,即跟随「通用设置 → 界面语言」。
+- **按钮**:「好」+「打开 MenuRight」(后者用 `NSWorkspace.openApplication` 打开宿主 App)。
+- **验证手法(可复用,不用截图)**:写个小程序 dump `alert.window.contentView` 的层级。
+  `layout()` 之前是 `title="<Do not show this message again>"` + 一个空标题按钮 + 帮助按钮,
+  之后只剩「好」/「打开 MenuRight」两个真按钮,面板高度 328 → 253。
+- 顺带:`OperationPresenter.swift` 原本也被编进主 App target(而主 App 从不使用它),
+  已从该 target 移除——这样它能直接用扩展的语言解析器,不必为它单开一条注入路径。
+
+### 2026-10-01 — 修:侧边栏选中行图标不变白
+
+```
+Automated: PASS  (461/461 XCTest,含新增源码级守卫;已实测守卫在旧代码上会失败)
+Automated: PASS  (离屏渲染对照实验,五种写法逐一取像素,见下)
+Manual:    PENDING(侧边栏点选一眼)
+```
+
+- **现象**:侧边栏选中项**文字变白、图标仍是黑的**。
+- **取证(取像素)**:选中胶囊底色 `rgb(149,61,150)`;胶囊内图标区最暗像素 **`rgb(0,0,0)`**,
+  未选中行也是 `rgb(0,0,0)`。若图标吃的是 `Color.primary`,叠在浅色底上不会正好是 0。
+  另查:资源编译后 `TemplateMode=template`、运行时 `isTemplate = true`,所以**不是资源问题**。
+- **定位(离屏渲染对照)**:
+  - 裸 `VStack` 里这一行**完全正确**:选中行图标是白的;
+  - 放进 `List(.sidebar)` 就变黑 —— **是 sidebar 的 List 从外层给 label 的图标槽
+    重新套了一遍前景色**,行级 `.foregroundStyle` 能到文字、到不了图标。
+- **五种写法实测**(同样在 `List(.sidebar)` 内渲染后取像素):
+
+  | 写法 | 选中行图标 |
+  |---|---|
+  | 现状:只在 Label 外层设 `.foregroundStyle` | 黑 ❌ |
+  | `.tint(.white)` | 黑 ❌ |
+  | **在 icon 视图上直接设 `.foregroundStyle`** | **白 ✅** |
+  | 改用 `HStack` 分别设 | 白 ✅ |
+  | 前两者 + `.labelStyle(.titleAndIcon)` | 白 ✅ |
+
+  取最小改动:在 `AssetIcon` 上再设一次 `.foregroundStyle(foreground)`。
+- **守卫**:`SettingsCategoryTests.testSidebarRowStylesItsIconDirectlyNotJustTheLabel` ——
+  源码级断言 `SidebarCategoryRow` 的 `icon:` 闭包内必须出现 `foregroundStyle`。
+  这类 bug 在 host-less 测试包里没有可观察量(图标是 asset catalog 图片、测试包没有
+  `Assets.car`,行视图也不在测试 target 里),所以只能查源码。
+  **已实测:去掉修复后该测试失败**;另外第一版守卫曾被自己写的注释骗过(注释里也提到了
+  `foregroundStyle`),现已先剥注释再断言。
+
+### 2026-10-01 — 体积上限支持手输 + 上限提示
+
+```
+Automated: PASS  (466/466 XCTest,+5:输入解释规则)
+Automated: PASS  (自己开面板截图核对版式:值 + 「可输入 1–8,192 MB」+ 箭头)
+Manual:    PENDING(实际键入 10000 看提示)
+```
+
+- **需求**:「体积上限」原本只有 Stepper,不能输入;而且越过范围时**只会静默拒绝**
+  (到顶再点箭头什么也不发生,没有任何解释)。要求可手输,并提示最大值。
+- **改法**:
+  - 规则抽成纯函数 `ArchiveSettings.interpretSizeLimit(_:)`,返回
+    `.accepted(n)` / `.aboveMaximum(stored:)` / `.belowMinimum(stored:)` / `.unusable`,
+    与解码时的 `normalized()` 共用同一个 `sizeLimitRange`,不会各说各话。
+  - `ArchiveSettingsView` 那一行换成 `TextField` + 「MB」+ Stepper。
+    行**常驻**副标题「可输入 1–8,192 MB」(最大值在输入前就可查),
+    一旦越界立刻替换为具体那一条:「最大不能超过 8,192 MB」/「最小不能小于 1 MB」/「请输入数字」。
+    提交(回车或失焦)时按规则落库:越界就存钳制后的值,无法解析就回退到已存值,
+    字段与设置不会各走各的。
+  - 聚焦时编辑纯数字、失去焦点恢复带千分位的显示(`1,024 MB`)——和被复制粘贴回去的形态一致,
+    `interpretSizeLimit` 也接受 `1,024 MB` / `1，024` / 带单位 / 带空格。
+- **踩坑(测试抓到)**:第一版用 `allSatisfy(\.isNumber)`,阿拉伯-印度数字「١٢」也为真但 `Int()` 解析不了,
+  于是被归到"溢出→超过上限",给出**错误解释**。已改为只接受 ASCII 数字。
+- **顺带修**:`MENURIGHT_REVIEW_WINDOW` 这个 review 钩子**一直是静默失效的** ——
+  它只在启动后 0.0s/0.4s 各试一次,而 SwiftUI 窗口此时 `isVisible == false`,过滤条件直接跳过。
+  现在改为"优先可见窗口,否则取第一个"并最多坚持 5 秒,成功时打一行 NSLog。
+  实测:`review window sized to {1100, 1180} after 2 attempt(s)` ✓。
+- **顺带清理**:设置自检 `MENURIGHT_SELFTEST_SETTINGS=write` 会把体积上限写成时间戳 marker
+  (用户截图里的 `1,038 MB` 就是这么来的,我先前跑自检没 reset)。已用 `reset` 恢复为默认 1024。
+
+### 2026-10-01 — 修:长操作被 5 秒超时误判为「主应用未运行」,并加进度提示
+
+```
+Automated: PASS  (471/471 XCTest,+5:超时/EOF 语义、EAGAIN 等待、预算常量)
+Automated: PASS  (探针 dump 视图层级:进度提示 16x16 转圈 + 仅「隐藏」按钮,无勾选框/空按钮)
+Manual:    PENDING(G1/G2)
+```
+
+- **现象**:主程序明明在运行,右键 → 压缩为 ZIP,却弹「MenuRight 未运行」,
+  详情 `read failed`;**数秒后压缩包其实出现在目标文件夹**;整个过程没有任何进度提示。
+- **取证(日志精确到秒)**:
+
+  ```
+  03:22:52 finder-sync request kind=compressItems
+  03:22:52 main-app    收到请求
+  03:22:57 finder-sync read failed        ← 整整 5 秒
+  03:23:06 finder-sync 再试一次(用户重试 → 又压了一次)
+  03:23:11 finder-sync read failed        ← 又是 5 秒
+  ```
+
+- **根因**:文件操作是**一次性请求/响应**,主程序要压完才回包;而传输层通用帧上限
+  `UnixSocketTransport.defaultTimeoutSeconds = 5`,扩展等 5 秒就放弃。更糟的是
+  `readFrame` 只返回 `Data?`——**超时和对端断开被合并成同一个 nil**,
+  于是"我还在干活"被渲染成"主应用没运行",还提示用户去打开它、重试(重试会再压一次)。
+- **修法**:
+  1. `UnixSocketTransport.FrameReadResult`(`.frame/.timedOut/.closed/.failed`),
+     `readFrameResult` 保留失败原因;`readFrame` 仍返回 `Data?` 以兼容旧调用。
+  2. `MenuRightIPC.fileOperationTimeoutSeconds = 600`:文件操作用长预算,
+     两端共用同一常量。
+  3. `ExtensionIPCClient.FileOperationOutcome` 新增 `.stillRunning`,超时不再走
+     `.unavailable`;`FinderSync` 7 处 outcome 分支各自处理,提示改成
+     「操作仍在进行」并**明确不要重复操作**(不再叫人去"打开 MenuRight")。
+  4. **进度提示**:`sendDelegated` 是所有文件操作的唯一漏斗,在这里挂
+     「正在压缩…/正在解压…」浮层(1.5 秒后才出现,太快的不闪窗;
+     出结果即撤下;只有一个「隐藏」按钮,点了只是收起、不打断操作)。
+- **差点漏掉的坑**:socket 上还有 5 秒的 `SO_RCVTIMEO`,读到时若返回 `EAGAIN`,
+  原逻辑直接判 `.failed` —— 那 600 秒上限根本用不上。已改为 EAGAIN/EWOULDBLOCK 继续等
+  (带 10ms 小睡防自旋),由调用方 deadline 决断。新增测试
+  `testQuietPeerIsWaitedOutPastTheSocketReceiveTimeout` 守住它。
+- **验证手法**:探针显示 `NSAlert` 在**不加按钮时会自动补一个英文 "OK"**,
+  且 accessory 视图不显式设 frame 会被布局成 `{0,0}`(看不见)——两个都已规避。
+
+```
+Manual:
+  G1  主程序在运行时,右键一个大文件夹 → 压缩为 ZIP                            PENDING
+      预期:1.5 秒后出现「正在压缩…」浮层(带转圈);**不再**弹「未运行」;
+      操作完成后浮层自动消失,压缩包出现在旁边
+  G2  同上,点浮层里的「隐藏」                                                PENDING
+      预期:浮层收起,压缩继续进行并最终完成
+```
+
+### 2026-10-01 — 压缩进度窗口:真实进度 + 暂停 + 取消
+
+```
+Automated: PASS  (479/479 XCTest,+8:进度/暂停/注册表/取消码/窗口结构)
+Automated: PASS  (窗口离屏渲染出 PNG 核对,见下)
+Automated: PASS  (Release 构建;已安装;appex 内含 archive-zip-7z.png 71660 bytes)
+Manual:    PENDING(H1/H2/H3)
+```
+
+- **要求**(用户给的设计稿):像系统「已锁定的项目」提示那样 —— **没有关闭钮,只有最小化**;
+  左侧压缩包图标(`zip:7z.png`);中间一行**真实进度条**;下面两个按钮:**暂停、取消**。
+- **协议扩展**:`IPCProtocol.Response.progress`(0…1)。带 `progress` 的帧是**中间状态**,
+  不带的才是最终答复;扩展端改成**循环读帧**,所以一次请求可以推多帧。
+- **真实进度**:两段,都是确定的 ——
+  1. 读取源文件(按字节,分母来自一次**只读元数据**的预扫描);
+  2. 组装容器(按条目,直接来自 `ZipWriter` 的 deflate 循环)。
+- **暂停/取消**:新增 `ArchiveOperationControl`(worker 端:`checkpoint()` 每条目调用,
+  暂停时 50ms 挂起;`report()` 汇报进度)+ `ArchiveOperationRegistry`(按 `clientRequestId`
+  找到正在跑的操作)。控制消息走**独立连接**的 `fileOperationControl` 方法 ——
+  数据连接正卡在等答复,控制帧插在那里等于等它忙完才被读到。服务端本来就并发处理连接,
+  所以这条能立刻被受理。
+- **窗口**:`ArchiveProgressWindow` —— `styleMask: [.titled, .miniaturizable]`
+  (实测:`closable` 不设时关闭钮**存在但禁用**,zoom 同样禁用,只有最小化可用,
+  正好是设计稿那样)。`.titled` 是必须的,否则没有标题栏与红绿灯。
+- **取消不是失败**:新增错误码 `cancelled_by_user`,扩展端 7 处失败分支全部**静默**处理 ——
+  用户自己按的取消不该弹错误框。
+- **验证手法**:`ArchiveProgressWindowTests` 把窗口 contentView 离屏渲染成 PNG
+  (`TEST_RUNNER_MENURIGHT_DUMP_PROGRESS_WINDOW=/tmp/progress.png xcodebuild test …`;
+  注意 `xcodebuild` **不会**把 shell 环境变量透给测试进程,必须加 `TEST_RUNNER_` 前缀)。
+  另有断言:`.closable` 不在 styleMask 里、关闭钮 `isEnabled == false`、最小化 `== true`、
+  进度条 determinate、按钮标题与回调。
+
+```
+Manual:
+  H1  右键一个大文件夹 → 压缩为 ZIP                                          PENDING
+      预期:约 1.5 秒后出现进度窗口(图标/进度条/暂停/取消),进度条真实推进,
+      完成后窗口自动消失,压缩包出现在旁边
+  H2  压缩过程中点「暂停」                                                    PENDING
+      预期:进度条停住,按钮变「继续」;点「继续」后继续推进
+  H3  压缩过程中点「取消」                                                    PENDING
+      预期:窗口消失,**不弹任何错误框**,不产生压缩包
+```
+
+### 2026-10-01 — 进度窗口按草图改版 + 修「暂停按钮无效」
+
+```
+Automated: PASS  (480/480 XCTest,含源码级守卫;已实测守卫在旧代码上失败)
+Automated: PASS  (改版后重新离屏渲染核对,见下)
+Automated: PASS  (Release 构建;已安装;扩展已启用)
+Manual:    PENDING(H1/H2/H3)
+```
+
+- **样式(按用户草图)**:去掉标题栏文字与那条分割线
+  (`titleVisibility = .hidden` + `titlebarAppearsTransparent = true` + `.fullSizeContentView`),
+  宽度 380 → **570(约 1.5 倍)**,高度 156;图标 64px、标题 15pt 粗体、进度条通栏 430pt、
+  「暂停/取消」96x30 放右下。红绿灯仍在,内容留出顶部约 30pt 不重叠。
+  标题栏没了,所以整个窗口可拖动(`isMovableByWindowBackground`)。
+- **暂停/取消无效的根因**:控制消息虽然走了独立连接,却被派发到 `ipcQueue` ——
+  而那条队列是**串行**的,压缩操作整个生命周期都占着它(卡在等答复)。
+  于是暂停消息排在压缩后面,等压缩结束才发出去 = 按了没反应。
+  已改到独立的 `controlQueue`;并补了源码级守卫
+  `testControlMessagesAreNotQueuedBehindTheOperationTheyInterrupt`
+  (已实测:把 `controlQueue` 换回 `ipcQueue` 时该测试失败)。
+
+```
+Manual:
+  H1  右键一个大文件夹 → 压缩为 ZIP                                          PENDING
+      预期:约 1.5 秒后出现进度窗口(**无标题栏文字、无分割线**,比之前宽),
+      进度条真实推进,完成后窗口自动消失,压缩包出现在旁边
+  H2  压缩过程中点「暂停」                                                    PENDING
+      预期:进度条**立刻**停住,按钮变「继续」;点「继续」后继续推进
+  H3  压缩过程中点「取消」                                                    PENDING
+      预期:窗口消失,**不弹任何错误框**,不产生压缩包
+```
 
 ### 结论怎么写
 

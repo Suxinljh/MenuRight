@@ -96,6 +96,24 @@ App Group `UserDefaults(suiteName:)` 存设置 → 设置 UI(软件选择器、�
 **交付格式(D5-R1)**:ZIP、7-Zip、TAR、GZip、BZip2、XZ 六种;**RAR 不实现**,菜单与设置里都不出现(README 记录原因与后续可选路径)。
 **人工门**:ZIP 正常/中文名/含目录/同名/恶意 `../`;只读目标目录;1GB 压缩包给出干净错误而非卡死;7Z/XZ/BZ2 各一例。
 
+> **落地状态(2026-10-01 补记,原文保留在上)**:P9 **已交付**。
+>
+> - 代码:`Shared/Archive/` 的 `ArchiveExtractor`(策略层,只 import Foundation)+
+>   `ArchiveMemberSource`(SWCompression 适配);第三方**只在主 App 与测试 target 里**
+>   (实测:扩展二进制无该包、pbxproj 里 appex 无 package deps)。
+> - MIT 致谢(`Third-Party-Notices/SWCompression-LICENSE.txt`)与
+>   `PrivacyInfo.xcprivacy` 都已在 App 包内。
+> - 六种格式**全部有实测证据**:ZIP/TAR/GZ/BZ2 见 `Scripts/verify-archive-roundtrip.sh` 的
+>   round-trip 与外来样本断言;7Z 由该脚本用 macOS bsdtar 造的真实 `.7z` 覆盖;
+>   XZ 由 python3 `lzma` 造的 `.tar.xz` 覆盖(本机没有 xz CLI,因此不再依赖它)。
+> - 两处与本文的偏离,都是有记录的处置:
+>   1. **RAR 出现在设置面板**(灰行 + 写明原因),而不是"设置里也不出现"——§2 L49 与 §3 L96
+>      本身冲突,按"解释清楚为什么没有"处理,README 有记录。
+>   2. **压缩创建(`压缩 ▸` / 自定义压缩)不在本规划内**却已实现:ZIP/TAR/TAR.GZ/TAR.BZ2,
+>      加上"保存为/标签(仅 ZIP)/位置/格式/模式"对话框;加密、分卷、固实三项在 UI 里
+>      置灰并写明原因;7z/XZ 只读,不能创建。
+> - 仍未做/未验:**解压侧的进度与取消**、**1GB 大包的内存行为(S8)**、**只读目标目录(人工门)**。
+
 ### P10 — 快捷键与高级行为(原 P2)
 
 受 C8 限制,只能绑定不依赖选中项的动作;依赖选中项需要 Accessibility 权限,与 `AGENTS.md:10` 冲突。**建议降级或放弃**。
