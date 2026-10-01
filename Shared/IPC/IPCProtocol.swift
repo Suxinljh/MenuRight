@@ -24,13 +24,24 @@ public enum IPCProtocol {
         public let id: String
         public let result: String?
         public let error: String?
+        /// Set on a **progress frame** only: `0...1`. A frame carrying progress is
+        /// an interim status update, not the answer — the answer is the frame
+        /// without it. Long operations (compression) use this so the extension's
+        /// window can show real movement instead of a frozen spinner.
+        public let progress: Double?
 
         public static func ok(id: String, result: String) -> Response {
-            Response(version: 1, id: id, result: result, error: nil)
+            Response(version: 1, id: id, result: result, error: nil, progress: nil)
         }
         public static func fail(id: String, error: String) -> Response {
-            Response(version: 1, id: id, result: nil, error: error)
+            Response(version: 1, id: id, result: nil, error: error, progress: nil)
         }
+        public static func progress(id: String, fraction: Double) -> Response {
+            Response(version: 1, id: id, result: nil, error: nil, progress: fraction)
+        }
+
+        /// True for an interim progress frame.
+        public var isProgress: Bool { progress != nil }
     }
 
     public static func encode<T: Encodable>(_ value: T) -> Data? {

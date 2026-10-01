@@ -15,9 +15,14 @@ import os
 ///
 /// Blocking budget: the connect/handshake socket options use a 2s timeout and
 /// every frame transfer is bounded by a `poll()` deadline (5s default), so a
-/// stalled or absent peer cannot pin the caller. Callers must still invoke these
-/// off the main thread — `FinderSync` does so through its own serial queue — and
-/// must return to the main queue before presenting any alert.
+/// stalled or absent peer cannot pin the caller. **File operations are the one
+/// exception**: their reply is written only when the work is finished, so they
+/// get `MenuRightIPC.fileOperationTimeoutSeconds` instead. A deadline that
+/// passes there means "still running", never "the app is gone" — a distinction
+/// this type used to lose, and which the UI then reported as the wrong thing.
+/// Callers must still invoke these off the main thread — `FinderSync` does so
+/// through its own serial queue — and must return to the main queue before
+/// presenting any alert.
 ///
 /// **Peer verification (H2)**: a same-user process can unlink the App-Group
 /// socket file and bind its own path. Immediately after `connect()` we verify
@@ -46,6 +51,11 @@ final class ExtensionIPCClient {
         case success(createdPath: String?)
         case batchSuccess(items: [FileOperationContract.ItemResult])
         case failure(code: FileOperationContract.ErrorCode, message: String)
+        /// The main app took the request and had not answered when our deadline
+        /// passed. **Not a failure**: it is normally still working on it. On
+        /// 2026-10-01 this was mis-reported as "Menu Right not running" while the
+        /// app finished and wrote the archive seconds later.
+        case stillRunning
         case unavailable(reason: String)
     }
 
@@ -96,7 +106,8 @@ final class ExtensionIPCClient {
     /// and does NOT attempt any local write fallback.
     static func sendFileOperation(
         _ request: FileOperationContract.Request,
-        socketURL: URL? = MenuRightIPC.socketFileURL()
+        socketURL: URL? = MenuRightIPC.socketFileURL(),
+        onProgress: ((Double) -> Void)? = nil
     ) -> FileOperationOutcome {
         guard let payload = request.encodedForIPC() else {
             Self.log.error("FINDER-IPC fileOperation encode failed")
@@ -105,7 +116,20 @@ final class ExtensionIPCClient {
         Self.log.info("FINDER-IPC file operation request cid=\(request.clientRequestId ?? "<none>", privacy: .public) kind=\(request.kind.rawValue, privacy: .public)")
         LifecycleDiagnostics.record("file operation request cid=\(request.clientRequestId ?? "<none>") kind=\(request.kind.rawValue)", from: "finder-sync")
 
-        return sendRequest(method: "fileOperation", payload: payload, socketURL: socketURL) { result, error -> FileOperationOutcome in
+        return sendRequest(
+            method: "fileOperation",
+            payload: payload,
+            socketURL: socketURL,
+            // File work is answered only when it is done, so it gets the long
+            // budget rather than the 5 s frame default (see the constant).
+            readTimeout: MenuRightIPC.fileOperationTimeoutSeconds,
+            onTimeout: {
+                Self.log.notice("FINDER-IPC file operation still running after \(MenuRightIPC.fileOperationTimeoutSeconds, privacy: .public)s")
+                LifecycleDiagnostics.record("file operation still running after \(Int(MenuRightIPC.fileOperationTimeoutSeconds))s", from: "finder-sync")
+                return .stillRunning
+            },
+            onProgress: onProgress
+        ) { result, error -> FileOperationOutcome in
             if let error {
                 // Server returned an encoded `Response.failure` in the .error field.
                 if let response = FileOperationContract.Response.decode(fromIPC: error) {
@@ -148,6 +172,9 @@ final class ExtensionIPCClient {
         method: String,
         payload: String?,
         socketURL: URL?,
+        readTimeout: TimeInterval = UnixSocketTransport.defaultTimeoutSeconds,
+        onTimeout: (() -> T)? = nil,
+        onProgress: ((Double) -> Void)? = nil,
         interpret: (_ result: String?, _ error: String?) -> T
     ) -> T {
         guard let socketURL else {
@@ -194,22 +221,62 @@ final class ExtensionIPCClient {
             return interpret(nil, "write failed")
         }
 
-        guard let respData = UnixSocketTransport.readFrame(conn.fd) else {
+        // Frames keep arriving until the answer does: one carrying `progress` is
+        // an interim status ping from a long operation (compression), anything
+        // else is the reply. Each read gets the full budget again — the point of
+        // the loop is that a *working* peer is never mistaken for a dead one.
+        while true {
+        switch UnixSocketTransport.readFrameResult(conn.fd, timeout: readTimeout) {
+        case .frame(let respData):
+            guard let resp = IPCProtocol.decode(IPCProtocol.Response.self, from: respData) else {
+                Self.log.notice("FINDER-IPC decode failed")
+                LifecycleDiagnostics.record("extension: decode failed", from: "finder-sync")
+                return interpret(nil, "decode failed")
+            }
+            if let fraction = resp.progress {
+                onProgress?(fraction)
+                continue
+            }
+            if let err = resp.error {
+                return interpret(nil, err)
+            }
+            guard let result = resp.result else {
+                return interpret(nil, "empty result")
+            }
+            return interpret(result, nil)
+        case .timedOut:
+            // The deadline is ours, not the peer's failure: say so, and let the
+            // caller decide what a still-running operation means for its UI.
+            Self.log.notice("FINDER-IPC read timed out after \(readTimeout, privacy: .public)s")
+            LifecycleDiagnostics.record("extension: read timed out after \(Int(readTimeout))s", from: "finder-sync")
+            return onTimeout?() ?? interpret(nil, "timed out")
+        case .closed, .failed:
             Self.log.notice("FINDER-IPC read failed")
             LifecycleDiagnostics.record("extension: read failed", from: "finder-sync")
             return interpret(nil, "read failed")
         }
-        guard let resp = IPCProtocol.decode(IPCProtocol.Response.self, from: respData) else {
-            Self.log.notice("FINDER-IPC decode failed")
-            LifecycleDiagnostics.record("extension: decode failed", from: "finder-sync")
-            return interpret(nil, "decode failed")
         }
-        if let err = resp.error {
-            return interpret(nil, err)
+    }
+
+    /// Sends 暂停/继续/取消 for an operation that is running right now.
+    ///
+    /// Its **own** connection on purpose. The data connection is parked waiting
+    /// for the answer, so a control frame sent there would not be read until the
+    /// work it is meant to interrupt had already finished — a pause button that
+    /// does nothing. The Main App serves this concurrently; the reply is a plain
+    /// ok/fail, and `false` means no such operation is in flight any more.
+    @discardableResult
+    static func sendFileOperationControl(
+        clientRequestId: String,
+        action: ArchiveControlAction,
+        socketURL: URL? = MenuRightIPC.socketFileURL()
+    ) -> Bool {
+        let command = ArchiveControlRequest(clientRequestId: clientRequestId, action: action)
+        guard let data = try? JSONEncoder().encode(command),
+              let payload = String(data: data, encoding: .utf8) else { return false }
+        Self.log.info("FINDER-IPC control \(action.rawValue, privacy: .public) cid=\(clientRequestId, privacy: .public)")
+        return sendRequest(method: "fileOperationControl", payload: payload, socketURL: socketURL) { _, error in
+            error == nil
         }
-        guard let result = resp.result else {
-            return interpret(nil, "empty result")
-        }
-        return interpret(result, nil)
     }
 }

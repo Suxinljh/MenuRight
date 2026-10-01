@@ -45,6 +45,18 @@ final class FinderSync: FIFinderSync {
         qos: .userInitiated
     )
 
+    /// 暂停/继续/取消 go here, **never** on `ipcQueue`.
+    ///
+    /// `ipcQueue` is serial and a file operation occupies it for its whole
+    /// lifetime — it is blocked waiting for the answer. A control message queued
+    /// behind it would therefore be sent *after* the compression it is meant to
+    /// interrupt had already finished, which is a pause button that does nothing.
+    /// Measured 2026-10-01: exactly that, reported as "暂停按钮无效".
+    private let controlQueue = DispatchQueue(
+        label: "xin.ljhsu.MenuRight.FinderSync.control",
+        qos: .userInitiated
+    )
+
     override init() {
         super.init()
         LifecycleDiagnostics.record("FinderSync.init", from: "finder-sync")
@@ -106,13 +118,17 @@ final class FinderSync: FIFinderSync {
         // P9: which selected items are archives. Extension check only — no
         // filesystem probe, so the menu-build budget holds.
         let archives = FinderArchives.classify(selection.itemURLs)
+        // Two more cfprefsd reads from the same payload: where 解压位置 sends the
+        // second 解压 item, and which formats 允许的压缩格式 leaves in 压缩 ▸.
         let plan = FinderMenuBuilder.plan(
             for: selection,
             containerMenu: menuKind == .contextualMenuForContainer,
             hasCutPayload: hasCutPayload,
             newFileKinds: newFileKinds,
             favorites: favorites,
-            archives: archives
+            archives: archives,
+            archiveDestination: FinderArchives.destination(),
+            compressionFormats: FinderArchives.enabledCompressionFormats()
         )
         Self.diag.log("menu(for:) plan.count=\(plan.count, privacy: .public) hasCutPayload=\(hasCutPayload, privacy: .public) newFileKinds=[\(newFileKinds.map(\.rawValue).joined(separator: ","), privacy: .public)] favorites=\(favorites.count, privacy: .public) archives=\(archives.archives.count, privacy: .public)/\(archives.compressible.count, privacy: .public)")
         guard !plan.isEmpty else {
@@ -199,6 +215,7 @@ final class FinderSync: FIFinderSync {
                 title: title,
                 selector: #selector(performOpenFavorite(_:)),
                 representedObject: entry,
+                image: FinderFavoriteIcons.image(named: entry.iconFile),
                 to: menu
             )
         case .extractArchives(let archives, let destination):
@@ -222,6 +239,13 @@ final class FinderSync: FIFinderSync {
                 representedObject: ArchiveRequest(archives: archives, destination: nil),
                 to: menu
             )
+        case .extractArchivesToFolder(let archives, let destination):
+            addItem(
+                title: title,
+                selector: #selector(performExtractArchives(_:)),
+                representedObject: ArchiveRequest(archives: archives, destination: destination),
+                to: menu
+            )
         case .compressItemsCustomize(let items):
             // Same selector: the click is dispatched from the live selection and
             // the title, which is what tells the dialog variant apart.
@@ -234,10 +258,21 @@ final class FinderSync: FIFinderSync {
         }
     }
 
-    private func addItem(title: String, selector: Selector, representedObject: Any?, to menu: NSMenu) {
+    private func addItem(
+        title: String,
+        selector: Selector,
+        representedObject: Any?,
+        image: NSImage? = nil,
+        to menu: NSMenu
+    ) {
         let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
         item.target = self
         item.representedObject = representedObject
+        // Only the favorites carry one: it is the app's full-colour PNG, so
+        // there is nothing for Finder to tint (a *template* image here is the
+        // thing that came out black on a highlighted row, which is why the first
+        // icon attempt was removed). See README "Finder 右键菜单的图标".
+        item.image = image
         menu.addItem(item)
     }
 
@@ -293,7 +328,7 @@ final class FinderSync: FIFinderSync {
             Self.diag.log("ACTION performCut pasteboard: type=xin.ljhsu.MenuRight.cut-items writeAttempted=true result=success readbackCount=\(readBack?.urls.count ?? -1, privacy: .public) matchesSelection=\(matches, privacy: .public)")
         } catch {
             Self.diag.log("ACTION performCut pasteboard: write FAILED error=\(String(describing: error), privacy: .public)")
-            OperationPresenter.presentTitle("Couldn’t cut items.", message: "The cut information could not be written to the pasteboard.")
+            OperationPresenter.presentCutFailure()
         }
     }
     @objc private func performNewFile(_ sender: NSMenuItem) {
@@ -366,8 +401,17 @@ final class FinderSync: FIFinderSync {
         case .batchSuccess:
             Self.diag.log("ACTION performNewFile unexpected batch success target=\(directory.path, privacy: .public)")
         case .failure(let code, let message):
+            // 取消 is not a failure: the user asked for it in the progress
+            // window, and nothing was written. Say nothing at all.
+            guard code != .cancelledByUser else {
+                Self.diag.log("ACTION delegated CANCELLED by the user")
+                return
+            }
             Self.diag.log("ACTION performNewFile delegated FAILURE code=\(code.rawValue, privacy: .public) message=\(message, privacy: .public)")
             OperationPresenter.presentDelegatedCreateFailure(name: kind.defaultName, code: code, message: message)
+        case .stillRunning:
+            Self.diag.log("ACTION delegated STILL RUNNING after the file-operation budget")
+            OperationPresenter.presentOperationStillRunning()
         case .unavailable(let reason):
             Self.diag.log("ACTION performNewFile delegated UNAVAILABLE reason=\(reason, privacy: .public)")
             OperationPresenter.presentMainAppUnavailable(context: reason)
@@ -426,8 +470,17 @@ final class FinderSync: FIFinderSync {
         case .batchSuccess:
             Self.diag.log("ACTION performOpenFavorite unexpected batch success target=\(entry.target, privacy: .public)")
         case .failure(let code, let message):
+            // 取消 is not a failure: the user asked for it in the progress
+            // window, and nothing was written. Say nothing at all.
+            guard code != .cancelledByUser else {
+                Self.diag.log("ACTION delegated CANCELLED by the user")
+                return
+            }
             Self.diag.log("ACTION performOpenFavorite delegated FAILURE code=\(code.rawValue, privacy: .public) message=\(message, privacy: .public)")
             OperationPresenter.presentDelegatedOpenFailure(name: entry.menuTitle, code: code, message: message)
+        case .stillRunning:
+            Self.diag.log("ACTION delegated STILL RUNNING after the file-operation budget")
+            OperationPresenter.presentOperationStillRunning()
         case .unavailable(let reason):
             Self.diag.log("ACTION performOpenFavorite delegated UNAVAILABLE reason=\(reason, privacy: .public)")
             OperationPresenter.presentMainAppUnavailable(context: reason)
@@ -455,18 +508,35 @@ final class FinderSync: FIFinderSync {
         Self.diag.log("ACTION INVOKED performExtractArchives count=\(archives.archives.count, privacy: .public) delegating=true")
 
         let wantsDestination = FinderMenuTitles.isCustomExtractionTitle(sender.title)
-        Self.diag.log("ACTION performExtractArchives chooseDestination=\(wantsDestination, privacy: .public)")
+        // Finder drops `representedObject` across the process boundary, so the
+        // clicked title and the live settings are the only inputs — both are
+        // re-derived here exactly the way the menu built them.
+        let title = sender.title
+        var destinationDirectory: String?
+        var customize: Bool?
+        if case .folder(let configured) = FinderArchives.destination(),
+           FinderMenuTitles.isConfiguredFolderExtractionTitle(title, folderName: configured.lastPathComponent) {
+            // 解压位置 names a folder: go straight there, no question.
+            destinationDirectory = configured.path
+        } else if wantsDestination {
+            customize = true
+        } else if !FinderMenuTitles.isExtractHereTitle(title) {
+            // The settings changed between the menu being built and the click, so
+            // the title matches nothing current. Ask rather than guess a target.
+            customize = true
+        }
+        Self.diag.log("ACTION performExtractArchives destination=\(destinationDirectory ?? (customize == true ? "<panel>" : "<archive folder>"), privacy: .public)")
         let request = FileOperationContract.Request(
             kind: .extractArchive,
             args: FileOperationContract.OperationArgs(
                 sourcePaths: archives.archives.map(\.path),
-                destinationDirectory: nil,
-                customize: wantsDestination ? true : nil
+                destinationDirectory: destinationDirectory,
+                customize: customize
             ),
             clientRequestId: UUID().uuidString
         )
         sendDelegated(request) { [weak self] outcome in
-            self?.handleArchiveOutcome(outcome, action: "extract the archive")
+            self?.handleArchiveOutcome(outcome, action: .presenterActionExtract)
         }
     }
 
@@ -497,22 +567,31 @@ final class FinderSync: FIFinderSync {
             clientRequestId: UUID().uuidString
         )
         sendDelegated(request) { [weak self] outcome in
-            self?.handleArchiveOutcome(outcome, action: "compress the selection")
+            self?.handleArchiveOutcome(outcome, action: .presenterActionCompress)
         }
     }
 
-    private func handleArchiveOutcome(_ outcome: ExtensionIPCClient.FileOperationOutcome, action: String) {
+    private func handleArchiveOutcome(_ outcome: ExtensionIPCClient.FileOperationOutcome, action: StringKey) {
         switch outcome {
         case .success(let createdPath):
-            Self.diag.log("ACTION archive \(action, privacy: .public) delegated SUCCESS createdPath=\(createdPath ?? "<none>", privacy: .public)")
+            Self.diag.log("ACTION archive \(action.rawValue, privacy: .public) delegated SUCCESS createdPath=\(createdPath ?? "<none>", privacy: .public)")
         case .batchSuccess(let items):
-            Self.diag.log("ACTION archive \(action, privacy: .public) delegated BATCH items=\(items.count, privacy: .public) failures=\(items.filter { !$0.success }.count, privacy: .public)")
+            Self.diag.log("ACTION archive \(action.rawValue, privacy: .public) delegated BATCH items=\(items.count, privacy: .public) failures=\(items.filter { !$0.success }.count, privacy: .public)")
             OperationPresenter.presentDelegatedItemFailures(items, action: action)
         case .failure(let code, let message):
-            Self.diag.log("ACTION archive \(action, privacy: .public) delegated FAILURE code=\(code.rawValue, privacy: .public) message=\(message, privacy: .public)")
+            // 取消 is not a failure: the user asked for it in the progress
+            // window, and nothing was written. Say nothing at all.
+            guard code != .cancelledByUser else {
+                Self.diag.log("ACTION delegated CANCELLED by the user")
+                return
+            }
+            Self.diag.log("ACTION archive \(action.rawValue, privacy: .public) delegated FAILURE code=\(code.rawValue, privacy: .public) message=\(message, privacy: .public)")
             OperationPresenter.presentDelegatedArchiveFailure(action: action, code: code, message: message)
+        case .stillRunning:
+            Self.diag.log("ACTION delegated STILL RUNNING after the file-operation budget")
+            OperationPresenter.presentOperationStillRunning()
         case .unavailable(let reason):
-            Self.diag.log("ACTION archive \(action, privacy: .public) delegated UNAVAILABLE reason=\(reason, privacy: .public)")
+            Self.diag.log("ACTION archive \(action.rawValue, privacy: .public) delegated UNAVAILABLE reason=\(reason, privacy: .public)")
             OperationPresenter.presentMainAppUnavailable(context: reason)
         }
     }
@@ -556,8 +635,17 @@ final class FinderSync: FIFinderSync {
         case .batchSuccess:
             Self.diag.log("ACTION performNewFolder unexpected batch success target=\(directory.path, privacy: .public)")
         case .failure(let code, let message):
+            // 取消 is not a failure: the user asked for it in the progress
+            // window, and nothing was written. Say nothing at all.
+            guard code != .cancelledByUser else {
+                Self.diag.log("ACTION delegated CANCELLED by the user")
+                return
+            }
             Self.diag.log("ACTION performNewFolder delegated FAILURE code=\(code.rawValue, privacy: .public) message=\(message, privacy: .public)")
             OperationPresenter.presentDelegatedCreateFailure(name: "New Folder", code: code, message: message)
+        case .stillRunning:
+            Self.diag.log("ACTION delegated STILL RUNNING after the file-operation budget")
+            OperationPresenter.presentOperationStillRunning()
         case .unavailable(let reason):
             Self.diag.log("ACTION performNewFolder delegated UNAVAILABLE reason=\(reason, privacy: .public)")
             OperationPresenter.presentMainAppUnavailable(context: reason)
@@ -609,12 +697,21 @@ final class FinderSync: FIFinderSync {
             applyPasteLifecycle(for: items)
             OperationPresenter.presentDelegatedPasteResults(items)
         case .failure(let code, let message):
+            // 取消 is not a failure: the user asked for it in the progress
+            // window, and nothing was written. Say nothing at all.
+            guard code != .cancelledByUser else {
+                Self.diag.log("ACTION delegated CANCELLED by the user")
+                return
+            }
             Self.diag.log("ACTION performPaste delegated FAILURE code=\(code.rawValue, privacy: .public) message=\(message, privacy: .public)")
             if code == .notAuthorized || code == .pathOutsideAuthorizedScope {
                 OperationPresenter.presentFolderAccessRequired()
             } else {
-                OperationPresenter.presentTitle("Couldn't paste items.", message: message)
+                OperationPresenter.presentOperationFailure(title: .presenterPasteFailedTitle, message: message)
             }
+        case .stillRunning:
+            Self.diag.log("ACTION delegated STILL RUNNING after the file-operation budget")
+            OperationPresenter.presentOperationStillRunning()
         case .unavailable(let reason):
             Self.diag.log("ACTION performPaste delegated UNAVAILABLE reason=\(reason, privacy: .public)")
             OperationPresenter.presentMainAppUnavailable(context: reason)
@@ -625,15 +722,108 @@ final class FinderSync: FIFinderSync {
     /// on the main queue. Called from Finder menu actions, which run on the main
     /// thread: the transport call must never happen there, and the alert must
     /// only happen there.
+    ///
+    /// Also the single place that knows an operation is *in flight*, which is the
+    /// only progress signal this side has: the extension sends one request and
+    /// gets one reply, so "we are still waiting" is all it can honestly say —
+    /// but saying nothing at all for minutes reads as "the click did nothing",
+    /// which is exactly how a folder compression looked before this notice.
     private func sendDelegated(
         _ request: FileOperationContract.Request,
         then handle: @escaping (ExtensionIPCClient.FileOperationOutcome) -> Void
     ) {
+        let token: Int = { delegatedToken += 1; return delegatedToken }()
+        let clientRequestId = request.clientRequestId ?? ""
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.busyNoticeDelay) { [weak self] in
+            // A fast operation has already finished and bumped the token; do not
+            // flash a notice over its result.
+            guard let self, self.delegatedToken == token else { return }
+            self.showProgress(for: request, clientRequestId: clientRequestId)
+        }
+
         ipcQueue.async {
-            let outcome = ExtensionIPCClient.sendFileOperation(request)
-            DispatchQueue.main.async { handle(outcome) }
+            let outcome = ExtensionIPCClient.sendFileOperation(request) { fraction in
+                // Progress frames arrive on this queue; the bar is main-thread.
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.delegatedToken == token else { return }
+                    self.progressWindow?.update(fraction: fraction)
+                }
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                // Only the operation that currently owns the window may take it
+                // down — otherwise a second click would hide the first one's.
+                if self.delegatedToken == token {
+                    self.delegatedToken += 1
+                    self.dismissProgress()
+                }
+                handle(outcome)
+            }
         }
     }
+
+    /// The compression window, or nil. Main thread only.
+    private var progressWindow: ArchiveProgressWindow?
+
+    private func showProgress(for request: FileOperationContract.Request, clientRequestId: String) {
+        guard request.kind == .compressItems else {
+            // Everything else has nothing to report, so a spinner notice is the
+            // most the extension can honestly say.
+            OperationPresenter.presentBusy(for: request.kind)
+            return
+        }
+        OperationPresenter.dismissBusy()
+        let window = ArchiveProgressWindow(
+            title: appText(.presenterProgressTitle),
+            pauseTitle: appText(.presenterProgressPause),
+            resumeTitle: appText(.presenterProgressResume),
+            cancelTitle: appText(.presenterProgressCancel)
+        )
+        window.onPauseToggle = { [weak self] paused in
+            self?.sendControl(paused ? .pause : .resume, clientRequestId: clientRequestId)
+        }
+        window.onCancel = { [weak self] in
+            self?.sendControl(.cancel, clientRequestId: clientRequestId)
+        }
+        progressWindow = window
+        window.update(fraction: 0)
+        window.show()
+    }
+
+    /// 暂停/继续/取消 travel on their own connection: the data connection is
+    /// parked waiting for the answer, so a control frame sent there would not be
+    /// read until the work it is meant to interrupt had finished.
+    private func sendControl(_ action: ArchiveControlAction, clientRequestId: String) {
+        guard !clientRequestId.isEmpty else {
+            Self.diag.log("ACTION control \(action.rawValue, privacy: .public) dropped: the request has no clientRequestId")
+            return
+        }
+        Self.diag.log("ACTION control \(action.rawValue, privacy: .public) cid=\(clientRequestId, privacy: .public)")
+        controlQueue.async {
+            let applied = ExtensionIPCClient.sendFileOperationControl(clientRequestId: clientRequestId, action: action)
+            Self.diag.log("ACTION control \(action.rawValue, privacy: .public) applied=\(applied, privacy: .public)")
+        }
+    }
+
+    private func dismissProgress() {
+        progressWindow?.close()
+        progressWindow = nil
+    }
+
+    /// Localized text for the extension's own windows.
+    private func appText(_ key: StringKey) -> String {
+        Localization.text(key, language: FinderMenuLanguage.resolve())
+    }
+
+    /// How long an operation may stay silent before the progress notice appears.
+    /// Short enough to cover a real folder compression, long enough that the
+    /// common sub-second operation never flashes a window.
+    private static let busyNoticeDelay: TimeInterval = 1.5
+
+    /// Bumped on the main queue when a delegated operation starts or finishes;
+    /// see `sendDelegated`.
+    private var delegatedToken = 0
 
     // MARK: - P6 actions
 
@@ -665,8 +855,17 @@ final class FinderSync: FIFinderSync {
         case .batchSuccess:
             Self.diag.log("ACTION performOpenTerminal unexpected batch success")
         case .failure(let code, let message):
+            // 取消 is not a failure: the user asked for it in the progress
+            // window, and nothing was written. Say nothing at all.
+            guard code != .cancelledByUser else {
+                Self.diag.log("ACTION delegated CANCELLED by the user")
+                return
+            }
             Self.diag.log("ACTION performOpenTerminal delegated FAILURE code=\(code.rawValue, privacy: .public) message=\(message, privacy: .public)")
-            OperationPresenter.presentTitle("Couldn't open Terminal.", message: message)
+            OperationPresenter.presentOperationFailure(title: .presenterTerminalFailedTitle, message: message)
+        case .stillRunning:
+            Self.diag.log("ACTION delegated STILL RUNNING after the file-operation budget")
+            OperationPresenter.presentOperationStillRunning()
         case .unavailable(let reason):
             Self.diag.log("ACTION performOpenTerminal delegated UNAVAILABLE reason=\(reason, privacy: .public)")
             OperationPresenter.presentMainAppUnavailable(context: reason)
@@ -688,7 +887,7 @@ final class FinderSync: FIFinderSync {
             clientRequestId: UUID().uuidString
         )
         sendDelegated(request) { [weak self] outcome in
-            self?.handleItemResultsOutcome(outcome, action: "create the alias")
+            self?.handleItemResultsOutcome(outcome, action: .presenterActionCreateAlias)
         }
     }
 
@@ -708,7 +907,7 @@ final class FinderSync: FIFinderSync {
             clientRequestId: UUID().uuidString
         )
         sendDelegated(request) { [weak self] outcome in
-            self?.handleItemResultsOutcome(outcome, action: locked ? "lock the item" : "unlock the item")
+            self?.handleItemResultsOutcome(outcome, action: locked ? .presenterActionLock : .presenterActionUnlock)
         }
     }
 
@@ -716,24 +915,33 @@ final class FinderSync: FIFinderSync {
     /// Success stays silent; failures are reported once, per item count.
     private func handleItemResultsOutcome(
         _ outcome: ExtensionIPCClient.FileOperationOutcome,
-        action: String
+        action: StringKey
     ) {
         switch outcome {
         case .success:
-            Self.diag.log("ACTION \(action, privacy: .public) delegated SUCCESS")
+            Self.diag.log("ACTION \(action.rawValue, privacy: .public) delegated SUCCESS")
         case .batchSuccess(let items):
             let failures = items.filter { !$0.success }
-            Self.diag.log("ACTION \(action, privacy: .public) delegated DONE count=\(items.count, privacy: .public) failures=\(failures.count, privacy: .public)")
+            Self.diag.log("ACTION \(action.rawValue, privacy: .public) delegated DONE count=\(items.count, privacy: .public) failures=\(failures.count, privacy: .public)")
             OperationPresenter.presentDelegatedItemFailures(items, action: action)
         case .failure(let code, let message):
-            Self.diag.log("ACTION \(action, privacy: .public) delegated FAILURE code=\(code.rawValue, privacy: .public) message=\(message, privacy: .public)")
+            // 取消 is not a failure: the user asked for it in the progress
+            // window, and nothing was written. Say nothing at all.
+            guard code != .cancelledByUser else {
+                Self.diag.log("ACTION delegated CANCELLED by the user")
+                return
+            }
+            Self.diag.log("ACTION \(action.rawValue, privacy: .public) delegated FAILURE code=\(code.rawValue, privacy: .public) message=\(message, privacy: .public)")
             if code == .notAuthorized || code == .pathOutsideAuthorizedScope {
                 OperationPresenter.presentFolderAccessRequired()
             } else {
-                OperationPresenter.presentTitle("Couldn't \(action).", message: message)
+                OperationPresenter.presentDelegatedActionFailure(action: action, message: message)
             }
+        case .stillRunning:
+            Self.diag.log("ACTION delegated STILL RUNNING after the file-operation budget")
+            OperationPresenter.presentOperationStillRunning()
         case .unavailable(let reason):
-            Self.diag.log("ACTION \(action, privacy: .public) delegated UNAVAILABLE reason=\(reason, privacy: .public)")
+            Self.diag.log("ACTION \(action.rawValue, privacy: .public) delegated UNAVAILABLE reason=\(reason, privacy: .public)")
             OperationPresenter.presentMainAppUnavailable(context: reason)
         }
     }

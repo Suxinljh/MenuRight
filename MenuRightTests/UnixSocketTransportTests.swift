@@ -112,6 +112,90 @@ final class UnixSocketTransportTests: XCTestCase {
 
     // MARK: - H1: real deadlines
 
+    /// A slow peer and a dead peer are different situations, and only one of
+    /// them is an error. This distinction is what stops a still-working main app
+    /// from being reported as "not running" (measured 2026-10-01: a folder
+    /// compression outlived the shared 5 s frame budget).
+    func testTimedOutIsDistinctFromAClosedPeer() throws {
+        let (a, b) = try makePair()
+        defer { closeAll(a, b) }
+
+        // Nothing written at all: our deadline passes while the peer is healthy.
+        XCTAssertEqual(
+            UnixSocketTransport.readFrameResult(b, timeout: 0.2),
+            .timedOut,
+            "a silent but connected peer is a timeout, not a failure"
+        )
+    }
+
+    func testPeerThatClosesMidFrameReportsClosed() throws {
+        let (a, b) = try makePair()
+        defer { closeAll(a, b) }
+
+        var len = UInt32(64).bigEndian
+        let prefix = Data(bytes: &len, count: 4)
+        _ = prefix.withUnsafeBytes { Darwin.write(a, $0.baseAddress, $0.count) }
+        _ = Data("partial".utf8).withUnsafeBytes { Darwin.write(a, $0.baseAddress, $0.count) }
+        Darwin.close(a)
+
+        XCTAssertEqual(
+            UnixSocketTransport.readFrameResult(b, timeout: 1),
+            .closed,
+            "EOF before the frame is complete is a closed peer, not a timeout"
+        )
+    }
+
+    func testCompleteFrameIsReadRegardlessOfTheTimeoutValue() throws {
+        let (a, b) = try makePair()
+        defer { closeAll(a, b) }
+
+        let payload = Data("payload".utf8)
+        var len = UInt32(payload.count).bigEndian
+        _ = Data(bytes: &len, count: 4).withUnsafeBytes { Darwin.write(a, $0.baseAddress, $0.count) }
+        _ = payload.withUnsafeBytes { Darwin.write(a, $0.baseAddress, $0.count) }
+
+        XCTAssertEqual(UnixSocketTransport.readFrameResult(b, timeout: 1), .frame(payload))
+    }
+
+    /// The kernel's `SO_RCVTIMEO` is 5 s and the caller's deadline for a file
+    /// operation is ten minutes: a quiet-but-alive peer must keep waiting for the
+    /// caller's deadline, not fail when the socket option fires.
+    func testQuietPeerIsWaitedOutPastTheSocketReceiveTimeout() throws {
+        let (a, b) = try makePair()
+        defer { closeAll(a, b) }
+
+        // Shrink the kernel receive timeout so the test does not need 5 s.
+        var tv = timeval(tv_sec: 0, tv_usec: 200_000)
+        setsockopt(b, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+
+        let payload = Data("late".utf8)
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.8) {
+            var len = UInt32(payload.count).bigEndian
+            _ = Data(bytes: &len, count: 4).withUnsafeBytes { Darwin.write(a, $0.baseAddress, $0.count) }
+            _ = payload.withUnsafeBytes { Darwin.write(a, $0.baseAddress, $0.count) }
+        }
+
+        XCTAssertEqual(
+            UnixSocketTransport.readFrameResult(b, timeout: 5),
+            .frame(payload),
+            "a peer that answers later than SO_RCVTIMEO is slow, not broken"
+        )
+    }
+
+    /// The budget for a file operation has to stay clear of the generic 5 s frame
+    /// default: the reply only arrives once the compression or extraction has
+    /// finished. This is the regression guard for the bug measured on 2026-10-01.
+    func testFileOperationBudgetIsFarLongerThanTheFrameDefault() {
+        XCTAssertGreaterThanOrEqual(
+            MenuRightIPC.fileOperationTimeoutSeconds, 300,
+            "a file operation cannot be answered within the generic frame budget"
+        )
+        XCTAssertGreaterThan(
+            MenuRightIPC.fileOperationTimeoutSeconds,
+            UnixSocketTransport.defaultTimeoutSeconds * 10
+        )
+    }
+
     func testStalledPeerHitsSocketTimeoutInsteadOfHanging() throws {
         let (a, b) = try makePair()
         defer { closeAll(a, b) }

@@ -278,30 +278,47 @@ public enum UnixSocketTransport {
         count: Int,
         timeout: TimeInterval = defaultTimeoutSeconds
     ) -> Data? {
-        readExactly(fd, count: count, deadline: Date().addingTimeInterval(timeout))
+        if case .frame(let data) = readExactlyResult(fd, count: count, deadline: Date().addingTimeInterval(timeout)) {
+            return data
+        }
+        return nil
     }
 
-    private static func readExactly(_ fd: Int32, count: Int, deadline: Date) -> Data? {
-        guard count > 0 else { return Data() }
+    private static func readExactlyResult(_ fd: Int32, count: Int, deadline: Date) -> FrameReadResult {
+        guard count > 0 else { return .frame(Data()) }
         var buffer = Data(count: count)
         var got = 0
         while got < count {
-            guard wait(fd, for: Int16(POLLIN), deadline: deadline) else { return nil }
+            switch waitResult(fd, for: Int16(POLLIN), deadline: deadline) {
+            case .timedOut: return .timedOut
+            case .failed: return .failed
+            case .ready: break
+            }
             let n = buffer.withUnsafeMutableBytes { ptr -> Int in
                 Darwin.read(fd, ptr.baseAddress! + got, count - got)
             }
             if n > 0 {
                 got += n
             } else if n == 0 {
-                return nil  // EOF
+                return .closed  // EOF
             } else {
                 if errno == EINTR { continue }
-                // EAGAIN from SO_RCVTIMEO, or a non-recoverable error: both are
-                // a failed read from the caller's point of view.
-                return nil
+                if errno == EAGAIN || errno == EWOULDBLOCK {
+                    // `SO_RCVTIMEO` fired before *our* deadline, or the fd is
+                    // non-blocking: the connection is healthy, it is just quiet.
+                    // Reporting a failure here is what made a main app that was
+                    // still compressing look dead — the caller's deadline is the
+                    // one that decides, and `waitResult` enforces it above.
+                    // The nap stops a non-blocking fd from spinning the CPU if
+                    // `poll` keeps claiming readiness.
+                    usleep(10_000)
+                    continue
+                }
+                // A genuinely broken socket.
+                return .failed
             }
         }
-        return buffer
+        return .frame(buffer)
     }
 
     /// Write exactly `n` bytes from `data` to `fd`, looping over partial
@@ -337,17 +354,46 @@ public enum UnixSocketTransport {
     /// Waits until `fd` is ready for `events` or `deadline` passes.
     /// Returns false on timeout, hangup, or error.
     private static func wait(_ fd: Int32, for events: Int16, deadline: Date) -> Bool {
+        waitResult(fd, for: events, deadline: deadline) == .ready
+    }
+
+    private enum WaitResult: Equatable {
+        case ready
+        case timedOut
+        case failed
+    }
+
+    /// `wait`, but keeping *why* it stopped. A passed deadline and a hung-up peer
+    /// are the same `false` to a boolean, and conflating them is what turned a
+    /// still-working main app into "Menu Right not running".
+    private static func waitResult(_ fd: Int32, for events: Int16, deadline: Date) -> WaitResult {
         while true {
             let remaining = deadline.timeIntervalSinceNow
-            if remaining <= 0 { return false }
+            if remaining <= 0 { return .timedOut }
             var pfd = pollfd(fd: fd, events: events, revents: 0)
             let milliseconds = Int32(min(remaining * 1000, Double(Int32.max)))
             let rc = poll(&pfd, 1, milliseconds)
-            if rc > 0 { return true }
-            if rc == 0 { return false }  // timeout
+            if rc > 0 { return .ready }
+            if rc == 0 { return .timedOut }
             if errno == EINTR { continue }
-            return false
+            return .failed
         }
+    }
+
+    /// Why a frame read ended without producing a frame.
+    ///
+    /// `.timedOut` is deliberately distinct from the failures: a peer that is
+    /// still computing an answer has not failed, and the caller must not report
+    /// it as one. Measured 2026-10-01: a folder compression outlived the shared
+    /// 5 s frame budget, and the extension popped a "Menu Right not running"
+    /// alert while the app was six seconds away from writing the archive.
+    public enum FrameReadResult: Equatable {
+        case frame(Data)
+        case timedOut
+        /// The peer closed the connection before the frame was complete.
+        case closed
+        /// Oversized, truncated to a hard error, or otherwise unusable.
+        case failed
     }
 
     /// Read one length-prefixed frame from `fd`. Returns the payload Data or
@@ -355,16 +401,26 @@ public enum UnixSocketTransport {
     /// shares one deadline, so a peer that drips bytes cannot extend the budget
     /// indefinitely.
     public static func readFrame(_ fd: Int32, timeout: TimeInterval = defaultTimeoutSeconds) -> Data? {
+        if case .frame(let data) = readFrameResult(fd, timeout: timeout) { return data }
+        return nil
+    }
+
+    /// `readFrame`, keeping the reason a read ended without a frame.
+    public static func readFrameResult(
+        _ fd: Int32,
+        timeout: TimeInterval = defaultTimeoutSeconds
+    ) -> FrameReadResult {
         let deadline = Date().addingTimeInterval(timeout)
-        guard let lenBytes = readExactly(fd, count: 4, deadline: deadline) else { return nil }
+        let header = readExactlyResult(fd, count: 4, deadline: deadline)
+        guard case .frame(let lenBytes) = header else { return header }
         let len: Int = lenBytes.withUnsafeBytes { ptr -> Int in
             let b = ptr.bindMemory(to: UInt8.self).baseAddress!
             return (Int(b[0]) << 24) | (Int(b[1]) << 16) | (Int(b[2]) << 8) | Int(b[3])
         }
         if len <= 0 || len > maxFrameSize {
-            return nil  // reject oversized or non-positive
+            return .failed  // reject oversized or non-positive
         }
-        return readExactly(fd, count: len, deadline: deadline)
+        return readExactlyResult(fd, count: len, deadline: deadline)
     }
 
     /// Write one length-prefixed frame to `fd`. Returns true on success.

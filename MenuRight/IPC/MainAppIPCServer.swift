@@ -273,7 +273,9 @@ final class MainAppIPCServer: NSObject, @unchecked Sendable {
         case "ping":
             response = handlePing(req: req)
         case "fileOperation":
-            response = handleFileOperation(req: req)
+            response = handleFileOperation(req: req, fd: fd)
+        case "fileOperationControl":
+            response = handleFileOperationControl(req: req)
         default:
             response = .fail(id: req.id, error: "unknown method: \(req.method)")
         }
@@ -282,6 +284,25 @@ final class MainAppIPCServer: NSObject, @unchecked Sendable {
         if let respData = IPCProtocol.encode(response) {
             _ = UnixSocketTransport.writeFrame(fd, payload: respData)
         }
+    }
+
+    /// 暂停/继续/取消 for an archive operation that is running right now.
+    ///
+    /// Served on its own connection **while** the operation holds another one.
+    /// That only works because `connectionQueue` is concurrent; a serial handler
+    /// would not read this frame until the work it is meant to interrupt had
+    /// already finished — which is a pause button that does nothing.
+    private func handleFileOperationControl(req: IPCProtocol.Request) -> IPCProtocol.Response {
+        guard let payload = req.payload,
+              let command = IPCProtocol.decode(ArchiveControlRequest.self, from: Data(payload.utf8)) else {
+            Self.log.error("MAIN-IPC malformed control request id=\(req.id, privacy: .public)")
+            return .fail(id: req.id, error: "malformed control request")
+        }
+        let applied = ArchiveOperationRegistry.shared.apply(command.action, to: command.clientRequestId)
+        Self.log.info("MAIN-IPC control \(command.action.rawValue, privacy: .public) cid=\(command.clientRequestId, privacy: .public) applied=\(applied, privacy: .public)")
+        LifecycleDiagnostics.record("control \(command.action.rawValue) cid=\(command.clientRequestId) applied=\(applied)", from: "main-app")
+        // A stale window must not look like a working one.
+        return applied ? .ok(id: req.id, result: "ok") : .fail(id: req.id, error: "no such operation")
     }
 
     /// P5-0.6 ping handler — echoes the payload with main-app metadata.
@@ -298,10 +319,26 @@ final class MainAppIPCServer: NSObject, @unchecked Sendable {
     /// `FileOperationContract.Response`. We wrap that in the IPC envelope
     /// — `.result` for success, `.error` for failure — and rely on the
     /// stable error codes for the extension to render UI.
-    private func handleFileOperation(req: IPCProtocol.Request) -> IPCProtocol.Response {
+    private func handleFileOperation(req: IPCProtocol.Request, fd: Int32) -> IPCProtocol.Response {
         Self.log.info("MAIN-IPC file operation request id=\(req.id, privacy: .public)")
         LifecycleDiagnostics.record("file operation request id=\(req.id)", from: "main-app")
-        let response = fileOpDispatcher.dispatch(payload: req.payload)
+
+        // Registration is what makes 暂停/取消 reachable: those arrive on their
+        // own connection and have to find this operation by the id the extension
+        // generated. See `handleFileOperationControl`.
+        let control = ArchiveOperationControl()
+        let clientRequestId = FileOperationContract.Request.decode(fromIPC: req.payload)?.clientRequestId ?? ""
+        ArchiveOperationRegistry.shared.register(control, as: clientRequestId)
+        defer { ArchiveOperationRegistry.shared.unregister(id: clientRequestId) }
+
+        // Interim progress frames. The extension reads frames in a loop: anything
+        // carrying `progress` moves the bar, the frame without it is the answer.
+        control.onProgress { fraction in
+            guard let frame = IPCProtocol.encode(IPCProtocol.Response.progress(id: req.id, fraction: fraction)) else { return }
+            _ = UnixSocketTransport.writeFrame(fd, payload: frame)
+        }
+
+        let response = fileOpDispatcher.dispatch(payload: req.payload, control: control)
         switch response {
         case .success(let path):
             Self.log.info("MAIN-FILE-OP success id=\(req.id, privacy: .public) path=\(path ?? "<none>", privacy: .public)")
