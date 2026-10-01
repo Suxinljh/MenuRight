@@ -4,7 +4,8 @@
 #
 #   Scripts/prune-launchservices.sh [keep-path]
 #
-# Default keep-path: ~/Applications/MenuRight.app
+# Default keep-path: /Applications/MenuRight.app when it exists (the DMG
+# install), otherwise ~/Applications/MenuRight.app (the development install).
 #
 # WHY THIS EXISTS
 # ---------------
@@ -27,7 +28,21 @@
 # looks wrong. `Scripts/install-dev-app.sh` calls it on every install.
 set -euo pipefail
 
-KEEP="${1:-$HOME/Applications/MenuRight.app}"
+# Default keep-path: /Applications/MenuRight.app when it exists (the DMG
+# install), otherwise ~/Applications/MenuRight.app (the development install).
+#
+# Measured 2026-10-01: with both copies on disk and this defaulting to
+# ~/Applications, pruning kept the *development* copy registered while the user
+# ran the DMG copy from /Applications. Finder then loaded the extension out of
+# the other bundle, and every menu action failed peer verification with
+# "peer executable path mismatch: got=/Applications/… expected=/Users/…".
+if [ -n "${1:-}" ]; then
+    KEEP="$1"
+elif [ -d "/Applications/MenuRight.app" ]; then
+    KEEP="/Applications/MenuRight.app"
+else
+    KEEP="$HOME/Applications/MenuRight.app"
+fi
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister
 
 [ -d "$KEEP" ] || { echo "prune-launchservices: no app at $KEEP" >&2; exit 1; }
