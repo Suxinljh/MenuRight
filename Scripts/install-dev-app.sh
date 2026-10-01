@@ -75,13 +75,27 @@ echo "    packages resolved"
 echo "==> 2/7 Building $CONFIG (signed, provisioning updates allowed)"
 # -disableAutomaticPackageResolution keeps the build from re-entering the
 # checkout/submodule path that step 1 just resolved.
+#
+# ...but it *requires* a resolved file to exist, and Xcode deletes the tracked
+# one on its own schedule (observed 2026-10-01: the file vanished within seconds
+# of being restored, four times, while Xcode was open). Passing the flag without
+# the file fails the build with "Could not resolve package dependencies", so fall
+# back to letting xcodebuild resolve — which also rewrites the file.
+RESOLVED="MenuRight.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+if [ -f "$RESOLVED" ]; then
+  RESOLUTION_FLAG="-disableAutomaticPackageResolution"
+else
+  RESOLUTION_FLAG=""
+  echo "    note: $RESOLVED is missing — letting xcodebuild resolve packages"
+fi
+
 xcodebuild -project MenuRight.xcodeproj -scheme MenuRight -configuration "$CONFIG" \
-  -disableAutomaticPackageResolution \
+  $RESOLUTION_FLAG \
   build -allowProvisioningUpdates >/tmp/menuright-install-build.log 2>&1 \
   || { echo "BUILD FAILED — see /tmp/menuright-install-build.log"; tail -20 /tmp/menuright-install-build.log; exit 1; }
 
 BUILT_DIR=$(xcodebuild -project MenuRight.xcodeproj -scheme MenuRight -configuration "$CONFIG" \
-  -disableAutomaticPackageResolution \
+  $RESOLUTION_FLAG \
   -showBuildSettings 2>/dev/null | awk '/ BUILT_PRODUCTS_DIR =/{print $3; exit}')
 BUILT_APP="$BUILT_DIR/MenuRight.app"
 [ -d "$BUILT_APP" ] || { echo "built app not found at $BUILT_APP"; exit 1; }
