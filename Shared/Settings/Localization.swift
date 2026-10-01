@@ -223,6 +223,7 @@ enum StringKey: String, CaseIterable {
     case presenterBusyHide
     /// Progress window: window title, and its 暂停/继续/取消 buttons.
     case presenterProgressTitle
+    case presenterProgressExtractTitle
     case presenterProgressPause
     case presenterProgressResume
     case presenterProgressCancel
@@ -649,6 +650,7 @@ enum Localization {
         .presenterBusyGeneric: Entry(zh: "正在处理…", en: "Working…"),
         .presenterBusyHide: Entry(zh: "隐藏", en: "Hide"),
         .presenterProgressTitle: Entry(zh: "正在压缩", en: "Compressing"),
+        .presenterProgressExtractTitle: Entry(zh: "正在解压", en: "Extracting"),
         .presenterProgressPause: Entry(zh: "暂停", en: "Pause"),
         .presenterProgressResume: Entry(zh: "继续", en: "Resume"),
         .presenterProgressCancel: Entry(zh: "取消", en: "Cancel"),

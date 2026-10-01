@@ -767,15 +767,20 @@ final class FinderSync: FIFinderSync {
     private var progressWindow: ArchiveProgressWindow?
 
     private func showProgress(for request: FileOperationContract.Request, clientRequestId: String) {
-        guard request.kind == .compressItems else {
-            // Everything else has nothing to report, so a spinner notice is the
-            // most the extension can honestly say.
+        // Archive work reports real progress and can be paused or cancelled;
+        // everything else has nothing to report, so a spinner notice is the most
+        // the extension can honestly say.
+        let titleKey: StringKey
+        switch request.kind {
+        case .compressItems: titleKey = .presenterProgressTitle
+        case .extractArchive: titleKey = .presenterProgressExtractTitle
+        default:
             OperationPresenter.presentBusy(for: request.kind)
             return
         }
         OperationPresenter.dismissBusy()
         let window = ArchiveProgressWindow(
-            title: appText(.presenterProgressTitle),
+            title: appText(titleKey),
             pauseTitle: appText(.presenterProgressPause),
             resumeTitle: appText(.presenterProgressResume),
             cancelTitle: appText(.presenterProgressCancel)

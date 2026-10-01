@@ -219,7 +219,13 @@ enum ArchiveExtractor {
         to destinationDirectory: URL,
         settings: ArchiveSettings,
         conflictPolicy: ArchiveConflictPolicy? = nil,
-        sizeLimitMB: Int? = nil
+        sizeLimitMB: Int? = nil,
+        control: ArchiveOperationControl? = nil,
+        /// Where this archive's own `0...1` belongs inside the whole request.
+        /// One request can extract several archives (the menu is multi-select)
+        /// and there is one bar for the request, so each archive reports into
+        /// its own slice of it.
+        progressRange: ClosedRange<Double> = 0...1
     ) throws -> (results: [ArchiveEntryResult], summary: ArchiveExtractionSummary) {
         let policy = conflictPolicy ?? settings.conflictPolicy
         let limit = Int64(sizeLimitMB ?? settings.sizeLimitMB) * 1024 * 1024
@@ -263,7 +269,20 @@ enum ArchiveExtractor {
         let archivePath = archiveURL.standardizedFileURL.path
         var writtenBytes: Int64 = 0
 
-        for step in steps {
+        // `steps` is planned up front, so the count is a real denominator — the
+        // same deterministic progress the compressor reports, and the place a
+        // 暂停/取消 lands (once per entry; a single huge member is written in one
+        // go and will not react before it is done).
+        let totalSteps = max(steps.count, 1)
+        func reportProgress(_ fraction: Double) {
+            control?.report(progressRange.lowerBound
+                + (progressRange.upperBound - progressRange.lowerBound) * fraction)
+        }
+        reportProgress(0)
+        for (index, step) in steps.enumerated() {
+            try control?.checkpoint()
+            reportProgress(Double(index) / Double(totalSteps))
+
             switch step {
             case .skipped(let member, let relative, let reason):
                 results.append(ArchiveEntryResult(
@@ -310,6 +329,10 @@ enum ArchiveExtractor {
                 ))
             }
         }
+        // The loop reports the *start* of each entry, so the last one lands at
+        // (n-1)/n — without this the bar would stop short of full on every
+        // successful extraction.
+        reportProgress(1)
 
         let summary = ArchiveExtractionSummary(
             written: results.filter { $0.outcome == .written }.count,

@@ -108,7 +108,7 @@ public final class FileOperationDispatcher: @unchecked Sendable {
         case .compressItems:
             return handleCompressItems(request: request, control: control)
         case .extractArchive:
-            return handleExtractArchive(request: request)
+            return handleExtractArchive(request: request, control: control)
         }
     }
 
@@ -432,7 +432,10 @@ public final class FileOperationDispatcher: @unchecked Sendable {
     /// Extracts one or more archives, each into its own folder unless a
     /// destination is given. Per-archive results: one bad archive must not stop
     /// the others.
-    private func handleExtractArchive(request: FileOperationContract.Request) -> FileOperationContract.Response {
+    private func handleExtractArchive(
+        request: FileOperationContract.Request,
+        control: ArchiveOperationControl?
+    ) -> FileOperationContract.Response {
         guard let sourceRaws = request.args.sourcePaths, !sourceRaws.isEmpty else {
             return .failure(code: .invalidRequest, message: "extractArchive requires non-empty sourcePaths")
         }
@@ -478,10 +481,15 @@ public final class FileOperationDispatcher: @unchecked Sendable {
             for (index, archive) in archives.enumerated() {
                 let destination = destinations[index]
                 do {
+                    // Each archive owns an equal slice of the request's bar.
+                    let sliceStart = Double(index) / Double(max(archives.count, 1))
+                    let sliceEnd = Double(index + 1) / Double(max(archives.count, 1))
                     let (results, summary) = try ArchiveExtractor.extract(
                         archiveURL: archive,
                         to: destination,
-                        settings: settings
+                        settings: settings,
+                        control: control,
+                        progressRange: sliceStart...sliceEnd
                     )
                     let unresolvable = results.first { result in
                         if case .failed = result.outcome { return true }

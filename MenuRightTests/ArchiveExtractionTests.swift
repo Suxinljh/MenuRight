@@ -603,4 +603,100 @@ final class ArchiveExtractionTests: XCTestCase {
         archive.removeLast(10)
         XCTAssertThrowsError(try ZipReader(data: archive))
     }
+
+    // MARK: - Progress and control (the 暂停/取消 window's other half)
+
+    private func multiEntryArchive(named name: String) throws -> URL {
+        let entries = (0..<6).map { index in
+            ZipArchiveEntry(name: "f\(index).txt", contents: Data(String(repeating: "x", count: 64).utf8))
+        }
+        return try write(try ZipWriter.archive(entries), as: name)
+    }
+
+    func testExtractionReportsProgressUpToOne() throws {
+        let archive = try multiEntryArchive(named: "progress.zip")
+        let out = try destination("progress-out")
+
+        var seen: [Double] = []
+        let control = ArchiveOperationControl()
+        control.onProgress { seen.append($0) }
+
+        _ = try ArchiveExtractor.extract(
+            archiveURL: archive,
+            to: out,
+            settings: ArchiveSettings(),
+            control: control
+        )
+
+        XCTAssertFalse(seen.isEmpty, "an extraction must report progress")
+        XCTAssertEqual(seen.last, 1, "the bar must finish full")
+        XCTAssertEqual(seen, seen.sorted(), "progress must not go backwards: \(seen)")
+    }
+
+    /// One request can extract several archives; each reports into its own slice
+    /// of the single bar the request owns.
+    func testExtractionProgressStaysInsideItsSliceOfTheRequest() throws {
+        let archive = try multiEntryArchive(named: "slice.zip")
+        let out = try destination("slice-out")
+
+        var seen: [Double] = []
+        let control = ArchiveOperationControl()
+        control.onProgress { seen.append($0) }
+
+        _ = try ArchiveExtractor.extract(
+            archiveURL: archive,
+            to: out,
+            settings: ArchiveSettings(),
+            control: control,
+            progressRange: 0.5...1.0
+        )
+
+        XCTAssertEqual(seen.first, 0.5)
+        XCTAssertEqual(seen.last, 1)
+        XCTAssertTrue(seen.allSatisfy { $0 >= 0.5 && $0 <= 1.0 }, "escaped its slice: \(seen)")
+    }
+
+    func testPausedExtractionWaitsAndThenFinishes() throws {
+        let archive = try multiEntryArchive(named: "paused.zip")
+        let out = try destination("paused-out")
+
+        let control = ArchiveOperationControl()
+        var finished = false
+        let done = expectation(description: "extraction finished after resume")
+
+        DispatchQueue.global().async {
+            _ = try? ArchiveExtractor.extract(
+                archiveURL: archive,
+                to: out,
+                settings: ArchiveSettings(),
+                control: control
+            )
+            finished = true
+            done.fulfill()
+        }
+
+        control.pause()
+        Thread.sleep(forTimeInterval: 0.3)
+        XCTAssertFalse(finished, "a paused extraction must not complete")
+        XCTAssertTrue(control.isPaused)
+
+        control.resume()
+        wait(for: [done], timeout: 5)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: out.appendingPathComponent("f0.txt").path))
+    }
+
+    func testCancelledExtractionStopsAndWritesNothingMore() throws {
+        let archive = try multiEntryArchive(named: "cancelled.zip")
+        let out = try destination("cancelled-out")
+
+        let control = ArchiveOperationControl(cancelled: true)
+        XCTAssertThrowsError(try ArchiveExtractor.extract(
+            archiveURL: archive,
+            to: out,
+            settings: ArchiveSettings(),
+            control: control
+        )) { error in
+            XCTAssertEqual(error as? ArchiveError, .cancelled)
+        }
+    }
 }
