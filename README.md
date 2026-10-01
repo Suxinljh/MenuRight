@@ -71,7 +71,32 @@ MenuRight 由两部分组成：一个 **Finder 扩展**（负责在右键菜单�
 - **常用文件夹 / 常用软件 / 常用网页**：收藏目标，支持分组
 - **代码主题**：代码预览的高亮主题（9 套配色，含"跟随系统"）、字体、字号、行号；预览区用真实高亮器渲染示例代码，可切换 17 种语言
 - **解压缩管理**：允许的压缩格式（同时约束 `压缩 ▸` 与「自定义压缩」的格式下拉）、解压位置（作用于「解压到指定位置…」一项，选到未授权文件夹时面板会给出提示）、同名文件策略、解压后删除原包（仅在该次解压**没有任何内容被跳过**时执行）、跳过 `__MACOSX` 与 `.DS_Store`、体积上限
-- **通用设置**：界面语言（跟随系统/中文/英文）、登录时自动启动、Finder 扩展状态、文件操作通道状态、关于（产品网站、开源许可）
+- **通用设置**：界面语言（跟随系统/中文/英文）、登录时自动启动、Finder 扩展状态、文件操作通道状态、**更新**（自动检查开关 + 立即检查 + 新版本提示）、关于（版本与构建号、产品网站、开源许可）
+
+### 版本与更新
+
+**版本号只有一个来源**：`Config/Version.xcconfig`。工程级配置把它作为 base configuration，四个 target（主 App、Finder 扩展、Quick Look 扩展、测试）全部继承 —— 以前这 16 行散在 8 个 build configuration 里，改一次要动 16 处，而嵌入的 appex 版本与主 App 不一致时 Xcode 的 `embeddedBinaryValidationUtility` 会在构建最后一步直接报错。
+
+```sh
+Scripts/version.sh                  # 1.0 (1)
+Scripts/version.sh bump build       # 只加构建号
+Scripts/version.sh bump minor       # 1.0 -> 1.1（构建号同时 +1）
+Scripts/version.sh set 1.1 2        # 指定
+Scripts/check-version.sh            # 断言 4 个 target 版本一致
+```
+
+**检查更新**：读 GitHub Releases 的 `releases/latest`（仓库公开，无需 token）。
+
+- 默认**开启**，**每天最多一次**（手动点「立即检查」不受限制）；开关在「通用设置 → 更新」。
+- 只做三件事：**检查 → 提示 → 打开下载页**。**不会自动下载或替换 App** —— 静默替换需要签名校验、原子替换与重启（那是 Sparkle 的职责，本项目不引第三方依赖）。
+- 发现新版本时，启动后弹一次提示（当前版本 / 最新版本 / 更新说明节选），按钮是「前往下载 / 跳过此版本 / 稍后」；「跳过此版本」后只有更高的版本才会再提示。
+- 失败是静默的（后台检查不会弹框）；手动检查会把失败原因显示在那一行下面。
+- 想看它实际跑起来：`Scripts/release.sh` 的 `--publish` 会把版本发布到 GitHub Releases，客户端随后就能查到。
+
+```sh
+Scripts/release.sh                  # 打两个架构的 ZIP，并打印发布命令
+Scripts/release.sh --publish        # 建 tag + gh release create（需要 gh 已登录）
+```
 
 ## 安装与使用
 
@@ -102,7 +127,9 @@ xcodebuild -project MenuRight.xcodeproj -scheme MenuRight -configuration Release
 - 要求 Xcode 26 及以上、Swift 6.2 工具链。
 - 唯一的第三方依赖是 [SWCompression](https://github.com/tsolomko/SWCompression)（MIT，仅主应用与测试 target 链接）。
 - 测试：`xcodebuild -project MenuRight.xcodeproj -scheme MenuRight test`
-- 可复现的验证脚本见 `Scripts/`（`verify-archive-roundtrip.sh`、`preview-finder-menu.sh`、`check-icons.sh` 等）。
+- 版本：改 `Config/Version.xcconfig`（或 `Scripts/version.sh`），改完跑 `Scripts/check-version.sh`。
+- 发版：`Scripts/release.sh`（两个架构的 ZIP + tag + GitHub Release）。
+- 可复现的验证脚本见 `Scripts/`（`verify-archive-roundtrip.sh`、`preview-finder-menu.sh`、`check-icons.sh`、`version.sh`、`check-version.sh`、`release.sh` 等）。
 
 ## 开源许可
 

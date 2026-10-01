@@ -11,6 +11,9 @@ import FinderSync
 struct GeneralSettingsView: View {
     @EnvironmentObject private var store: SettingsStore
     @StateObject private var ipcStatus = IPCStatusCenter.shared
+    /// The launch check and this pane share one instance, so a result found at
+    /// launch is already on screen when the pane opens.
+    @StateObject private var updater = UpdateChecker.shared
 
     @State private var isExtensionEnabled = false
     @State private var launchAtLoginError: String?
@@ -23,6 +26,7 @@ struct GeneralSettingsView: View {
             launchGroup
             extensionGroup
             ipcGroup
+            updatesGroup
             aboutGroup
             resetGroup
         }
@@ -170,6 +174,77 @@ struct GeneralSettingsView: View {
         LifecycleDiagnostics.record("ABOUT open website", from: "main-app")
     }
 
+    // MARK: - Updates
+
+    private var updatesGroup: some View {
+        SettingsGroup(title: store.text(.generalUpdates), footer: store.text(.generalAutoUpdateFooter)) {
+            SettingsToggleRow(
+                title: store.text(.generalAutoUpdate),
+                isOn: store.binding(\.general.automaticallyChecksForUpdates)
+            )
+            SettingsRowDivider()
+            SettingsRow(
+                title: store.text(.generalCheckNow),
+                subtitle: updateStatusText,
+                systemImage: "arrow.triangle.2.circlepath"
+            ) {
+                if updater.state == .checking {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Button(store.text(.generalCheckNow)) {
+                        Task { await updater.checkNow() }
+                    }
+                }
+            }
+            if case .updateAvailable(let release) = updater.state {
+                SettingsRowDivider()
+                updateAvailableRow(release)
+            }
+        }
+    }
+
+    /// One line of state under the "Check Now" row — the manual check reports
+    /// failures here rather than in a dialog.
+    private var updateStatusText: String {
+        switch updater.state {
+        case .idle:
+            return store.text(.generalUpdateIdle)
+        case .checking:
+            return store.text(.generalChecking)
+        case .upToDate(let version):
+            return String(format: store.text(.generalUpToDate), version)
+        case .updateAvailable(let release):
+            return String(format: store.text(.generalUpdateAvailable), release.version)
+        case .failed(let message):
+            return message
+        }
+    }
+
+    private func updateAvailableRow(_ release: UpdateRelease) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(release.title)
+                .font(.callout.weight(.semibold))
+            let notes = UpdatePolicy.summarizedNotes(release.notes, limit: 600)
+            if !notes.isEmpty {
+                Text(notes)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            HStack(spacing: 8) {
+                Button(store.text(.generalUpdateDownload)) {
+                    updater.openReleasePage(release)
+                }
+                Button(store.text(.generalUpdateSkip)) {
+                    updater.skip(release)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     /// Not a settings group: a destructive action with a warning-coloured
     /// button and an explanation, deliberately without a card background.
     private var resetGroup: some View {
@@ -243,8 +318,12 @@ struct GeneralSettingsView: View {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "MenuRight"
     }
 
+    /// "1.0 (1)" — marketing version plus build number. The build number matters
+    /// when reporting a problem, and it is what `Scripts/version.sh` bumps.
     private var appVersion: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
+        return "\(version) (\(build))"
     }
 
     private var bundleIdentifier: String {

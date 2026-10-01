@@ -82,6 +82,19 @@ enum StringKey: String, CaseIterable {
     case generalLaunchAtLoginFooter
     case generalLaunchAtLoginError
     case generalAbout
+    case generalUpdates
+    case generalAutoUpdate
+    case generalAutoUpdateFooter
+    case generalCheckNow
+    case generalChecking
+    case generalUpdateIdle
+    case generalUpToDate
+    case generalUpdateAvailable
+    case generalUpdateRunningVersion
+    case generalUpdateDownload
+    case generalUpdateSkip
+    case generalUpdateFailed
+    case generalUpdateNoReleases
     case generalLicenses
     case generalLicensesFooter
     case generalLicensesEmpty
@@ -465,6 +478,29 @@ enum Localization {
             en: "Couldn’t update the login item"
         ),
         .generalAbout: Entry(zh: "关于", en: "About"),
+        // Updates
+        .generalUpdates: Entry(zh: "更新", en: "Updates"),
+        .generalAutoUpdate: Entry(zh: "自动检查更新", en: "Check for Updates Automatically"),
+        .generalAutoUpdateFooter: Entry(
+            zh: "每天最多检查一次，只读取 GitHub 上的最新版本号；不会自动下载或替换应用，发现新版本时只给出提示和下载链接。",
+            en: "Checks at most once a day and only reads the latest version number from GitHub. Nothing is downloaded or replaced automatically — a new version just gets a prompt and a download link."
+        ),
+        .generalCheckNow: Entry(zh: "立即检查", en: "Check Now"),
+        .generalChecking: Entry(zh: "正在检查…", en: "Checking…"),
+        .generalUpdateIdle: Entry(zh: "还没有检查过", en: "Not checked yet"),
+        .generalUpToDate: Entry(zh: "已是最新版本（%@）", en: "Up to date (%@)"),
+        .generalUpdateAvailable: Entry(zh: "发现新版本 %@", en: "Version %@ is available"),
+        .generalUpdateRunningVersion: Entry(
+            zh: "当前版本 %@，最新版本 %@。",
+            en: "You have %@; the latest version is %@."
+        ),
+        .generalUpdateDownload: Entry(zh: "前往下载", en: "Download"),
+        .generalUpdateSkip: Entry(zh: "跳过此版本", en: "Skip This Version"),
+        .generalUpdateFailed: Entry(zh: "检查更新失败：%@", en: "Update check failed: %@"),
+        .generalUpdateNoReleases: Entry(
+            zh: "还没有发布任何版本。",
+            en: "No release has been published yet."
+        ),
         .generalLicenses: Entry(zh: "开源许可", en: "Open Source Licenses"),
         .generalLicensesFooter: Entry(
             zh: "侧边栏图标来自 Lucide（ISC）与 Phosphor（MIT）；解压/压缩使用 SWCompression 与 BitByteData（均为 MIT）。",

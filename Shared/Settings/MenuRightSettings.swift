@@ -94,15 +94,34 @@ struct MenuRightSettings: Codable, Equatable, Sendable {
 struct GeneralSettings: Codable, Equatable, Sendable {
     var language: AppLanguage
     var launchAtLogin: Bool
+    /// Automatic update checks against GitHub Releases. On by default: one HTTPS
+    /// request a day, and nothing is ever downloaded or installed automatically.
+    var automaticallyChecksForUpdates: Bool
+    /// Version the user chose to skip, so the prompt does not come back.
+    var skippedUpdateVersion: String?
+    /// When the last check finished, used to throttle the automatic one.
+    var lastUpdateCheck: Date?
 
-    init(language: AppLanguage = .system, launchAtLogin: Bool = false) {
+    init(
+        language: AppLanguage = .system,
+        launchAtLogin: Bool = false,
+        automaticallyChecksForUpdates: Bool = true,
+        skippedUpdateVersion: String? = nil,
+        lastUpdateCheck: Date? = nil
+    ) {
         self.language = language
         self.launchAtLogin = launchAtLogin
+        self.automaticallyChecksForUpdates = automaticallyChecksForUpdates
+        self.skippedUpdateVersion = skippedUpdateVersion
+        self.lastUpdateCheck = lastUpdateCheck
     }
 
     enum CodingKeys: String, CodingKey {
         case language
         case launchAtLogin
+        case automaticallyChecksForUpdates
+        case skippedUpdateVersion
+        case lastUpdateCheck
     }
 
     init(from decoder: Decoder) throws {
@@ -112,6 +131,11 @@ struct GeneralSettings: Codable, Equatable, Sendable {
         let rawLanguage = try container.decodeOr(String.self, .language, AppLanguage.system.rawValue)
         language = AppLanguage(rawValue: rawLanguage) ?? .system
         launchAtLogin = try container.decodeOr(Bool.self, .launchAtLogin, false)
+        // Defaults are `true` / nil, so a payload written by an older build
+        // keeps checking for updates instead of silently opting out.
+        automaticallyChecksForUpdates = try container.decodeOr(Bool.self, .automaticallyChecksForUpdates, true)
+        skippedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .skippedUpdateVersion)
+        lastUpdateCheck = try container.decodeIfPresent(Date.self, forKey: .lastUpdateCheck)
     }
 }
 

@@ -270,6 +270,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // until the user happened to open each favorites pane. A no-op (one file
         // check per entry) once the icons are in place.
         FavoriteIconBootstrap.run(store: SettingsStore.shared)
+
+        // Update check: one HTTPS request, throttled to once a day, silent on
+        // failure. Raised from the delegate rather than a view so a new version
+        // is announced even when the user never opens the settings window.
+        Task { @MainActor in
+            if let release = await UpdateChecker.shared.checkAutomaticallyIfNeeded() {
+                UpdatePrompter.present(release)
+            }
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {

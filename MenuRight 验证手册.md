@@ -371,6 +371,27 @@ python3 Scripts/figma-mcp.py call get_screenshot     '{"nodeId":"1430:75"}'
 > 而不是把渲染器降级成源码高亮。设置面板里的示例预览也走同一条渲染路径,两处一致。
 
 
+### 3.11 版本号与检查更新(本轮改动)
+
+前置:装的是**当前构建**。仓库目前**还没有发过 Release**,所以下面第 74 项的"发现新版本"需要先按第 73 项发布一个更高的版本。
+
+| # | 操作 | 预期结果 | 失败时看什么 |
+| - | ---- | -------- | ------------ |
+| 73 | `Scripts/version.sh bump minor` → 提交 → `Scripts/release.sh --publish --notes <文件>` | 生成两个架构的 ZIP;建 tag;`gh release create` 成功;`https://github.com/Suxinljh/MenuRight/releases` 上能看到 | `gh auth status`;`build/release/build-*.log` |
+| 74 | 用**旧版本**的 App(如 1.0)打开 设置 → 通用设置 → 更新 → 立即检查 | 显示「发现新版本 x.y」+ 更新说明节选 + 「前往下载 / 跳过此版本」 | 显示"还没有发布任何版本" → Release 没建成功;显示失败原因 → 网络/限速 |
+| 75 | 点「前往下载」 | 浏览器打开该 Release 页面 | — |
+| 76 | 点「跳过此版本」,再点一次「立即检查」 | 不再出现新版本卡片(状态回到"还没有检查过"或最新) | 还在提示 → 跳过没写进设置 |
+| 77 | 关掉「自动检查更新」→ 退出 App → 重开 | 启动时**不**发起检查(日志里没有 update 相关请求) | 仍检查 → 开关没生效 |
+| 78 | 打开「自动检查更新」→ 退出 → 重开(且距上次检查 > 24h) | 启动后后台检查一次;有新版就弹一次提示 | 立刻重开第二次不该再查(节流) |
+| 79 | 设置 → 通用设置 → 关于 | 「版本」显示 `1.0 (1)`(含构建号) | 只有版本号 → 构建号没读 |
+| 80 | 终端跑 `Scripts/version.sh` 与 `Scripts/check-version.sh` | 打印 `1.0 (1)`;四个 target 全部 `ok` | 某个 target 报 FAIL → 它有 target 级版本设置覆盖了 xcconfig |
+
+> 自动化已覆盖(本轮实测):版本比较(`1.10 > 1.9`、`1.0 == 1.0.0`、`v` 前缀)、GitHub JSON 解析
+> (draft/prerelease 拒绝、ZIP asset 选取、无 asset 时为 nil)、节流与"跳过该版本"规则、
+> 旧版本 payload 的默认值兼容;并用**真实** GitHub 响应(SWCompression / Sparkle 的 releases/latest)跑通了解析路径。
+> **需要你手动做的是第 73 项**(发布一个真实的 Release)——它会改 GitHub 上的状态,我不替你点。
+
+
 ## 4. 这些现象**不是** bug(平台限制)
 
 - **只有一个 MenuRight 条目、里面是子菜单**:macOS 把扩展菜单挂在扩展名条目下,扩展无法创建顶层项、无法控制父级。需求里的"与 MenuRight 同级"在 FinderSync 下做不到;唯一的替代是 Accessibility/AppleScript 注入菜单,被 `AGENTS.md` 明令禁止。
