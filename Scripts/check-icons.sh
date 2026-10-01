@@ -9,7 +9,9 @@
 # Catalogs:
 #   MenuRight/Resources/SidebarIcons.xcassets      sidebar rows (Lucide)
 #   MenuRight/Resources/SettingsIcons.xcassets     新建文件 types + 文件权限 actions
-#   MenuRight/Resources/BrandAssets.xcassets       sidebar brand lockup
+#   MenuRight/Resources/BrandAssets.xcassets       sidebar brand lockup + the
+#                                                 menu bar status item (the one
+#                                                 brand asset drawn as a template)
 #
 # The Finder context menu carries no *catalog* icons: the only images it draws
 # are the 常用项 PNGs the app renders into the App Group at runtime
@@ -54,13 +56,23 @@ settings = file_types + actions
 
 brand = names(r'Image\("(menuright-[a-z-]+)"\)', "MenuRight/App/Settings/SettingsComponents.swift")
 
+# The menu bar mark is brand artwork too, but it is the one brand asset drawn as
+# a *template*: the system tints status items with the menu bar's colour, so the
+# artwork's own white fills would be invisible on a light menu bar.
+status_bar = names(r'assetName = "([a-z0-9-]+)"', "MenuRight/App/StatusMenu/StatusMenuPlan.swift")
+
+# (catalog, names the code asks for, subset of those that must be a template)
 CATALOGS = [
-    ("MenuRight/Resources/SidebarIcons.xcassets", sorted(set(sidebar)), True),
-    ("MenuRight/Resources/SettingsIcons.xcassets", sorted(set(settings)), True),
-    ("MenuRight/Resources/BrandAssets.xcassets", sorted(set(brand)), False),
+    ("MenuRight/Resources/SidebarIcons.xcassets", sorted(set(sidebar)), set(sidebar)),
+    ("MenuRight/Resources/SettingsIcons.xcassets", sorted(set(settings)), set(settings)),
+    (
+        "MenuRight/Resources/BrandAssets.xcassets",
+        sorted(set(brand + status_bar)),
+        set(status_bar),
+    ),
 ]
 
-for relative, used, must_be_template in CATALOGS:
+for relative, used, template_names in CATALOGS:
     catalog = os.path.join(root, relative)
     label = os.path.basename(relative)
 
@@ -84,9 +96,9 @@ for relative, used, must_be_template in CATALOGS:
         properties = metadata.get("properties", {})
         if properties.get("preserves-vector-representation") is not True:
             failures.append(f"{label}/{asset}: does not preserve vector representation")
-        if must_be_template and properties.get("template-rendering-intent") != "template":
-            failures.append(f"{label}/{asset}: not set to template rendering")
-        if not must_be_template and properties.get("template-rendering-intent") == "template":
+        if asset in template_names and properties.get("template-rendering-intent") != "template":
+            failures.append(f"{label}/{asset}: must be template rendering (the system tints it)")
+        if asset not in template_names and properties.get("template-rendering-intent") == "template":
             failures.append(f"{label}/{asset}: brand artwork must keep its own colours")
         if metadata.get("images", [{}])[0].get("filename") != f"{asset}.svg":
             failures.append(f"{label}/{asset}: Contents.json names the wrong file")

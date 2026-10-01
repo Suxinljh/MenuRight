@@ -335,6 +335,14 @@ enum StringKey: String, CaseIterable {
     case archiveNote
     case archiveSecurity
 
+    // MARK: Menu bar item
+    case statusMenuOpenSettings
+    case statusMenuCheckForUpdates
+    case statusMenuQuit
+    case statusMenuUpToDateTitle
+    case statusMenuUpToDateBody
+    case statusMenuCheckFailedTitle
+
     // MARK: Alerts
     case errorAlertTitle
 }
@@ -860,6 +868,18 @@ enum Localization {
             zh: "安全约束：解压时拒绝「../」、绝对路径与符号链接逃逸（Zip Slip），并在主应用的授权范围内写入。",
             en: "Safety: extraction rejects ../, absolute paths, and symlink escapes (Zip Slip), and writes only within the main app’s authorized scope."
         ),
+
+        // Menu bar item. The quit item carries the product name because that is
+        // how a Mac app's quit command reads ("Quit MenuRight", not "Quit").
+        .statusMenuOpenSettings: Entry(zh: "打开设置", en: "Open Settings"),
+        .statusMenuCheckForUpdates: Entry(zh: "检查更新", en: "Check for Updates"),
+        .statusMenuQuit: Entry(zh: "退出 MenuRight", en: "Quit MenuRight"),
+        .statusMenuUpToDateTitle: Entry(zh: "已是最新版本", en: "You're up to date"),
+        .statusMenuUpToDateBody: Entry(
+            zh: "当前版本 %@，没有发现更新的版本。",
+            en: "You are running %@ and no newer version was found."
+        ),
+        .statusMenuCheckFailedTitle: Entry(zh: "检查更新失败", en: "Update Check Failed"),
 
         // Alerts
         .errorAlertTitle: Entry(zh: "操作未完成", en: "Something Went Wrong"),

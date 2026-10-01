@@ -294,10 +294,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         LifecycleDiagnostics.record("applicationWillTerminate", from: "main-app")
         ipcServer.stop()
     }
+
+    /// The app does **not** quit when the settings window is closed.
+    ///
+    /// The Finder extension is started and stopped by Finder; all it needs from
+    /// us is a live IPC peer. If this went back to `true`, closing the window
+    /// would silently break every Finder menu action with "主应用未运行". The rule
+    /// itself lives in `AppLifecycle`, which the test target can compile;
+    /// `StatusMenuTests` guards both the value and this forwarding method.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        AppLifecycle.terminatesAfterLastWindowClosed
+    }
 }
 
 @main
 struct MenuRightApp: App {
+    /// Identifier of the settings window. The menu bar item needs it to bring
+    /// the window back after the user closed it (`openWindow(id:)`).
+    static let mainWindowID = "settings"
+
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate: AppDelegate
 
     init() {
@@ -305,7 +320,7 @@ struct MenuRightApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("MenuRight") {
+        WindowGroup("MenuRight", id: Self.mainWindowID) {
             ContentView()
                 .onAppear {
                     LifecycleDiagnostics.record("ContentView.onAppear", from: "main-app")
@@ -315,5 +330,15 @@ struct MenuRightApp: App {
         // sidebar and a pane are both comfortable.
         .defaultSize(width: 1080, height: 720)
         .onChange(of: ScenePhase.background) { _, _ in }
+
+        // The always-available entry point. `.menu` style is the plain dropdown
+        // a status item is expected to have: one click, then 打开设置 / 检查更新 /
+        // 退出.
+        MenuBarExtra {
+            StatusMenuView()
+        } label: {
+            StatusMenuLabel()
+        }
+        .menuBarExtraStyle(.menu)
     }
 }

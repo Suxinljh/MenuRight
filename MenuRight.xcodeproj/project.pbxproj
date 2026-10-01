@@ -136,6 +136,13 @@
 		ABUPD003 /* UpdatePrompter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAUPD003 /* UpdatePrompter.swift */; };
 		ABUPDT01 /* UpdateRelease.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAUPD001 /* UpdateRelease.swift */; };
 		ABUPDT02 /* UpdateCheckTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAUPD004 /* UpdateCheckTests.swift */; };
+		ABSTAT001 /* StatusMenuPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASTAT01 /* StatusMenuPlan.swift */; };
+		ABSTAT002 /* AppLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASTAT02 /* AppLifecycle.swift */; };
+		ABSTAT003 /* StatusMenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASTAT03 /* StatusMenuView.swift */; };
+		ABSTAT101 /* StatusMenuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASTAT04 /* StatusMenuTests.swift */; };
+		ABSTAT102 /* StatusMenuPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASTAT01 /* StatusMenuPlan.swift */; };
+		ABSTAT103 /* AppLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASTAT02 /* AppLifecycle.swift */; };
+		ABSTAT104 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAUPD002 /* UpdateChecker.swift */; };
 		ABCTLAPP1 /* ArchiveOperationControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACTL001 /* ArchiveOperationControl.swift */; };
 		ABCTLTST1 /* ArchiveOperationControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = AACTL001 /* ArchiveOperationControl.swift */; };
 		ABEXTMT002 /* ExtensionMainThreadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAEXTMT001 /* ExtensionMainThreadTests.swift */; };
@@ -387,6 +394,10 @@
 		AASETR033 /* LocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTests.swift; sourceTree = "<group>"; };
 		AASETR101 /* SettingsCategoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsCategoryTests.swift; sourceTree = "<group>"; };
 		AASHEET1 /* CustomCompressionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomCompressionSheet.swift; sourceTree = "<group>"; };
+		AASTAT01 /* StatusMenuPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusMenuPlan.swift; sourceTree = "<group>"; };
+		AASTAT02 /* AppLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLifecycle.swift; sourceTree = "<group>"; };
+		AASTAT03 /* StatusMenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusMenuView.swift; sourceTree = "<group>"; };
+		AASTAT04 /* StatusMenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusMenuTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -489,6 +500,7 @@
 				AAONB04 /* FolderAuthorizationAction.swift */,
 				AAFAVICON1 /* FavoriteIconProvider.swift */,
 				AAUPDGRP /* Updates */,
+				AASTATGRP /* StatusMenu */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -501,6 +513,16 @@
 				AAUPD003 /* UpdatePrompter.swift */,
 			);
 			path = Updates;
+			sourceTree = "<group>";
+		};
+		AASTATGRP /* StatusMenu */ = {
+			isa = PBXGroup;
+			children = (
+				AASTAT01 /* StatusMenuPlan.swift */,
+				AASTAT02 /* AppLifecycle.swift */,
+				AASTAT03 /* StatusMenuView.swift */,
+			);
+			path = StatusMenu;
 			sourceTree = "<group>";
 		};
 		AA0000000000000000000020 /* MenuRightFinder */ = {
@@ -547,6 +569,7 @@
 				AASETR032 /* MenuRightSettingsTests.swift */,
 				AASETR033 /* LocalizationTests.swift */,
 				AASETR101 /* SettingsCategoryTests.swift */,
+				AASTAT04 /* StatusMenuTests.swift */,
 				AAFREF02 /* FinderMenuLocalizationTests.swift */,
 				AAONB02 /* OnboardingFlowTests.swift */,
 				AAP6B05 /* ZipWriterTests.swift */,
@@ -999,6 +1022,9 @@
 				ABUPD001 /* UpdateRelease.swift in Sources */,
 				ABUPD002 /* UpdateChecker.swift in Sources */,
 				ABUPD003 /* UpdatePrompter.swift in Sources */,
+				ABSTAT001 /* StatusMenuPlan.swift in Sources */,
+				ABSTAT002 /* AppLifecycle.swift in Sources */,
+				ABSTAT003 /* StatusMenuView.swift in Sources */,
 				ABSHARED1 /* MenuRightAppGroup.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1088,6 +1114,10 @@
 				ABSETTST033 /* LocalizationTests.swift in Sources */,
 				ABSETTST101 /* SettingsCategory.swift in Sources */,
 				ABSETTST102 /* SettingsCategoryTests.swift in Sources */,
+				ABSTAT101 /* StatusMenuTests.swift in Sources */,
+				ABSTAT102 /* StatusMenuPlan.swift in Sources */,
+				ABSTAT103 /* AppLifecycle.swift in Sources */,
+				ABSTAT104 /* UpdateChecker.swift in Sources */,
 				ABFTST01 /* FinderMenuLanguage.swift in Sources */,
 				ABTSTPW01 /* ArchiveProgressWindow.swift in Sources */,
 				ABTSTPW02 /* ArchiveProgressWindowTests.swift in Sources */,
