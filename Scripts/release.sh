@@ -146,6 +146,10 @@ fi
 
 # The appendix is generated, not hand-written, so a release can never claim more
 # testing than the release machine actually performed.
+#
+# NB: /bin/bash on macOS is 3.2, which folds multibyte bytes into a variable
+# name — write `${HOST_ARCH}` (braced) whenever a Chinese character follows a
+# variable, or the expansion is parsed as an unbound name.
 DISCLOSURE="$OUT/disclosure-$VERSION.md"
 {
   echo
@@ -154,7 +158,7 @@ DISCLOSURE="$OUT/disclosure-$VERSION.md"
   echo "## 构建与验证说明"
   echo
   echo "- \`MenuRight-$VERSION-$TESTED_ARCH\` —— $(pretty_arch "$TESTED_ARCH")：在发布机上实测（该架构的 XCTest、产物验签、DMG 挂载与包结构检查）。"
-  echo "- \`MenuRight-$VERSION-$UNTESTED_ARCH\` —— $(pretty_arch "$UNTESTED_ARCH")：**未经测试**。发布机是 $HOST_ARCH，无法执行该架构的二进制；只做了静态检查（lipo 架构、codesign 验签、DMG 挂载与包结构），**没有真正启动过**。"
+  echo "- \`MenuRight-${VERSION}-${UNTESTED_ARCH}\` —— $(pretty_arch "$UNTESTED_ARCH")：**未经测试**。发布机是 ${HOST_ARCH}，无法执行该架构的二进制；只做了静态检查（lipo 架构、codesign 验签、DMG 挂载与包结构），**没有真正启动过**。"
   echo "- 本项目未做公证（notarization），也没有 Developer ID 证书：产物用 Apple Development 签名并内嵌 Mac Team Provisioning Profile（仅列出开发者的 Mac）。首次打开若被 Gatekeeper 拦截，请在「访达」里右键 App →「打开」；若在别的 Mac 上因预置描述文件受限而无法启动，请从源码构建（见 \`MenuRight-$VERSION-source.zip\`）。"
   echo "- 产物校验和见 \`SHA256SUMS.txt\`。"
   echo
