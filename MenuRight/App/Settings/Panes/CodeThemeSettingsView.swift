@@ -25,7 +25,6 @@ struct CodeThemeSettingsView: View {
             themeGroup
             typographyGroup
             previewGroup
-            noteGroup
         }
     }
 
@@ -96,15 +95,6 @@ struct CodeThemeSettingsView: View {
             }
             SettingsRowDivider()
             preview
-        }
-    }
-
-    private var noteGroup: some View {
-        SettingsGroup(title: store.text(.sectionImplementationStatus)) {
-            Text(store.text(.codeThemeNote))
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

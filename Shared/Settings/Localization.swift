@@ -35,7 +35,6 @@ enum StringKey: String, CaseIterable {
     case commonClose
     case commonEmpty
     case commonVersion
-    case commonBundleID
     case commonPath
     case commonRefresh
     case onboardingTitle
@@ -61,6 +60,8 @@ enum StringKey: String, CaseIterable {
     case onboardingReadyRestartHint
     case commonRestartApp
     case commonRestartAppHint
+    case commonRestartFailedTitle
+    case commonRestartFailedMessage
     case commonReorderHint
     case commonRevealInFinder
     case commonUnsupported
@@ -74,24 +75,23 @@ enum StringKey: String, CaseIterable {
     // MARK: General
     case generalIntro
     case generalLanguage
-    case generalLanguageFooter
     case generalLanguageSystem
     case generalLanguageChinese
     case generalLanguageEnglish
     case generalLaunchAtLogin
-    case generalLaunchAtLoginFooter
     case generalLaunchAtLoginError
+    case generalLaunchAtLoginRequiresApproval
+    case generalLaunchAtLoginOpenSettings
     case generalAbout
     case generalUpdates
     case generalAutoUpdate
-    case generalAutoUpdateFooter
     case generalCheckNow
     case generalChecking
     case generalUpdateIdle
     case generalUpToDate
     case generalUpdateAvailable
     case generalUpdateRunningVersion
-    case generalUpdateDownload
+    case generalUpdateOpenReleasePage
     case generalUpdateSkip
     case generalUpdateFailed
     case generalUpdateNoReleases
@@ -105,6 +105,21 @@ enum StringKey: String, CaseIterable {
     case generalUpdateRateLimited
     /// Same, but GitHub told us when the quota comes back (`%@` = a clock time).
     case generalUpdateRateLimitedUntil
+    // MARK: Terminal (P6 打开终端)
+    case generalTerminalTitle
+    case generalTerminalFooter
+    case generalTerminalDefault
+    case generalTerminalChoose
+    case generalTerminalReset
+    case generalTerminalService
+    case generalTerminalServiceFooter
+    case generalTerminalMissing
+    /// Confirmation shown before a sensitive action (`%@` = the action name).
+    case confirmDestructiveTitle
+    case confirmDestructiveMessage
+    case confirmDestructiveLock
+    case confirmDestructiveUnlock
+    case confirmDestructiveCut
     case generalLicenses
     case generalLicensesFooter
     case generalLicensesEmpty
@@ -122,9 +137,50 @@ enum StringKey: String, CaseIterable {
     case archiveEncrypt
     case archiveSplit
     case archiveSolid
-    case archiveOptionUnsupported
-    case archiveUnsupportedOptionsNote
+    // MARK: How the three compression modes actually differ, per format
+    case archiveModeNote
+    case archiveSplitOff
+    case archiveSplitNote
+    case archiveSplitZipOnly
+    case archiveSolidNote
+    case archiveSolidZipOnly
+    case archiveEncryptFormatsNote
+    case archiveEncryptSevenZipNote
     case archiveCustomFailed
+    // MARK: Encryption and the 密码本 (password book)
+    case archivePassword
+    case archivePasswordMissing
+    case archivePasswordPlaceholder
+    case archivePasswordBook
+    case archivePasswordBookPick
+    case archiveEncryptionNote
+    case archiveEncryptionFailed
+    case archiveFileNameEncryption
+    case archivePasswordBookTitle
+    case archivePasswordBookEmpty
+    case archivePasswordBookSequence
+    case archivePasswordBookName
+    case archivePasswordBookImport
+    case archivePasswordBookExport
+    case archivePasswordBookAutoSave
+    case archivePasswordBookStorageFailed
+    case archivePasswordBookImported
+    case archivePasswordBookExported
+    case archivePasswordBookImportFailed
+    case archivePasswordBookExportFailed
+    case archivePasswordBookExportPlaintextTitle
+    case archivePasswordBookExportPlaintextMessage
+    case archivePasswordBookImportConfirmTitle
+    case archivePasswordBookImportConfirmMessage
+    case archivePasswordBookReveal
+    case archivePasswordBookHide
+    // MARK: Unlocking an encrypted archive for extraction
+    case archiveUnlockTitle
+    case archiveUnlockMessage
+    case archiveUnlockWrongMessage
+    case archiveUnlockRemember
+    case archiveUnlockExtract
+    case archiveUnlockSkipped
     case finderMenuCompressCustom
     case commonChoose
     case archiveModeFast
@@ -138,6 +194,11 @@ enum StringKey: String, CaseIterable {
     case generalIPC
     case generalIPCFooter
     case generalIPCNotHealthy
+    case generalIPCStarting
+    case generalIPCListening
+    case generalIPCWaiting
+    case generalIPCFailed
+    case generalIPCStopped
     case generalResetFooter
 
     // MARK: File permissions
@@ -156,12 +217,12 @@ enum StringKey: String, CaseIterable {
     case filePermissionActionLockUnlock
     case filePermissionActionOpenTerminal
     case filePermissionActionExtractArchive
+    case filePermissionActionCompressArchive
     case filePermissionActionOpenFavorite
     case filePermissionSafety
     case filePermissionRestrict
     case filePermissionRestrictFooter
     case filePermissionConfirm
-    case filePermissionSandboxBody
 
     // MARK: Folder permissions
     case folderPermissionIntro
@@ -184,7 +245,11 @@ enum StringKey: String, CaseIterable {
     case newFilePreview
     case newFileTemplateMissingBadge
     case newFileMissingTemplates
-    case sectionImplementationStatus
+    case newFileTemplateDirectory
+    case newFileTemplateDirectoryFooter
+    case newFileTemplateDirectoryChoose
+    case newFileTemplateDirectoryReset
+    case newFileTemplateDirectoryMissing
     case newFileKindText
     case newFileKindMarkdown
     case newFileKindHTML
@@ -303,7 +368,6 @@ enum StringKey: String, CaseIterable {
     case codeThemeFont
     case codeThemeFontSystem
     case codeThemeLineNumbers
-    case codeThemeNote
     case codePreviewLanguage
     case codePreviewPlainText
     case codePreviewUnreadable
@@ -312,7 +376,6 @@ enum StringKey: String, CaseIterable {
     // MARK: Archives
     case archiveIntro
     case archiveFormats
-    case archiveFormatsFooter
     case archiveFormatZip
     case archiveFormatSevenZip
     case archiveFormatTar
@@ -320,7 +383,6 @@ enum StringKey: String, CaseIterable {
     case archiveFormatBZip2
     case archiveFormatXZ
     case archiveFormatRAR
-    case archiveFormatRARNote
     case archiveBehavior
     case archiveDestination
     case archiveDestinationAsk
@@ -342,8 +404,6 @@ enum StringKey: String, CaseIterable {
     case archiveSizeLimitMaxHint
     case archiveSizeLimitMinHint
     case archiveSizeLimitInvalidHint
-    case archiveNote
-    case archiveSecurity
 
     // MARK: Menu bar item
     case statusMenuOpenSettings
@@ -412,7 +472,6 @@ enum Localization {
         .commonClose: Entry(zh: "关闭", en: "Close"),
         .commonEmpty: Entry(zh: "暂无内容", en: "Nothing here yet"),
         .commonVersion: Entry(zh: "版本", en: "Version"),
-        .commonBundleID: Entry(zh: "Bundle ID", en: "Bundle ID"),
         .commonPath: Entry(zh: "路径", en: "Path"),
         .commonRefresh: Entry(zh: "重新检测", en: "Check Again"),
         // First-run guide (see `OnboardingFlow`).
@@ -463,6 +522,13 @@ enum Localization {
             zh: "退出并重新启动应用。设置改动不需要重启 —— Finder 扩展每次构建右键菜单都会读取最新设置。",
             en: "Quit and relaunch the app. Settings changes do not need a restart: the Finder extension reads the latest settings every time it builds the menu."
         ),
+        // Restarting is a LaunchServices hand-off that can fail (another copy
+        // refuses, the bundle moved). Saying so in the window beats a silent no-op.
+        .commonRestartFailedTitle: Entry(zh: "无法重启 MenuRight", en: "Couldn’t Restart MenuRight"),
+        .commonRestartFailedMessage: Entry(
+            zh: "启动新副本失败，请手动退出后重新打开。\n%@",
+            en: "Starting a new copy failed. Please quit and reopen the app manually.\n%@"
+        ),
         .commonReorderHint: Entry(zh: "拖动可调整顺序", en: "Drag to reorder"),
         .commonRevealInFinder: Entry(zh: "在 Finder 中显示", en: "Reveal in Finder"),
         .commonUnsupported: Entry(zh: "不支持", en: "Not supported"),
@@ -479,30 +545,25 @@ enum Localization {
             en: "Application info, interface language, and launch behaviour."
         ),
         .generalLanguage: Entry(zh: "界面语言", en: "Language"),
-        .generalLanguageFooter: Entry(
-            zh: "切换后立即生效，不需要重启。",
-            en: "Applies immediately; no relaunch needed."
-        ),
         .generalLanguageSystem: Entry(zh: "跟随系统", en: "Follow System"),
         .generalLanguageChinese: Entry(zh: "简体中文", en: "Simplified Chinese"),
         .generalLanguageEnglish: Entry(zh: "英语", en: "English"),
         .generalLaunchAtLogin: Entry(zh: "登录时自动启动", en: "Launch at Login"),
-        .generalLaunchAtLoginFooter: Entry(
-            zh: "通过系统 SMAppService 注册，只对已安装到「应用程序」的副本生效。",
-            en: "Registered through SMAppService. Only takes effect for a copy installed in Applications."
-        ),
         .generalLaunchAtLoginError: Entry(
             zh: "无法更新登录项",
             en: "Couldn’t update the login item"
         ),
+        // The third state of the login item: registered, but the user has to
+        // approve it in System Settings. Never collapse this into "off".
+        .generalLaunchAtLoginRequiresApproval: Entry(
+            zh: "需要在「系统设置 → 通用 → 登录项」中允许后才能生效。",
+            en: "Allow it in System Settings → General → Login Items before it can take effect."
+        ),
+        .generalLaunchAtLoginOpenSettings: Entry(zh: "打开登录项设置", en: "Open Login Items Settings"),
         .generalAbout: Entry(zh: "关于", en: "About"),
         // Updates
         .generalUpdates: Entry(zh: "更新", en: "Updates"),
         .generalAutoUpdate: Entry(zh: "自动检查更新", en: "Check for Updates Automatically"),
-        .generalAutoUpdateFooter: Entry(
-            zh: "每天最多检查一次，只读取 GitHub 上的最新版本号；不会自动下载或替换应用，发现新版本时只给出提示和下载链接。",
-            en: "Checks at most once a day and only reads the latest version number from GitHub. Nothing is downloaded or replaced automatically — a new version just gets a prompt and a download link."
-        ),
         .generalCheckNow: Entry(zh: "立即检查", en: "Check Now"),
         .generalChecking: Entry(zh: "正在检查…", en: "Checking…"),
         .generalUpdateIdle: Entry(zh: "还没有检查过", en: "Not checked yet"),
@@ -512,7 +573,9 @@ enum Localization {
             zh: "当前版本 %@，最新版本 %@。",
             en: "You have %@; the latest version is %@."
         ),
-        .generalUpdateDownload: Entry(zh: "前往下载", en: "Download"),
+        // The button opens the GitHub release page; this app never downloads the
+        // asset itself, so the label must not promise a download.
+        .generalUpdateOpenReleasePage: Entry(zh: "前往发布页", en: "View Release Page"),
         .generalUpdateSkip: Entry(zh: "跳过此版本", en: "Skip This Version"),
         .generalUpdateFailed: Entry(zh: "检查更新失败：%@", en: "Update check failed: %@"),
         .generalUpdateNoReleases: Entry(
@@ -539,10 +602,35 @@ enum Localization {
             zh: "GitHub 的匿名访问次数已达上限，约 %@ 之后可重试（每小时 60 次）。",
             en: "GitHub's unauthenticated rate limit is exhausted (60 per hour). Try again after %@."
         ),
+        .generalTerminalTitle: Entry(zh: "终端应用", en: "Terminal Application"),
+        .generalTerminalFooter: Entry(
+            zh: "“打开终端”使用的应用。留空表示系统自带的 Terminal。第三方终端同样通过其 Finder 服务打开，因此需要填写服务名称（在“系统设置 › 键盘 › 键盘快捷键 › 服务”中查看）。",
+            en: "The application 打开终端 launches. Leave empty for the built-in Terminal. A third-party terminal is opened through its Finder service, so its service name is required (see System Settings › Keyboard › Keyboard Shortcuts › Services)."
+        ),
+        .generalTerminalDefault: Entry(zh: "系统默认（Terminal）", en: "System default (Terminal)"),
+        .generalTerminalChoose: Entry(zh: "选择…", en: "Choose…"),
+        .generalTerminalReset: Entry(zh: "恢复默认", en: "Use Default"),
+        .generalTerminalService: Entry(zh: "Finder 服务名称", en: "Finder Service Name"),
+        .generalTerminalServiceFooter: Entry(
+            zh: "Terminal 的服务名为“New Terminal at Folder”。若已更改系统语言或使用第三方终端，请填写对应名称。",
+            en: "Terminal's service is “New Terminal at Folder”. Change it if the system language differs or a third-party terminal is used."
+        ),
+        .generalTerminalMissing: Entry(
+            zh: "所选终端应用不存在，将回退到系统默认。",
+            en: "The selected terminal application does not exist; the system default will be used."
+        ),
+        .confirmDestructiveTitle: Entry(zh: "确认操作", en: "Confirm Action"),
+        .confirmDestructiveMessage: Entry(
+            zh: "即将执行“%@”。此操作会立即生效。",
+            en: "About to perform “%@”. This takes effect immediately."
+        ),
+        .confirmDestructiveLock: Entry(zh: "锁定所选项目", en: "Lock the selected items"),
+        .confirmDestructiveUnlock: Entry(zh: "解锁所选项目", en: "Unlock the selected items"),
+        .confirmDestructiveCut: Entry(zh: "将所选项目移动到目标文件夹", en: "Move the selected items to the destination folder"),
         .generalLicenses: Entry(zh: "开源许可", en: "Open Source Licenses"),
         .generalLicensesFooter: Entry(
-            zh: "侧边栏图标来自 Lucide（ISC）与 Phosphor（MIT）；解压/压缩使用 SWCompression 与 BitByteData（均为 MIT）。",
-            en: "Icons come from Lucide (ISC) and Phosphor (MIT); decompression/compression use SWCompression and BitByteData (both MIT)."
+            zh: "侧边栏图标来自 Lucide（ISC）与 Phosphor（MIT）；解压/压缩使用 SWCompression 与 BitByteData（均为 MIT）；7z 创建使用 PLzmaSDK（MIT，含 LZMA SDK）。",
+            en: "Icons come from Lucide (ISC) and Phosphor (MIT); decompression/compression use SWCompression and BitByteData (both MIT); 7z creation uses PLzmaSDK (MIT, with the LZMA SDK)."
         ),
         .generalLicensesEmpty: Entry(
             zh: "应用包内没有找到许可文件。",
@@ -561,12 +649,88 @@ enum Localization {
         .archiveEncrypt: Entry(zh: "加密压缩", en: "Encrypt"),
         .archiveSplit: Entry(zh: "分卷压缩", en: "Split volumes"),
         .archiveSolid: Entry(zh: "固实压缩（仅 7z）", en: "Solid (7-Zip only)"),
-        .archiveOptionUnsupported: Entry(zh: "本版本不支持", en: "not supported in this build"),
-        .archiveUnsupportedOptionsNote: Entry(
-            zh: "加密需要自研 ZIP 加密（本版本没有），分卷与固实需要写 7z（第三方库只有读取能力），因此这三项置灰。",
-            en: "Encryption would need our own ZIP encryption (not in this build); split volumes and solid archives need a 7-Zip writer, and the library is read-only. Hence disabled."
+        .archiveModeNote: Entry(
+            zh: "模式对不同格式作用不同：zip / 7z / tar.gz 用压缩等级（快速=1、标准=6、极限=9），bzip2 用块大小（1 / 5 / 9 × 100 KB），tar 本身不压缩所以模式对它无效。",
+            en: "The mode maps to what each format has: zip / 7z / tar.gz use a compression level (Fast 1, Standard 6, Maximum 9), bzip2 uses the block size (1 / 5 / 9 × 100 KB), and tar is uncompressed, so the mode does nothing there."
+        ),
+        .archiveSplitOff: Entry(zh: "不分卷", en: "Single file"),
+        .archiveSplitNote: Entry(
+            zh: "分卷把归档切成 name.zip.001、.002 … 每片不超过所选大小；7-Zip、Keka、WinRAR 都能直接打开，本 App 也能解压（选中 .001 即可）。",
+            en: "Splitting writes name.zip.001, .002 … with each part under the chosen size; 7-Zip, Keka and WinRAR open the set directly, and so does this app (pick the .001)."
+        ),
+        .archiveSplitZipOnly: Entry(
+            zh: "分卷只支持 ZIP 与 7z——其它格式的 .001 片段没有工具能当成一个归档直接打开。",
+            en: "Split volumes work for ZIP and 7z only — a `.001` set of any other format has no unarchiver that reads it as one archive."
+        ),
+        .archiveSolidNote: Entry(
+            zh: "固实把整包压成一个块，体积最小；关掉后每个文件独立压缩，体积略大但可以直接取出单个文件。",
+            en: "Solid compresses the whole archive as one block — the smallest result. Turn it off and every file gets its own block: slightly larger, but a reader can pull one file out without unpacking the rest."
+        ),
+        .archiveSolidZipOnly: Entry(zh: "固实只对 7z 有效。", en: "Solid archives are a 7z feature."),
+        .archiveEncryptFormatsNote: Entry(
+            zh: "加密只支持 ZIP（传统 ZipCrypto，兼容所有工具但强度有限）与 7z（AES-256）。",
+            en: "Encryption is available for ZIP (traditional ZipCrypto: universally readable, but weak) and 7z (AES-256)."
+        ),
+        .archiveEncryptSevenZipNote: Entry(
+            zh: "7z 用 AES-256 加密内容；勾选「加密文件名」会连条目名一起加密，打开前就要密码。密码只写进归档，本机不保存（除非在解压缩管理里打开自动保存）。",
+            en: "7z encrypts the content with AES-256; ticking 加密文件名 encrypts the entry names as well, so the password is needed before the list is even shown. The password goes into the archive only; nothing is kept on this Mac unless auto-save is on in Archive Management."
         ),
         .archiveCustomFailed: Entry(zh: "压缩失败", en: "Compression failed"),
+        .archivePassword: Entry(zh: "密码", en: "Password"),
+        .archivePasswordMissing: Entry(zh: "请输入加密密码。", en: "Enter a password to encrypt with."),
+        .archivePasswordPlaceholder: Entry(zh: "输入密码", en: "Enter a password"),
+        .archivePasswordBook: Entry(zh: "密码本", en: "Password Book"),
+        .archivePasswordBookPick: Entry(zh: "从密码本选择", en: "Choose from the password book"),
+        .archiveEncryptionNote: Entry(
+            zh: "ZipCrypto 是 ZIP 的传统加密：兼容所有解压工具，但强度有限，只能防误看，不适合保护敏感数据。密码只写进归档，本机不保存（除非在解压缩管理里打开自动保存）。",
+            en: "ZipCrypto is ZIP's traditional cipher: every unarchiver opens it, but it is weak — it stops casual looks, not an attacker. The password goes into the archive only; nothing is kept on this Mac unless auto-save is on in Archive Management."
+        ),
+        .archiveEncryptionFailed: Entry(zh: "加密失败", en: "Encryption failed"),
+        .archiveFileNameEncryption: Entry(zh: "加密文件名（仅 7z）", en: "Encrypt file names (7-Zip only)"),
+        .archivePasswordBookTitle: Entry(zh: "密码本", en: "Password Book"),
+        .archivePasswordBookEmpty: Entry(zh: "还没有保存的密码。", en: "No saved passwords yet."),
+        .archivePasswordBookSequence: Entry(zh: "序号", en: "No."),
+        .archivePasswordBookName: Entry(zh: "名称", en: "Name"),
+        .archivePasswordBookImport: Entry(zh: "批量导入", en: "Import"),
+        .archivePasswordBookExport: Entry(zh: "批量导出", en: "Export"),
+        .archivePasswordBookAutoSave: Entry(
+            zh: "自动保存压缩时输入的加密密码",
+            en: "Automatically save passwords typed while compressing"
+        ),
+        .archivePasswordBookStorageFailed: Entry(zh: "钥匙串写入失败：%@", en: "The Keychain refused the write: %@"),
+        .archivePasswordBookImported: Entry(zh: "已导入 %@ 条密码。", en: "Imported %@ passwords."),
+        .archivePasswordBookExported: Entry(zh: "已导出 %@ 条密码。", en: "Exported %@ passwords."),
+        .archivePasswordBookImportFailed: Entry(zh: "导入失败：%@", en: "Import failed: %@"),
+        .archivePasswordBookExportFailed: Entry(zh: "导出失败：%@", en: "Export failed: %@"),
+        // The exported JSON is plain text (Keychain encryption does not travel
+        // with it), so both directions ask first and say what will happen.
+        .archivePasswordBookExportPlaintextTitle: Entry(
+            zh: "导出为明文文件？",
+            en: "Export as a Plain-Text File?"
+        ),
+        .archivePasswordBookExportPlaintextMessage: Entry(
+            zh: "导出的 JSON 是明文保存的，任何能读取该文件的人都能看到里面的密码。请妥善保管，不要放进共享或同步的目录。",
+            en: "The exported JSON is unencrypted: anyone who can read the file can see the passwords in it. Keep it somewhere safe, not in a shared or synced folder."
+        ),
+        .archivePasswordBookImportConfirmTitle: Entry(zh: "导入密码本？", en: "Import a Password Book?"),
+        .archivePasswordBookImportConfirmMessage: Entry(
+            zh: "导入会合并到现有密码本：同名的条目会被文件中的密码覆盖，其他条目保留。",
+            en: "Importing merges into the current password book: entries with the same name are overwritten by the file, and other entries are kept."
+        ),
+        .archivePasswordBookReveal: Entry(zh: "显示密码", en: "Show password"),
+        .archivePasswordBookHide: Entry(zh: "隐藏密码", en: "Hide password"),
+        .archiveUnlockTitle: Entry(zh: "压缩包已加密", en: "This archive is encrypted"),
+        .archiveUnlockMessage: Entry(
+            zh: "“%@” 已用密码加密。输入密码后才能解压。",
+            en: "“%@” is protected by a password. Enter it to extract the archive."
+        ),
+        .archiveUnlockWrongMessage: Entry(
+            zh: "密码不正确，请再试一次。",
+            en: "That password was not correct. Please try again."
+        ),
+        .archiveUnlockRemember: Entry(zh: "把密码存进密码本", en: "Save the password to the password book"),
+        .archiveUnlockExtract: Entry(zh: "解压", en: "Extract"),
+        .archiveUnlockSkipped: Entry(zh: "（已取消，未解压）", en: "(cancelled, nothing extracted)"),
         .finderMenuCompressCustom: Entry(zh: "自定义压缩…", en: "Custom Compression…"),
         .commonChoose: Entry(zh: "选择…", en: "Choose…"),
         .archiveModeFast: Entry(zh: "快速压缩", en: "Fast"),
@@ -589,6 +753,16 @@ enum Localization {
             zh: "通道不可用",
             en: "Channel unavailable"
         ),
+        // The IPC status line, localized here so the view does not depend on the
+        // English `IPCStatusCenter.displayText` (which stays for logs).
+        .generalIPCStarting: Entry(zh: "正在启动…", en: "Starting…"),
+        .generalIPCListening: Entry(zh: "正在监听", en: "Listening"),
+        .generalIPCWaiting: Entry(
+            zh: "等待上一个实例退出（第 %d 次尝试）",
+            en: "Waiting for the previous instance to exit (attempt %d)"
+        ),
+        .generalIPCFailed: Entry(zh: "失败：%@", en: "Failed: %@"),
+        .generalIPCStopped: Entry(zh: "已停止", en: "Stopped"),
         .generalResetFooter: Entry(
             zh: "恢复默认只影响本应用的设置，不会移除已经授权的文件夹。",
             en: "Resetting affects settings only; authorized folders are not removed."
@@ -613,6 +787,7 @@ enum Localization {
         .filePermissionActionLockUnlock: Entry(zh: "锁定与解锁", en: "Lock & Unlock"),
         .filePermissionActionOpenTerminal: Entry(zh: "打开终端", en: "Open Terminal"),
         .filePermissionActionExtractArchive: Entry(zh: "解压压缩包", en: "Extract Archive"),
+        .filePermissionActionCompressArchive: Entry(zh: "压缩所选项目", en: "Compress Items"),
         .filePermissionActionOpenFavorite: Entry(zh: "打开常用软件 / 网页 / 文件夹", en: "Open Favorites"),
         .filePermissionSafety: Entry(zh: "安全策略", en: "Safety"),
         .filePermissionRestrict: Entry(
@@ -626,10 +801,6 @@ enum Localization {
         .filePermissionConfirm: Entry(
             zh: "锁定、剪切等敏感操作前二次确认",
             en: "Ask before sensitive actions (lock, cut)"
-        ),
-        .filePermissionSandboxBody: Entry(
-            zh: "Finder 扩展不含任何文件写入权限，只负责发送请求；所有副作用都由主应用在已授权范围内执行。这是本项目的不变量，无法在设置里关闭。",
-            en: "The Finder extension has no file-write entitlement; it only sends requests. Every side effect is performed by the main app within authorized scope. This is an architectural invariant and cannot be turned off here."
         ),
 
         // Folder permissions
@@ -674,7 +845,17 @@ enum Localization {
         .newFilePreview: Entry(zh: "菜单预览", en: "Menu Preview"),
         .newFileTemplateMissingBadge: Entry(zh: "缺少模板", en: "Template missing"),
         .newFileMissingTemplates: Entry(zh: "缺少模板文件：", en: "Missing template files: "),
-        .sectionImplementationStatus: Entry(zh: "实现进度", en: "Implementation Status"),
+        .newFileTemplateDirectory: Entry(zh: "模板目录", en: "Template Folder"),
+        .newFileTemplateDirectoryFooter: Entry(
+            zh: "Pages / Numbers / Keynote 的空白模板从这里读取；留空表示使用应用内置模板。自定义目录需要包含相同文件名的模板（blank.pages、blank.numbers、blank.key）。",
+            en: "Pages / Numbers / Keynote blank templates are read from here; leave empty to use the templates bundled with the app. A custom folder needs templates with the same file names (blank.pages, blank.numbers, blank.key)."
+        ),
+        .newFileTemplateDirectoryChoose: Entry(zh: "选择…", en: "Choose…"),
+        .newFileTemplateDirectoryReset: Entry(zh: "使用内置模板", en: "Use Bundled Templates"),
+        .newFileTemplateDirectoryMissing: Entry(
+            zh: "该目录中缺少对应模板，相关类型不会出现在右键菜单中。",
+            en: "Templates are missing from this folder, so those types will not appear in the context menu."
+        ),
         .newFileKindText: Entry(zh: "文本文件", en: "Text File"),
         .newFileKindMarkdown: Entry(zh: "Markdown 文件", en: "Markdown File"),
         .newFileKindHTML: Entry(zh: "HTML 文件", en: "HTML File"),
@@ -816,8 +997,8 @@ enum Localization {
 
         // Code theme
         .codeThemeIntro: Entry(
-            zh: "选择代码预览的高亮主题与字体。预览用的是与 Quick Look 扩展同一套轻量高亮器；配色由主应用保存，扩展在 P8 接入后读取同一份配置。",
-            en: "Pick the highlight theme and font for code previews. The preview runs the same lightweight highlighter the Quick Look extension will use; the palette is stored by the main app and read by the extension once P8 lands."
+            zh: "选择代码预览的高亮主题与字体。预览用的是与 Quick Look 扩展同一套轻量高亮器；配色由主应用保存，扩展读取同一份配置。",
+            en: "Pick the highlight theme and font for code previews. The preview runs the same lightweight highlighter the Quick Look extension uses; the palette is stored by the main app and read by the extension."
         ),
         .codeThemeTheme: Entry(zh: "主题", en: "Theme"),
         .codeThemePreview: Entry(zh: "预览", en: "Preview"),
@@ -825,10 +1006,6 @@ enum Localization {
         .codeThemeFont: Entry(zh: "字体", en: "Font"),
         .codeThemeFontSystem: Entry(zh: "系统等宽字体", en: "System Monospaced"),
         .codeThemeLineNumbers: Entry(zh: "显示行号", en: "Show Line Numbers"),
-        .codeThemeNote: Entry(
-            zh: "空格预览接管这些类型：Swift / Python / JavaScript / TypeScript / HTML / CSS / JSON / YAML / Shell / C / C++ / Java。Markdown 刻意不接管——系统或第三方（WPS、Typora…）的渲染预览更有用，而 Quick Look 没有运行时「交还」机制，排除类型是唯一办法。其余类型一律回退系统预览。",
-            en: "Space-bar preview takes over: Swift / Python / JavaScript / TypeScript / HTML / CSS / JSON / YAML / Shell / C / C++ / Java. Markdown is deliberately left alone — the system or a third-party renderer (WPS, Typora …) does more with it, and Quick Look has no runtime hand-back hook, so excluding the type is the only way. Everything else keeps the system preview."
-        ),
         .codePreviewLanguage: Entry(zh: "示例语言", en: "Sample Language"),
         .codePreviewPlainText: Entry(zh: "纯文本", en: "Plain Text"),
         // Shown inside the Quick Look panel, not in Settings.
@@ -843,14 +1020,10 @@ enum Localization {
 
         // Archives
         .archiveIntro: Entry(
-            zh: "配置解压行为与允许的压缩格式。RAR 不在范围内：没有可用的纯 Swift / MIT 方案。",
-            en: "Configure extraction behaviour and the formats that are allowed. RAR is out of scope: no pure-Swift, MIT-licensed option exists."
+            zh: "配置解压行为与允许的压缩格式。",
+            en: "Configure extraction behaviour and the formats that are allowed."
         ),
         .archiveFormats: Entry(zh: "允许的压缩格式", en: "Allowed Formats"),
-        .archiveFormatsFooter: Entry(
-            zh: "体积上限用于防止大压缩包被整包读入内存，超过上限会返回明确错误。",
-            en: "The size limit keeps big archives from being read into memory as one Data value; exceeding it returns a clear error."
-        ),
         .archiveFormatZip: Entry(zh: "ZIP", en: "ZIP"),
         .archiveFormatSevenZip: Entry(zh: "7-Zip", en: "7-Zip"),
         .archiveFormatTar: Entry(zh: "TAR", en: "TAR"),
@@ -858,10 +1031,6 @@ enum Localization {
         .archiveFormatBZip2: Entry(zh: "BZip2", en: "BZip2"),
         .archiveFormatXZ: Entry(zh: "XZ", en: "XZ"),
         .archiveFormatRAR: Entry(zh: "RAR", en: "RAR"),
-        .archiveFormatRARNote: Entry(
-            zh: "当前不实现（无纯 Swift / MIT 方案），菜单与设置里都不会出现。",
-            en: "Not implemented (no pure-Swift, MIT option); it appears neither in the menu nor here."
-        ),
         .archiveBehavior: Entry(zh: "解压行为", en: "Extraction Behaviour"),
         .archiveDestination: Entry(zh: "解压位置", en: "Extract To"),
         .archiveDestinationAsk: Entry(zh: "每次询问", en: "Ask Every Time"),
@@ -890,14 +1059,6 @@ enum Localization {
         .archiveSizeLimitMaxHint: Entry(zh: "最大不能超过 %@ MB", en: "Maximum is %@ MB"),
         .archiveSizeLimitMinHint: Entry(zh: "最小不能小于 %@ MB", en: "Minimum is %@ MB"),
         .archiveSizeLimitInvalidHint: Entry(zh: "请输入数字", en: "Enter a number"),
-        .archiveNote: Entry(
-            zh: "「解压位置」作用于菜单里的「解压到指定位置…」一项：「解压到当前文件夹」始终解压到压缩包所在文件夹。自定义压缩对话框的格式下拉同样受「允许的压缩格式」限制。",
-            en: "Extract To drives the 解压到指定位置… menu item — 解压到当前文件夹 always extracts beside the archive. The custom-compression dialog’s format list follows Allowed Formats too."
-        ),
-        .archiveSecurity: Entry(
-            zh: "安全约束：解压时拒绝「../」、绝对路径与符号链接逃逸（Zip Slip），并在主应用的授权范围内写入。",
-            en: "Safety: extraction rejects ../, absolute paths, and symlink escapes (Zip Slip), and writes only within the main app’s authorized scope."
-        ),
 
         // Menu bar item. The quit item carries the product name because that is
         // how a Mac app's quit command reads ("Quit MenuRight", not "Quit").
