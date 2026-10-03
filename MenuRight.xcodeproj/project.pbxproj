@@ -162,6 +162,8 @@
 		ABONB04 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAONB03 /* OnboardingView.swift */; };
 		ABONB05 /* FolderAuthorizationAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAONB04 /* FolderAuthorizationAction.swift */; };
 		ABP6B01 /* ZipWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B01 /* ZipWriter.swift */; };
+		ABSZP01 /* SevenZipWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASZP01 /* SevenZipWriter.swift */; };
+		ABSZP02 /* SevenZipWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASZP01 /* SevenZipWriter.swift */; };
 		ABP6B02 /* OOXMLDocumentFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B02 /* OOXMLDocumentFactory.swift */; };
 		ABP6B03 /* DocumentTemplateCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B03 /* DocumentTemplateCatalog.swift */; };
 		ABP6B04 /* NewFileAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B04 /* NewFileAvailability.swift */; };
@@ -221,6 +223,8 @@
 		ABDLGT01 /* CustomCompressionDialogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AADLGT01 /* CustomCompressionDialogTests.swift */; };
 		ABSWC01 /* SWCompression in Frameworks */ = {isa = PBXBuildFile; productRef = AASWC01 /* SWCompression */; };
 		ABSWC02 /* SWCompression in Frameworks */ = {isa = PBXBuildFile; productRef = AASWC02 /* SWCompression */; };
+		ABPLZ01 /* PLzmaSDK in Frameworks */ = {isa = PBXBuildFile; productRef = AAPLZ01 /* PLzmaSDK */; };
+		ABPLZ02 /* PLzmaSDK in Frameworks */ = {isa = PBXBuildFile; productRef = AAPLZ02 /* PLzmaSDK */; };
 		ABTSTPW01 /* ArchiveProgressWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFPRW01 /* ArchiveProgressWindow.swift */; };
 		ABTSTPW02 /* ArchiveProgressWindowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFPWT01 /* ArchiveProgressWindowTests.swift */; };
 /* End PBXBuildFile section */
@@ -361,6 +365,7 @@
 		AAONB03 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		AAONB04 /* FolderAuthorizationAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderAuthorizationAction.swift; sourceTree = "<group>"; };
 		AAP6B01 /* ZipWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipWriter.swift; sourceTree = "<group>"; };
+		AASZP01 /* SevenZipWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SevenZipWriter.swift; sourceTree = "<group>"; };
 		AAP6B02 /* OOXMLDocumentFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OOXMLDocumentFactory.swift; sourceTree = "<group>"; };
 		AAP6B03 /* DocumentTemplateCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentTemplateCatalog.swift; sourceTree = "<group>"; };
 		AAP6B04 /* NewFileAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFileAvailability.swift; sourceTree = "<group>"; };
@@ -436,6 +441,7 @@
 			files = (
 				AB00000000000000000000A3 /* FinderSync.framework in Frameworks */,
 				ABSWC01 /* SWCompression in Frameworks */,
+				ABPLZ01 /* PLzmaSDK in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -452,6 +458,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				ABSWC02 /* SWCompression in Frameworks */,
+				ABPLZ02 /* PLzmaSDK in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -707,6 +714,7 @@
 				AAARC08 /* ArchiveFormats.swift */,
 				AAARC09 /* ArchiveMemberSource.swift */,
 				AAARC10 /* ArchiveCompressor.swift */,
+				AASZP01 /* SevenZipWriter.swift */,
 				AACTL001 /* ArchiveOperationControl.swift */,
 				AAARC02 /* ArchiveExtractor.swift */,
 			);
@@ -814,6 +822,7 @@
 			name = MenuRight;
 			packageProductDependencies = (
 				AASWC01 /* SWCompression */,
+				AAPLZ01 /* PLzmaSDK */,
 			);
 			productName = MenuRight;
 			productReference = AA0000000000000000000051 /* MenuRight.app */;
@@ -852,6 +861,7 @@
 			name = MenuRightTests;
 			packageProductDependencies = (
 				AASWC02 /* SWCompression */,
+				AAPLZ02 /* PLzmaSDK */,
 			);
 			productName = MenuRightTests;
 			productReference = AA0000000000000000000053 /* MenuRightTests.xctest */;
@@ -892,6 +902,7 @@
 			mainGroup = AA0000000000000000000002;
 			packageReferences = (
 				AASWC00 /* XCRemoteSwiftPackageReference "SWCompression" */,
+				AAPLZ00 /* XCRemoteSwiftPackageReference "PLzmaSDK" */,
 			);
 			productRefGroup = AA0000000000000000000003 /* Products */;
 			projectDirPath = "";
@@ -1014,6 +1025,7 @@
 				ABSHEET1 /* CustomCompressionSheet.swift in Sources */,
 				ABDLG001 /* CustomCompressionDialogWindow.swift in Sources */,
 				ABP6B01 /* ZipWriter.swift in Sources */,
+				ABSZP01 /* SevenZipWriter.swift in Sources */,
 				ABP6B02 /* OOXMLDocumentFactory.swift in Sources */,
 				ABP6B03 /* DocumentTemplateCatalog.swift in Sources */,
 				ABP6B04 /* NewFileAvailability.swift in Sources */,
@@ -1136,6 +1148,7 @@
 				ABONB02 /* OnboardingFlow.swift in Sources */,
 				ABONB03 /* OnboardingFlowTests.swift in Sources */,
 				ABP6B05 /* ZipWriter.swift in Sources */,
+				ABSZP02 /* SevenZipWriter.swift in Sources */,
 				ABP6B06 /* OOXMLDocumentFactory.swift in Sources */,
 				ABP6B07 /* DocumentTemplateCatalog.swift in Sources */,
 				ABP6B08 /* NewFileAvailability.swift in Sources */,
@@ -1563,6 +1576,14 @@
 				version = 4.9.1;
 			};
 		};
+		AAPLZ00 /* XCRemoteSwiftPackageReference "PLzmaSDK" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/OlehKulykov/PLzmaSDK.git";
+			requirement = {
+				kind = exactVersion;
+				version = 1.4.2;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1575,6 +1596,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AASWC00 /* XCRemoteSwiftPackageReference "SWCompression" */;
 			productName = SWCompression;
+		};
+		AAPLZ01 /* PLzmaSDK */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AAPLZ00 /* XCRemoteSwiftPackageReference "PLzmaSDK" */;
+			productName = PLzmaSDK;
+		};
+		AAPLZ02 /* PLzmaSDK */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AAPLZ00 /* XCRemoteSwiftPackageReference "PLzmaSDK" */;
+			productName = PLzmaSDK;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
