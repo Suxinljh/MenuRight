@@ -68,6 +68,7 @@ MenuRight/
 ├─ Scripts/                  版本、发布、验证脚本
 ├─ landing/                  单文件落地页
 ├─ MenuRight.xcodeproj       Xcode 工程
+├─ LICENSE                   MIT 许可证
 ├─ README.md
 ├─ MenuRight 功能规划v2.md    需求与设计记录
 └─ MenuRight 验证手册.md      人工验证清单
@@ -110,6 +111,5 @@ xcodebuild -project MenuRight.xcodeproj -scheme MenuRight test
 ## 项目开源情况
 
 - 源码公开在 GitHub：<https://github.com/Suxinljh/MenuRight>，版本发布走该仓库的 Releases。
-- **仓库目前没有 `LICENSE` 文件**，即代码尚未声明开源许可证（默认「保留所有权利」）。
-  若打算让他人自由使用 / 修改 / 分发，需要先补一份许可证（例如 MIT）。
+- 采用 **MIT 许可证**，全文见仓库根目录的 [LICENSE](LICENSE)：可自由使用、修改、分发，需保留版权声明。
 - 应用检测更新读的是该仓库的 `releases/latest`，只做「检查 → 提示 → 打开下载页」，不会自动下载或替换。
