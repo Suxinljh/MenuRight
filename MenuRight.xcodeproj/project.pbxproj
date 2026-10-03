@@ -216,6 +216,9 @@
 		ABSETTST102 /* SettingsCategoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR101 /* SettingsCategoryTests.swift */; };
 		ABSHEET1 /* CustomCompressionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASHEET1 /* CustomCompressionSheet.swift */; };
 		ABSHEET2 /* CustomCompressionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASHEET1 /* CustomCompressionSheet.swift */; };
+		ABDLG001 /* CustomCompressionDialogWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AADLG01 /* CustomCompressionDialogWindow.swift */; };
+		ABDLG002 /* CustomCompressionDialogWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AADLG01 /* CustomCompressionDialogWindow.swift */; };
+		ABDLGT01 /* CustomCompressionDialogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AADLGT01 /* CustomCompressionDialogTests.swift */; };
 		ABSWC01 /* SWCompression in Frameworks */ = {isa = PBXBuildFile; productRef = AASWC01 /* SWCompression */; };
 		ABSWC02 /* SWCompression in Frameworks */ = {isa = PBXBuildFile; productRef = AASWC02 /* SWCompression */; };
 		ABTSTPW01 /* ArchiveProgressWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFPRW01 /* ArchiveProgressWindow.swift */; };
@@ -349,6 +352,8 @@
 		AAFPRW01 /* ArchiveProgressWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveProgressWindow.swift; sourceTree = "<group>"; };
 		AAFPRW02 /* archive-zip-7z.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "archive-zip-7z.png"; sourceTree = "<group>"; };
 		AAFPWT01 /* ArchiveProgressWindowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveProgressWindowTests.swift; sourceTree = "<group>"; };
+		AADLG01 /* CustomCompressionDialogWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomCompressionDialogWindow.swift; sourceTree = "<group>"; };
+		AADLGT01 /* CustomCompressionDialogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomCompressionDialogTests.swift; sourceTree = "<group>"; };
 		AAFREF01 /* FinderMenuLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderMenuLanguage.swift; sourceTree = "<group>"; };
 		AAFREF02 /* FinderMenuLocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderMenuLocalizationTests.swift; sourceTree = "<group>"; };
 		AAONB01 /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
@@ -394,6 +399,7 @@
 		AASETR033 /* LocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTests.swift; sourceTree = "<group>"; };
 		AASETR101 /* SettingsCategoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsCategoryTests.swift; sourceTree = "<group>"; };
 		AASHEET1 /* CustomCompressionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomCompressionSheet.swift; sourceTree = "<group>"; };
+		AADLG01 /* CustomCompressionDialogWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomCompressionDialogWindow.swift; sourceTree = "<group>"; };
 		AASTAT01 /* StatusMenuPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusMenuPlan.swift; sourceTree = "<group>"; };
 		AASTAT02 /* AppLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLifecycle.swift; sourceTree = "<group>"; };
 		AASTAT03 /* StatusMenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusMenuView.swift; sourceTree = "<group>"; };
@@ -551,6 +557,7 @@
 				AA0000000000000000000082 /* FinderMenuBuilderTests.swift */,
 				AAEXTMT001 /* ExtensionMainThreadTests.swift */,
 				AAFPWT01 /* ArchiveProgressWindowTests.swift */,
+				AADLGT01 /* CustomCompressionDialogTests.swift */,
 				AA00000000000000000000B1 /* FileNameResolverTests.swift */,
 				AA00000000000000000000B2 /* CutPayloadTests.swift */,
 				AA00000000000000000000B3 /* FileMovePlannerTests.swift */,
@@ -732,6 +739,7 @@
 				AASETR014 /* LaunchAtLogin.swift */,
 				AAGROUPSET003 /* Panes */,
 				AASHEET1 /* CustomCompressionSheet.swift */,
+				AADLG01 /* CustomCompressionDialogWindow.swift */,
 				AAONB03 /* OnboardingView.swift */,
 			);
 			path = Settings;
@@ -1004,6 +1012,7 @@
 				ABONB04 /* OnboardingView.swift in Sources */,
 				ABONB05 /* FolderAuthorizationAction.swift in Sources */,
 				ABSHEET1 /* CustomCompressionSheet.swift in Sources */,
+				ABDLG001 /* CustomCompressionDialogWindow.swift in Sources */,
 				ABP6B01 /* ZipWriter.swift in Sources */,
 				ABP6B02 /* OOXMLDocumentFactory.swift in Sources */,
 				ABP6B03 /* DocumentTemplateCatalog.swift in Sources */,
@@ -1121,6 +1130,8 @@
 				ABFTST01 /* FinderMenuLanguage.swift in Sources */,
 				ABTSTPW01 /* ArchiveProgressWindow.swift in Sources */,
 				ABTSTPW02 /* ArchiveProgressWindowTests.swift in Sources */,
+				ABDLG002 /* CustomCompressionDialogWindow.swift in Sources */,
+				ABDLGT01 /* CustomCompressionDialogTests.swift in Sources */,
 				ABFTST02 /* FinderMenuLocalizationTests.swift in Sources */,
 				ABONB02 /* OnboardingFlow.swift in Sources */,
 				ABONB03 /* OnboardingFlowTests.swift in Sources */,

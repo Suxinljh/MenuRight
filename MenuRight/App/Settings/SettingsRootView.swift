@@ -10,14 +10,24 @@ import SwiftUI
 /// titlebar all behave the way a Mac app should.
 struct SettingsRootView: View {
     @StateObject private var store = SettingsStore.shared
+    /// 密码本: Keychain-backed, so it is injected like the settings tree but is
+    /// deliberately *not* part of it.
+    @StateObject private var passwordBook = ArchivePasswordBook.shared
     @State private var selection: SettingsCategory? = SettingsRootView.initialCategory()
     @State private var showsResetConfirmation = false
     /// Set once the guide has been finished; "Not Now" only hides it for this
     /// launch, so a still-disabled extension brings it back next time.
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
-    @StateObject private var archiveRequests = ArchiveRequestCenter.shared
+    ///
+    /// Bound to the App Group defaults rather than `UserDefaults.standard`, the
+    /// same container the settings live in; the reset below clears it too, so
+    /// 「重置全部设置」 leaves the onboarding state consistent.
+    @AppStorage("hasCompletedOnboarding", store: SettingsStore.defaultUserDefaults())
+    private var hasCompletedOnboarding = false
     @State private var showsOnboarding = false
     @State private var onboardingStep: OnboardingStep = .enableExtension
+    /// Reason the last 重启应用 could not hand over. Shown in-window: a silent
+    /// failure looks exactly like a button that does nothing.
+    @State private var restartFailure: String?
 
     /// Pane shown first. `MENURIGHT_SETTINGS_PANE` (Debug builds only) selects
     /// another pane, which is how each pane is screenshotted during manual
@@ -42,6 +52,7 @@ struct SettingsRootView: View {
         }
         .frame(minWidth: 960, minHeight: 640)
         .environmentObject(store)
+        .environmentObject(passwordBook)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -64,12 +75,10 @@ struct SettingsRootView: View {
                 .help(store.text(.commonRestartAppHint))
             }
         }
-        // P9 stage 3: a Finder "自定义压缩…" parks a request here; the sheet
-        // edits it and performs the compression. The environment (and therefore
-        // the SettingsStore) is inherited by the sheet.
-        .sheet(item: $archiveRequests.pending) { request in
-            CustomCompressionSheet(request: request, center: archiveRequests) {}
-        }
+        // P9 stage 3: a Finder "自定义压缩…" is presented by
+        // `CustomCompressionDialogWindow`, a window owned by the app process —
+        // not by this view. It has to outlive the settings window, because
+        // closing that window does not quit the app (2026-10-03).
         .sheet(isPresented: $showsOnboarding) {
             OnboardingView(
                 step: $onboardingStep,
@@ -87,9 +96,17 @@ struct SettingsRootView: View {
             Button(store.text(.commonCancel), role: .cancel) {}
             Button(store.text(.commonReset), role: .destructive) {
                 store.resetAll()
+                // 引导标记与设置同域；重置后再走一次引导才一致。
+                hasCompletedOnboarding = false
             }
         } message: {
             Text(store.text(.commonResetAllMessage))
+        }
+        // 非模态的原生 SwiftUI alert，不用 `runModal()`（仓库里明确记录过它会死锁）。
+        .alert(store.text(.commonRestartFailedTitle), isPresented: showsRestartFailure) {
+            Button(store.text(.presenterOK), role: .cancel) { restartFailure = nil }
+        } message: {
+            Text(String(format: store.text(.commonRestartFailedMessage), restartFailure ?? ""))
         }
     }
 
@@ -143,15 +160,31 @@ struct SettingsRootView: View {
                         "relaunch failed: \(String(describing: error))",
                         from: "main-app"
                     )
+                    // 用户点了「重启」却什么都没发生，必须说出来，不能只写日志。
+                    restartFailure = error?.localizedDescription ?? String(describing: error)
                     return
                 }
                 LifecycleDiagnostics.record("relaunch: handing over to a new instance", from: "main-app")
+                // The replacement is already running, so this quit is
+                // intentional — without the mark `applicationShouldTerminate`
+                // would cancel it and leave two instances competing for the
+                // IPC socket.
+                MainAppGateRegistry.gate?.quit()
                 NSApp.terminate(nil)
             }
         }
     }
 
     // MARK: - Sidebar
+
+    /// `@State String?` → the `Binding<Bool>` an `.alert` wants; dismissing the
+    /// alert also clears the stored reason.
+    private var showsRestartFailure: Binding<Bool> {
+        Binding(
+            get: { restartFailure != nil },
+            set: { if !$0 { restartFailure = nil } }
+        )
+    }
 
     private var sidebar: some View {
         VStack(spacing: 0) {
