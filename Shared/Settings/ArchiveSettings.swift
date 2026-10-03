@@ -84,6 +84,9 @@ struct ArchiveSettings: Codable, Equatable, Sendable {
     var deletesArchiveAfterExtraction: Bool
     var skipsMetadataEntries: Bool
     var sizeLimitMB: Int
+    /// 自动保存压缩时输入的加密密码. Off by default: remembering a password is a
+    /// decision the user makes, not one a compression dialog makes for them.
+    var remembersCompressionPassword: Bool
 
     static let sizeLimitRange: ClosedRange<Int> = 1...8192
     static let defaultSizeLimitMB = 1024
@@ -95,7 +98,8 @@ struct ArchiveSettings: Codable, Equatable, Sendable {
         conflictPolicy: ArchiveConflictPolicy = .keepBoth,
         deletesArchiveAfterExtraction: Bool = false,
         skipsMetadataEntries: Bool = true,
-        sizeLimitMB: Int = ArchiveSettings.defaultSizeLimitMB
+        sizeLimitMB: Int = ArchiveSettings.defaultSizeLimitMB,
+        remembersCompressionPassword: Bool = false
     ) {
         self.enabledFormats = enabledFormats
         self.destination = destination
@@ -104,6 +108,7 @@ struct ArchiveSettings: Codable, Equatable, Sendable {
         self.deletesArchiveAfterExtraction = deletesArchiveAfterExtraction
         self.skipsMetadataEntries = skipsMetadataEntries
         self.sizeLimitMB = sizeLimitMB
+        self.remembersCompressionPassword = remembersCompressionPassword
     }
 
     enum CodingKeys: String, CodingKey {
@@ -114,6 +119,7 @@ struct ArchiveSettings: Codable, Equatable, Sendable {
         case deletesArchiveAfterExtraction
         case skipsMetadataEntries
         case sizeLimitMB
+        case remembersCompressionPassword
     }
 
     init(from decoder: Decoder) throws {
@@ -129,6 +135,11 @@ struct ArchiveSettings: Codable, Equatable, Sendable {
         deletesArchiveAfterExtraction = try container.decodeOr(Bool.self, .deletesArchiveAfterExtraction, false)
         skipsMetadataEntries = try container.decodeOr(Bool.self, .skipsMetadataEntries, true)
         sizeLimitMB = try container.decodeOr(Int.self, .sizeLimitMB, ArchiveSettings.defaultSizeLimitMB)
+        remembersCompressionPassword = try container.decodeOr(
+            Bool.self,
+            .remembersCompressionPassword,
+            false
+        )
     }
 
     func normalized() -> ArchiveSettings {
@@ -204,5 +215,54 @@ extension ArchiveSettings {
         if value < sizeLimitRange.lowerBound { return .belowMinimum(stored: sizeLimitRange.lowerBound) }
         if value > sizeLimitRange.upperBound { return .aboveMaximum(stored: sizeLimitRange.upperBound) }
         return .accepted(value)
+    }
+}
+
+// MARK: - 开机自启
+
+/// The three states of the 开机自启 login item.
+///
+/// `SMAppService.Status` has a third state — `.requiresApproval`, i.e. the item
+/// is registered but the user has not allowed it in System Settings yet.
+/// Collapsing that into a `Bool` is what made the settings pane wrong: every
+/// appearance read `status == .enabled` as false and wrote "off" back into the
+/// store, so the switch could never be turned on. Keeping the states apart
+/// means "needs approval" is displayed instead of being silently downgraded.
+///
+/// Lives here (not in the app-only `LaunchAtLogin.swift`) so the mapping stays
+/// testable: the tests target compiles this file but not the app's views.
+enum LaunchAtLoginState: Equatable, Sendable {
+    case enabled
+    case disabled
+    case requiresApproval
+
+    /// The switch is only "on" when the item is registered *and* allowed.
+    /// `requiresApproval` is deliberately not folded into this.
+    var isOn: Bool { self == .enabled }
+
+    /// True while the system waits for the user to allow the item; only this
+    /// state offers the "open Login Items settings" affordance.
+    var needsApproval: Bool { self == .requiresApproval }
+}
+
+/// A `ServiceManagement`-free mirror of `SMAppService.Status`.
+///
+/// The real status is bridged into this type in `LaunchAtLogin.swift`; the
+/// interesting rule (`requiresApproval` stays `requiresApproval`) is then a
+/// pure function that can be exercised without registering anything.
+enum LaunchAtLoginSystemStatus: Equatable, Sendable {
+    case notRegistered
+    case enabled
+    case requiresApproval
+    case notFound
+}
+
+extension LaunchAtLoginState {
+    init(systemStatus: LaunchAtLoginSystemStatus) {
+        switch systemStatus {
+        case .enabled: self = .enabled
+        case .requiresApproval: self = .requiresApproval
+        case .notRegistered, .notFound: self = .disabled
+        }
     }
 }

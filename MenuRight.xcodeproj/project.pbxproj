@@ -176,6 +176,7 @@
 		ABP6B09 /* NewFileAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B04 /* NewFileAvailability.swift */; };
 		ABP6B10 /* ZipWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B05 /* ZipWriterTests.swift */; };
 		ABZCT01 /* ZipCryptoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAZCT01 /* ZipCryptoTests.swift */; };
+		ABPWBT01 /* ArchivePasswordBookTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAPWBT01 /* ArchivePasswordBookTests.swift */; };
 		ABP6B11 /* OOXMLDocumentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B06 /* OOXMLDocumentTests.swift */; };
 		ABP6B12 /* DocumentTemplateCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B07 /* DocumentTemplateCatalogTests.swift */; };
 		ABP6B13 /* NewFileAvailabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B08 /* NewFileAvailabilityTests.swift */; };
@@ -195,6 +196,7 @@
 		ABSETAPP006 /* CodeTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR006 /* CodeTheme.swift */; };
 		ABSETAPP007 /* ArchiveSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR007 /* ArchiveSettings.swift */; };
 		ABSETAPP008 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR008 /* SettingsStore.swift */; };
+		ABPWBAPP01 /* ArchivePasswordBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAPWB001 /* ArchivePasswordBook.swift */; };
 		ABSETAPP011 /* SettingsCategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR011 /* SettingsCategory.swift */; };
 		ABSETAPP012 /* SettingsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR012 /* SettingsComponents.swift */; };
 		ABSETAPP013 /* SettingsRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR013 /* SettingsRootView.swift */; };
@@ -214,6 +216,7 @@
 		ABSETTST006 /* CodeTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR006 /* CodeTheme.swift */; };
 		ABSETTST007 /* ArchiveSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR007 /* ArchiveSettings.swift */; };
 		ABSETTST008 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR008 /* SettingsStore.swift */; };
+		ABPWBTST01 /* ArchivePasswordBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAPWB001 /* ArchivePasswordBook.swift */; };
 		ABSETTST031 /* SettingsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR031 /* SettingsStoreTests.swift */; };
 		ABSETTST032 /* MenuRightSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR032 /* MenuRightSettingsTests.swift */; };
 		ABSETTST033 /* LocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASETR033 /* LocalizationTests.swift */; };
@@ -375,6 +378,7 @@
 		AAP6B04 /* NewFileAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFileAvailability.swift; sourceTree = "<group>"; };
 		AAP6B05 /* ZipWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipWriterTests.swift; sourceTree = "<group>"; };
 		AAZCT01 /* ZipCryptoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipCryptoTests.swift; sourceTree = "<group>"; };
+		AAPWBT01 /* ArchivePasswordBookTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivePasswordBookTests.swift; sourceTree = "<group>"; };
 		AAP6B06 /* OOXMLDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OOXMLDocumentTests.swift; sourceTree = "<group>"; };
 		AAP6B07 /* DocumentTemplateCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentTemplateCatalogTests.swift; sourceTree = "<group>"; };
 		AAP6B08 /* NewFileAvailabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFileAvailabilityTests.swift; sourceTree = "<group>"; };
@@ -393,6 +397,7 @@
 		AASETR006 /* CodeTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeTheme.swift; sourceTree = "<group>"; };
 		AASETR007 /* ArchiveSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveSettings.swift; sourceTree = "<group>"; };
 		AASETR008 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		AAPWB001 /* ArchivePasswordBook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivePasswordBook.swift; sourceTree = "<group>"; };
 		AASETR011 /* SettingsCategory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsCategory.swift; sourceTree = "<group>"; };
 		AASETR012 /* SettingsComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsComponents.swift; sourceTree = "<group>"; };
 		AASETR013 /* SettingsRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRootView.swift; sourceTree = "<group>"; };
@@ -593,6 +598,7 @@
 				AAONB02 /* OnboardingFlowTests.swift */,
 				AAP6B05 /* ZipWriterTests.swift */,
 				AAZCT01 /* ZipCryptoTests.swift */,
+				AAPWBT01 /* ArchivePasswordBookTests.swift */,
 				AAP6B06 /* OOXMLDocumentTests.swift */,
 				AAP6B07 /* DocumentTemplateCatalogTests.swift */,
 				AAP6B08 /* NewFileAvailabilityTests.swift */,
@@ -739,6 +745,7 @@
 				AASETR006 /* CodeTheme.swift */,
 				AASETR007 /* ArchiveSettings.swift */,
 				AASETR008 /* SettingsStore.swift */,
+				AAPWB001 /* ArchivePasswordBook.swift */,
 				AAONB01 /* OnboardingFlow.swift */,
 				AAP6B04 /* NewFileAvailability.swift */,
 			);
@@ -1014,6 +1021,7 @@
 				ABSETAPP006 /* CodeTheme.swift in Sources */,
 				ABSETAPP007 /* ArchiveSettings.swift in Sources */,
 				ABSETAPP008 /* SettingsStore.swift in Sources */,
+				ABPWBAPP01 /* ArchivePasswordBook.swift in Sources */,
 				ABSETAPP011 /* SettingsCategory.swift in Sources */,
 				ABSETAPP012 /* SettingsComponents.swift in Sources */,
 				ABSETAPP013 /* SettingsRootView.swift in Sources */,
@@ -1138,6 +1146,7 @@
 				ABSETTST006 /* CodeTheme.swift in Sources */,
 				ABSETTST007 /* ArchiveSettings.swift in Sources */,
 				ABSETTST008 /* SettingsStore.swift in Sources */,
+				ABPWBTST01 /* ArchivePasswordBook.swift in Sources */,
 				ABSETTST031 /* SettingsStoreTests.swift in Sources */,
 				ABSETTST032 /* MenuRightSettingsTests.swift in Sources */,
 				ABSETTST033 /* LocalizationTests.swift in Sources */,
@@ -1163,6 +1172,7 @@
 				ABP6B08 /* NewFileAvailability.swift in Sources */,
 				ABP6B10 /* ZipWriterTests.swift in Sources */,
 				ABZCT01 /* ZipCryptoTests.swift in Sources */,
+				ABPWBT01 /* ArchivePasswordBookTests.swift in Sources */,
 				ABP6B11 /* OOXMLDocumentTests.swift in Sources */,
 				ABP6B12 /* DocumentTemplateCatalogTests.swift in Sources */,
 				ABP6B13 /* NewFileAvailabilityTests.swift in Sources */,
