@@ -1,8 +1,6 @@
 import Foundation
 import os
 
-private let bookmarkDiag = Logger(subsystem: "xin.ljhsu.MenuRight", category: "bookmark-diag")
-
 enum FolderAuthorizationError: Equatable, Error {
     /// No authorized folder covers the requested URL (known before any write).
     case authorizationRequired(URL)
@@ -27,42 +25,14 @@ struct ScopedAccessConfiguration: @unchecked Sendable {
     var makeFreshBookmark: (URL) throws -> Data
 
     static let system = ScopedAccessConfiguration(
+        // `SecurityScopedBookmark.resolve` is the single place that dumps the
+        // full NSError for a failed bookmark (this used to carry a second,
+        // divergent copy of that dump); failures here stay invisible otherwise.
         resolveBookmark: { data in
-            var isStale = false
-            do {
-                let url = try URL(
-                    resolvingBookmarkData: data,
-                    options: [.withSecurityScope],
-                    relativeTo: nil,
-                    bookmarkDataIsStale: &isStale
-                )
-                return (url, isStale)
-            } catch {
-                let nsError = error as NSError
-                bookmarkDiag.log("BOOKMARK resolve(withSecurityScope) FAILED outer domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) desc=\(nsError.localizedDescription, privacy: .public)")
-                var uiPairs: [String] = []
-                for (k, v) in nsError.userInfo {
-                    uiPairs.append(String(describing: k) + "=" + String(describing: v))
-                }
-                let uiJoined: String = uiPairs.joined(separator: " | ")
-                bookmarkDiag.log("BOOKMARK userInfo=[\(uiJoined, privacy: .public)]")
-                if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
-                    var uPairs: [String] = []
-                    for (k, v) in underlying.userInfo {
-                        uPairs.append(String(describing: k) + "=" + String(describing: v))
-                    }
-                    let uJoined: String = uPairs.joined(separator: " | ")
-                    bookmarkDiag.log("BOOKMARK underlying domain=\(underlying.domain, privacy: .public) code=\(underlying.code, privacy: .public) desc=\(underlying.localizedDescription, privacy: .public) userInfo=[\(uJoined, privacy: .public)]")
-                } else {
-                    bookmarkDiag.log("BOOKMARK underlying: none")
-                }
-                var plainIsStale = false
-                do {
-                    _ = try URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &plainIsStale)
-                    bookmarkDiag.log("BOOKMARK resolve(plain, no security scope) SUCCEEDED — bookmark data is valid; .withSecurityScope path is rejected for this process")
-                } catch let plainError as NSError {
-                    bookmarkDiag.log("BOOKMARK resolve(plain) FAILED domain=\(plainError.domain, privacy: .public) code=\(plainError.code, privacy: .public) desc=\(plainError.localizedDescription, privacy: .public)")
-                }
+            switch SecurityScopedBookmark.resolve(data) {
+            case .success(let resolved):
+                return (url: resolved.url, isStale: resolved.isStale)
+            case .failure(let error):
                 throw error
             }
         },
@@ -82,7 +52,9 @@ struct ScopedAccessConfiguration: @unchecked Sendable {
 /// ancestor of a target URL. start/stop are always balanced (defer) — scoped
 /// resource handles are never leaked.
 enum FolderAuthorizationAccess {
-    /// TEMPORARY DIAGNOSTICS: underlying-error detail for resolve/start failures.
+    /// Why a resolve/start step failed, next to the user-facing error. Kept on
+    /// purpose: a bookmark that will not resolve is otherwise indistinguishable
+    /// from one that was never authorized.
     private static let diag = Logger(subsystem: "xin.ljhsu.MenuRight", category: "finder-sync-lifecycle")
 
     /// Resolves one authorized folder's bookmark and takes scoped access,
@@ -147,12 +119,16 @@ enum FolderAuthorizationAccess {
     /// authoritative capability. Matching only pre-filters; if the resolved root
     /// does not actually contain the target, refuse rather than operate on a
     /// path we cannot prove is authorized.
+    ///
+    /// The comparison follows the volume's case rule (`containsOnDisk`): on the
+    /// APFS default `/x/downloads/a` really is inside `/x/Downloads`, and
+    /// refusing it would break the operation for anyone whose spelling differs.
     private static func authorizeResolvedRoot(
         _ resolvedURL: URL,
         targetURL: URL,
         metadataRoot: String
     ) throws {
-        guard AuthorizedURLResolver.contains(resolvedURL, targetURL) else {
+        guard AuthorizedURLResolver.containsOnDisk(resolvedURL, targetURL) else {
             Self.diag.log("AUTHORIZATION resolvedRootDoesNotContainTarget target=\(targetURL.path, privacy: .public) resolvedRoot=\(resolvedURL.path, privacy: .public) metadataRoot=\(metadataRoot, privacy: .public)")
             throw FolderAuthorizationError.authorizationRequired(targetURL)
         }

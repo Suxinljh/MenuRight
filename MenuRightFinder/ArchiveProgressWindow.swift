@@ -100,8 +100,11 @@ final class ArchiveProgressWindow {
         content.addSubview(cancelButton)
 
         // Enter pauses and Escape cancels: the two things a user reaches for
-        // without aiming.
-        pauseButton.keyEquivalent = ""
+        // without aiming. The window has no `.closable` and no other button, so
+        // Return can only mean "pause" — nothing else claims the key, and "pause"
+        // is safer than "cancel" for an accidental Return on a long archive.
+        // (Escape stays cancel, the macOS convention for stopping an operation.)
+        pauseButton.keyEquivalent = "\r"
         cancelButton.keyEquivalent = "\u{1b}"
     }
 

@@ -1,4 +1,5 @@
 import XCTest
+import Darwin
 
 /// Static assertions about the designated requirements used on both sides of the
 /// IPC channel (M2). A requirement that is not team-bound is exactly the defect
@@ -73,5 +74,112 @@ final class PeerIdentityTests: XCTestCase {
         guard case .rejected = PeerIdentity.verify(fd: -1) else {
             return XCTFail("verification of an invalid fd must be rejected")
         }
+    }
+
+    // MARK: - Path-only fallback decision (the sandbox downgrade, item 1)
+    //
+    // Driven through `executablePathOnlyDecision` rather than a real peer: the
+    // appex sandbox makes the code-signing APIs unavailable here (OSStatus
+    // 100001), so the decision logic is the only part a CI box can pin. The uid
+    // and gid are injected so the test does not depend on who runs it.
+
+    private let uid = geteuid()
+    private let gid = getegid()
+
+    func testPathOnlyDecisionAcceptsExactPathWithMatchingCredentials() {
+        let decision = PeerIdentity.executablePathOnlyDecision(
+            peerExecutablePath: "/Applications/MenuRight.app/Contents/MacOS/MenuRight",
+            expectedExecutablePath: "/Applications/MenuRight.app/Contents/MacOS/MenuRight",
+            peerUID: uid,
+            peerGID: gid,
+            currentUID: uid,
+            currentGID: gid
+        )
+        XCTAssertEqual(decision, .accept)
+    }
+
+    func testPathOnlyDecisionRejectsADifferentPathEvenWithSameCredentials() {
+        // Same shape, same uid: only the path differs. This is the impostor the
+        // fallback must still refuse.
+        let decision = PeerIdentity.executablePathOnlyDecision(
+            peerExecutablePath: "/tmp/evil/MenuRight.app/Contents/MacOS/MenuRight",
+            expectedExecutablePath: "/Applications/MenuRight.app/Contents/MacOS/MenuRight",
+            peerUID: uid,
+            peerGID: gid,
+            currentUID: uid,
+            currentGID: gid
+        )
+        XCTAssertEqual(
+            decision,
+            .rejectPathMismatch(
+                got: "/tmp/evil/MenuRight.app/Contents/MacOS/MenuRight",
+                expected: "/Applications/MenuRight.app/Contents/MacOS/MenuRight"
+            )
+        )
+    }
+
+    func testPathOnlyDecisionRejectsAUidOrGidMismatchOnTheSamePath() {
+        let path = "/Applications/MenuRight.app/Contents/MacOS/MenuRight"
+        let badUID = uid &+ 1
+        XCTAssertEqual(
+            PeerIdentity.executablePathOnlyDecision(
+                peerExecutablePath: path, expectedExecutablePath: path,
+                peerUID: badUID, peerGID: gid, currentUID: uid, currentGID: gid
+            ),
+            .rejectUIDMismatch(got: badUID, expected: uid)
+        )
+        let badGID = gid &+ 1
+        XCTAssertEqual(
+            PeerIdentity.executablePathOnlyDecision(
+                peerExecutablePath: path, expectedExecutablePath: path,
+                peerUID: uid, peerGID: badGID, currentUID: uid, currentGID: gid
+            ),
+            .rejectGIDMismatch(got: badGID, expected: gid)
+        )
+    }
+
+    func testPathOnlyDecisionNormalizesSymlinksAndDotDotBeforeComparing() throws {
+        // A real directory plus a symlink to it, so `resolvingSymlinksInPath`
+        // has something to resolve (the string-only `..` case is covered by
+        // `testExecutablePathComparisonIsStandardizedAndExact`).
+        let dir = URL(fileURLWithPath: "/tmp", isDirectory: true)
+            .appendingPathComponent("mr-peer-\(UUID().uuidString.prefix(8))", isDirectory: true)
+        let real = dir.appendingPathComponent("real", isDirectory: true)
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let tool = real.appendingPathComponent("MenuRight")
+        FileManager.default.createFile(atPath: tool.path, contents: Data("x".utf8))
+
+        let link = dir.appendingPathComponent("link", isDirectory: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+
+        let decision = PeerIdentity.executablePathOnlyDecision(
+            peerExecutablePath: link.appendingPathComponent("MenuRight").path,
+            expectedExecutablePath: real.appendingPathComponent("MenuRight").path,
+            peerUID: uid,
+            peerGID: gid,
+            currentUID: uid,
+            currentGID: gid
+        )
+        XCTAssertEqual(decision, .accept, "a symlinked path to the same binary must normalize to a match")
+
+        // And a `..` variant of the same path.
+        let dotted = real.appendingPathComponent("../real/MenuRight").path
+        XCTAssertEqual(
+            PeerIdentity.executablePathOnlyDecision(
+                peerExecutablePath: dotted,
+                expectedExecutablePath: tool.path,
+                peerUID: uid, peerGID: gid, currentUID: uid, currentGID: gid
+            ),
+            .accept
+        )
+    }
+
+    func testVerificationLevelRawValuesAreStable() {
+        // The raw values reach the log line and the extension's branch, so they
+        // are part of the diagnosis contract.
+        XCTAssertEqual(PeerIdentity.VerificationLevel.codeSignature.rawValue, "codeSignature")
+        XCTAssertEqual(PeerIdentity.VerificationLevel.executablePathOnly.rawValue, "executablePathOnly")
+        XCTAssertNotEqual(PeerIdentity.VerificationLevel.codeSignature, PeerIdentity.VerificationLevel.executablePathOnly)
     }
 }

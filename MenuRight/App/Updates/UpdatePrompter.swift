@@ -30,7 +30,7 @@ enum UpdatePrompter {
         if !notes.isEmpty { details.append(notes) }
         alert.informativeText = details.joined(separator: "\n\n")
 
-        alert.addButton(withTitle: Localization.text(.generalUpdateDownload, language: language))
+        alert.addButton(withTitle: Localization.text(.generalUpdateOpenReleasePage, language: language))
         alert.addButton(withTitle: Localization.text(.generalUpdateSkip, language: language))
         alert.addButton(withTitle: Localization.text(.commonCancel, language: language))
 

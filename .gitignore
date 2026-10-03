@@ -25,5 +25,7 @@ xcuserdata/
 menuright-font.svg
 menuright-logo.svg
 top-bar-logo.svg
-MenuRight 功能规划v2.md
-MenuRight 验证手册.md
+# `MenuRight 功能规划v2.md` and `MenuRight 验证手册.md` are deliberately NOT
+# listed: they are the project's planning and verification records, git already
+# tracks both, and an ignore entry for a tracked file changes nothing while
+# making this file disagree with reality.

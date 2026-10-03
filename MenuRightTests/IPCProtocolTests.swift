@@ -76,4 +76,41 @@ final class IPCProtocolTests: XCTestCase {
         XCTAssertNil(IPCProtocol.decode(IPCProtocol.Request.self, from: Data("not json".utf8)))
         XCTAssertNil(IPCProtocol.decode(IPCProtocol.Request.self, from: Data()))
     }
+
+    // MARK: - Wire-version gate (item 5)
+
+    func testEveryConstructorWritesTheCurrentVersion() {
+        // Guards the other half of the version gate: if a constructor stopped
+        // writing `currentVersion`, this side would reject its own traffic.
+        XCTAssertEqual(IPCProtocol.currentVersion, 1, "bumping the wire version is deliberate, not a silent change")
+        XCTAssertEqual(IPCProtocol.Request(method: "ping").version, IPCProtocol.currentVersion)
+        XCTAssertEqual(IPCProtocol.Response.ok(id: "1", result: "pong").version, IPCProtocol.currentVersion)
+        XCTAssertEqual(IPCProtocol.Response.fail(id: "1", error: "e").version, IPCProtocol.currentVersion)
+        XCTAssertEqual(IPCProtocol.Response.progress(id: "1", fraction: 0.5).version, IPCProtocol.currentVersion)
+    }
+
+    func testRequestFromAnotherVersionIsRejected() throws {
+        // Hand-built JSON: the decoded value must carry version 2 so `decode`
+        // sees the mismatch. A request from an incompatible peer is not
+        // interpretable and must not be handed to the dispatcher.
+        let foreign = Data(#"{"version":2,"id":"x","method":"ping"}"#.utf8)
+        XCTAssertNil(IPCProtocol.decode(IPCProtocol.Request.self, from: foreign))
+        // The same shape at the current version still decodes.
+        let current = Data(#"{"version":1,"id":"x","method":"ping"}"#.utf8)
+        XCTAssertEqual(IPCProtocol.decode(IPCProtocol.Request.self, from: current)?.method, "ping")
+    }
+
+    func testResponseFromAnotherVersionIsRejected() {
+        let foreign = Data(#"{"version":3,"id":"x","result":"pong"}"#.utf8)
+        XCTAssertNil(IPCProtocol.decode(IPCProtocol.Response.self, from: foreign))
+        let current = Data(#"{"version":1,"id":"x","result":"pong"}"#.utf8)
+        XCTAssertEqual(IPCProtocol.decode(IPCProtocol.Response.self, from: current)?.result, "pong")
+    }
+
+    func testVersionMismatchMessageNamesBothVersions() {
+        let message = IPCProtocol.versionMismatchMessage(received: 2, expected: 1)
+        XCTAssertTrue(message.contains("2"), "must name the peer's version: \(message)")
+        XCTAssertTrue(message.contains("1"), "must name this build's version: \(message)")
+        XCTAssertTrue(message.lowercased().contains("version"))
+    }
 }

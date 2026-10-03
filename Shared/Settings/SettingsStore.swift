@@ -7,12 +7,15 @@ import Combine
 /// that carries authorized folders and the IPC socket), so the Finder extension
 /// can read the same payload later without a second storage location.
 ///
-/// Threading contract: `settings` is a main-thread value. `mutate(_:)` applies
-/// changes synchronously when called on the main thread (the normal path from
-/// SwiftUI) and hops to the main thread otherwise, so a call from a background
-/// context can never publish a half-applied state. `@unchecked Sendable` is the
-/// same trade-off `IPCStatusCenter` already makes: the mutation is funnelled to
-/// one thread rather than protected by a lock.
+/// Threading contract: the tree is read from **any** thread and written from the
+/// main thread. `mutate(_:)` applies changes synchronously when called on the
+/// main thread (the normal path from SwiftUI) and hops to the main thread
+/// otherwise. The whole value lives behind a lock, so a reader on the IPC
+/// connection queue (the dispatcher's settings closures) can never observe a
+/// half-replaced tree; `objectWillChange` is sent by hand, because `@Published`
+/// publishes a *willSet* that a lock-protected read would no longer be able to
+/// keep in step. `@unchecked Sendable` alone would only have silenced the
+/// diagnostic, not removed the race.
 ///
 /// A corrupt payload loads as defaults: the app must always be able to open its
 /// settings window and rewrite the value.
@@ -20,13 +23,26 @@ final class SettingsStore: ObservableObject, @unchecked Sendable {
     static let storageKey = MenuRightAppGroup.settingsStorageKey
 
     /// Posted (on the main thread) after a change is applied and persisted, so
-    /// a future extension-side cache can invalidate itself.
+    /// the app can republish derived state (see `MenuRightApp`) and a future
+    /// extension-side cache can invalidate itself.
     static let didChangeNotification = Notification.Name("xin.ljhsu.MenuRight.settingsDidChange")
 
     /// Process-wide store used by the app UI.
     static let shared = SettingsStore(defaults: SettingsStore.defaultUserDefaults())
 
-    @Published private(set) var settings: MenuRightSettings
+    /// Manual publisher: every mutation of `storage` goes through `apply`, which
+    /// sends this first so SwiftUI re-reads the store.
+    let objectWillChange = ObservableObjectPublisher()
+
+    private let lock = NSLock()
+    private var storage: MenuRightSettings
+
+    /// The current tree. Safe to call from any thread.
+    var settings: MenuRightSettings {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
 
     private let defaults: UserDefaults
     private let storageKey: String
@@ -41,7 +57,7 @@ final class SettingsStore: ObservableObject, @unchecked Sendable {
     init(defaults: UserDefaults, storageKey: String = SettingsStore.storageKey) {
         self.defaults = defaults
         self.storageKey = storageKey
-        self.settings = SettingsStore.read(from: defaults, storageKey: storageKey)
+        self.storage = SettingsStore.read(from: defaults, storageKey: storageKey)
     }
 
     /// Reads and repairs a persisted payload. Never throws: any failure means
@@ -71,12 +87,17 @@ final class SettingsStore: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// Main thread only: both `objectWillChange` and the change notification are
+    /// consumed on the main thread, and `mutate` is what funnels callers here.
     private func apply(_ body: (inout MenuRightSettings) -> Void) {
         var copy = settings
         body(&copy)
         copy = copy.normalized()
         guard copy != settings else { return }
-        settings = copy
+        objectWillChange.send()
+        lock.lock()
+        storage = copy
+        lock.unlock()
         persist(copy)
         NotificationCenter.default.post(name: SettingsStore.didChangeNotification, object: self)
     }
@@ -88,10 +109,27 @@ final class SettingsStore: ObservableObject, @unchecked Sendable {
     }
 
     /// Re-reads the persisted payload, e.g. after another process wrote it.
+    ///
+    /// Behaves like a mutation for observers — main thread, `objectWillChange`,
+    /// and the change notification — because a value that changed on disk is a
+    /// value the UI has to redraw. It does **not** write back: reading must not
+    /// modify what is stored.
     func reload() {
-        let loaded = SettingsStore.read(from: defaults, storageKey: storageKey)
-        guard loaded != settings else { return }
-        settings = loaded
+        let performReload = { [weak self] in
+            guard let self else { return }
+            let loaded = SettingsStore.read(from: self.defaults, storageKey: self.storageKey)
+            guard loaded != self.settings else { return }
+            self.objectWillChange.send()
+            self.lock.lock()
+            self.storage = loaded
+            self.lock.unlock()
+            NotificationCenter.default.post(name: SettingsStore.didChangeNotification, object: self)
+        }
+        if Thread.isMainThread {
+            performReload()
+        } else {
+            DispatchQueue.main.async(execute: performReload)
+        }
     }
 
     private func persist(_ value: MenuRightSettings) {

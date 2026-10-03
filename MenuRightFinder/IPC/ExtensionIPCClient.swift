@@ -20,9 +20,12 @@ import os
 /// get `MenuRightIPC.fileOperationTimeoutSeconds` instead. A deadline that
 /// passes there means "still running", never "the app is gone" — a distinction
 /// this type used to lose, and which the UI then reported as the wrong thing.
-/// Callers must still invoke these off the main thread — `FinderSync` does so
-/// through its own serial queue — and must return to the main queue before
-/// presenting any alert.
+/// Because *every* progress frame restarts that per-frame deadline, a request
+/// additionally carries an overall wall-clock cap (`overallDeadlineSeconds`):
+/// without it a peer could stream progress forever and never let the extension
+/// return. Callers must still invoke these off the main thread — `FinderSync`
+/// does so through its own serial queue — and must return to the main queue
+/// before presenting any alert.
 ///
 /// **Peer verification (H2)**: a same-user process can unlink the App-Group
 /// socket file and bind its own path. Immediately after `connect()` we verify
@@ -89,6 +92,19 @@ final class ExtensionIPCClient {
     /// Connect timeout and per-frame deadline shared by all calls.
     private static let connectTimeoutSeconds: timeval = timeval(tv_sec: 2, tv_usec: 0)
 
+    /// Absolute wall-clock cap for one `fileOperation` exchange, progress
+    /// frames included.
+    ///
+    /// The per-frame `readTimeout` only catches a peer that goes *silent*: a
+    /// live peer that keeps streaming `progress` frames resets it forever, so a
+    /// stuck or hostile main app could hold a Finder Sync call open
+    /// indefinitely. 3 × the frame budget (30 min) is far beyond any real
+    /// archive — the frame budget alone already tolerates ten minutes of total
+    /// silence — yet finite, so the extension always returns to Finder. It is
+    /// deliberately larger than the frame budget so ordinary long operations
+    /// still end via the normal "still running" path, not this cap.
+    private static let overallDeadlineSeconds: TimeInterval = MenuRightIPC.fileOperationTimeoutSeconds * 3
+
     // MARK: - Public API
 
     /// P5-0.6 ping.
@@ -123,6 +139,9 @@ final class ExtensionIPCClient {
             // File work is answered only when it is done, so it gets the long
             // budget rather than the 5 s frame default (see the constant).
             readTimeout: MenuRightIPC.fileOperationTimeoutSeconds,
+            // …and an absolute cap, so continuous progress frames cannot extend
+            // the wait forever (see `overallDeadlineSeconds`).
+            overallDeadline: Self.overallDeadlineSeconds,
             onTimeout: {
                 Self.log.notice("FINDER-IPC file operation still running after \(MenuRightIPC.fileOperationTimeoutSeconds, privacy: .public)s")
                 LifecycleDiagnostics.record("file operation still running after \(Int(MenuRightIPC.fileOperationTimeoutSeconds))s", from: "finder-sync")
@@ -168,11 +187,16 @@ final class ExtensionIPCClient {
 
     /// Generic send/recv for one request/response pair. Returns
     /// `(success: result, failure: error)` from the IPC envelope.
+    /// - Parameter overallDeadline: absolute wall-clock cap for the whole read
+    ///   loop, progress frames included. Defaults to `readTimeout` because a
+    ///   single-frame exchange has no loop to bound; the streaming file
+    ///   operation passes its own, longer value.
     private static func sendRequest<T>(
         method: String,
         payload: String?,
         socketURL: URL?,
         readTimeout: TimeInterval = UnixSocketTransport.defaultTimeoutSeconds,
+        overallDeadline: TimeInterval = UnixSocketTransport.defaultTimeoutSeconds,
         onTimeout: (() -> T)? = nil,
         onProgress: ((Double) -> Void)? = nil,
         interpret: (_ result: String?, _ error: String?) -> T
@@ -206,8 +230,17 @@ final class ExtensionIPCClient {
             LifecycleDiagnostics.record("extension: peer REJECTED \(reason)", from: "finder-sync")
             return interpret(nil, "peer verification failed")
         case .verified(let peer):
-            Self.log.info("FINDER-IPC peer OK pid=\(peer.pid) bundleId=\(peer.bundleIdentifier, privacy: .public) team=\(peer.teamIdentifier, privacy: .public)")
-            LifecycleDiagnostics.record("extension: peer verified pid=\(peer.pid)", from: "finder-sync")
+            Self.log.info("FINDER-IPC peer OK pid=\(peer.pid) bundleId=\(peer.bundleIdentifier, privacy: .public) team=\(peer.teamIdentifier, privacy: .public) level=\(peer.verificationLevel.rawValue, privacy: .public)")
+            if peer.verificationLevel == .executablePathOnly {
+                // Deliberate, bounded downgrade: the appex sandbox denies the
+                // code-signing APIs (measured OSStatus 100001), so this is the
+                // strongest check available here, not a silent skip. Limits are
+                // documented on PeerIdentity.VerificationLevel.
+                Self.log.notice("FINDER-IPC peer accepted on executable path only (no signature/team check possible in the appex sandbox); path is exact and same-uid")
+                LifecycleDiagnostics.record("extension: peer verified by executable path only (sandbox denies code-signing APIs)", from: "finder-sync")
+            } else {
+                LifecycleDiagnostics.record("extension: peer verified pid=\(peer.pid)", from: "finder-sync")
+            }
         }
 
         let req = IPCProtocol.Request(method: method, payload: payload)
@@ -223,38 +256,56 @@ final class ExtensionIPCClient {
 
         // Frames keep arriving until the answer does: one carrying `progress` is
         // an interim status ping from a long operation (compression), anything
-        // else is the reply. Each read gets the full budget again — the point of
-        // the loop is that a *working* peer is never mistaken for a dead one.
+        // else is the reply. Each read gets the full per-frame budget again —
+        // the point of the loop is that a *working* peer is never mistaken for a
+        // dead one. `overallDeadline` still caps the whole loop, so a peer that
+        // only ever sends progress cannot keep us here forever.
+        let readLoopStart = Date()
         while true {
-        switch UnixSocketTransport.readFrameResult(conn.fd, timeout: readTimeout) {
-        case .frame(let respData):
-            guard let resp = IPCProtocol.decode(IPCProtocol.Response.self, from: respData) else {
-                Self.log.notice("FINDER-IPC decode failed")
-                LifecycleDiagnostics.record("extension: decode failed", from: "finder-sync")
-                return interpret(nil, "decode failed")
+            let elapsed = Date().timeIntervalSince(readLoopStart)
+            guard let frameTimeout = UnixSocketTransport.nextFrameTimeout(
+                readTimeout: readTimeout, overallDeadline: overallDeadline, elapsed: elapsed
+            ) else {
+                Self.log.notice("FINDER-IPC overall deadline \(overallDeadline, privacy: .public)s exceeded; giving up on a peer that kept streaming progress")
+                LifecycleDiagnostics.record("extension: overall deadline \(Int(overallDeadline))s exceeded", from: "finder-sync")
+                return interpret(nil, "overall deadline exceeded")
             }
-            if let fraction = resp.progress {
-                onProgress?(fraction)
-                continue
+            switch UnixSocketTransport.readFrameResult(conn.fd, timeout: frameTimeout) {
+            case .frame(let respData):
+                guard let resp = IPCProtocol.decode(IPCProtocol.Response.self, from: respData) else {
+                    Self.log.notice("FINDER-IPC decode failed")
+                    LifecycleDiagnostics.record("extension: decode failed", from: "finder-sync")
+                    return interpret(nil, "decode failed")
+                }
+                if let fraction = resp.progress {
+                    onProgress?(fraction)
+                    continue
+                }
+                if let err = resp.error {
+                    return interpret(nil, err)
+                }
+                guard let result = resp.result else {
+                    return interpret(nil, "empty result")
+                }
+                return interpret(result, nil)
+            case .timedOut:
+                // Distinguish "spent the overall cap" from the ordinary per-frame
+                // deadline: only the latter means "still running".
+                if Date().timeIntervalSince(readLoopStart) >= overallDeadline {
+                    Self.log.notice("FINDER-IPC overall deadline \(overallDeadline, privacy: .public)s exceeded")
+                    LifecycleDiagnostics.record("extension: overall deadline \(Int(overallDeadline))s exceeded", from: "finder-sync")
+                    return interpret(nil, "overall deadline exceeded")
+                }
+                // The deadline is ours, not the peer's failure: say so, and let the
+                // caller decide what a still-running operation means for its UI.
+                Self.log.notice("FINDER-IPC read timed out after \(readTimeout, privacy: .public)s")
+                LifecycleDiagnostics.record("extension: read timed out after \(Int(readTimeout))s", from: "finder-sync")
+                return onTimeout?() ?? interpret(nil, "timed out")
+            case .closed, .failed:
+                Self.log.notice("FINDER-IPC read failed")
+                LifecycleDiagnostics.record("extension: read failed", from: "finder-sync")
+                return interpret(nil, "read failed")
             }
-            if let err = resp.error {
-                return interpret(nil, err)
-            }
-            guard let result = resp.result else {
-                return interpret(nil, "empty result")
-            }
-            return interpret(result, nil)
-        case .timedOut:
-            // The deadline is ours, not the peer's failure: say so, and let the
-            // caller decide what a still-running operation means for its UI.
-            Self.log.notice("FINDER-IPC read timed out after \(readTimeout, privacy: .public)s")
-            LifecycleDiagnostics.record("extension: read timed out after \(Int(readTimeout))s", from: "finder-sync")
-            return onTimeout?() ?? interpret(nil, "timed out")
-        case .closed, .failed:
-            Self.log.notice("FINDER-IPC read failed")
-            LifecycleDiagnostics.record("extension: read failed", from: "finder-sync")
-            return interpret(nil, "read failed")
-        }
         }
     }
 

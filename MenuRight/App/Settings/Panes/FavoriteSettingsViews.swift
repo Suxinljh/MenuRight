@@ -42,11 +42,20 @@ struct FavoriteFoldersSettingsView: View {
                             revealHelp: store.text(.commonRevealInFinder),
                             removeHelp: store.text(.commonRemove),
                             onReveal: { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: folder.path)]) },
+                            moveUpHelp: store.text(.commonMoveUp),
+                            moveDownHelp: store.text(.commonMoveDown),
+                            canMoveUp: folder.id != folders.first?.id,
+                            canMoveDown: folder.id != folders.last?.id,
+                            onMoveUp: { move(folder.id, by: -1) },
+                            onMoveDown: { move(folder.id, by: 1) },
                             onRemove: { remove(folder.id) }
                         )
                         if folder.id != folders.last?.id {
                             SettingsRowDivider()
                         }
+                    }
+                    .onMove { source, destination in
+                        store.mutate { $0.favoriteFolders.moveFavorites(fromOffsets: source, toOffset: destination) }
                     }
                 }
                 SettingsRowDivider()
@@ -101,6 +110,15 @@ struct FavoriteFoldersSettingsView: View {
         FavoriteIconProvider.delete(fileName: iconFile)
         icons[id] = nil
         check()
+    }
+
+    /// 上移/下移：走 SettingsStore 的写入口，再交给 `FavoriteEntry` 里那套已有
+    /// 测试覆盖的 `moveFavorite(from:by:)`（越界时它是 no-op）。
+    private func move(_ id: UUID, by offset: Int) {
+        store.mutate { settings in
+            guard let index = settings.favoriteFolders.firstIndex(where: { $0.id == id }) else { return }
+            settings.favoriteFolders.moveFavorite(from: index, by: offset)
+        }
     }
 
     /// Renders each row's real folder icon into the App Group so the Finder
@@ -176,11 +194,20 @@ struct FavoriteAppsSettingsView: View {
                             revealHelp: store.text(.commonRevealInFinder),
                             removeHelp: store.text(.commonRemove),
                             onReveal: { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: app.path)]) },
+                            moveUpHelp: store.text(.commonMoveUp),
+                            moveDownHelp: store.text(.commonMoveDown),
+                            canMoveUp: app.id != apps.first?.id,
+                            canMoveDown: app.id != apps.last?.id,
+                            onMoveUp: { move(app.id, by: -1) },
+                            onMoveDown: { move(app.id, by: 1) },
                             onRemove: { remove(app.id) }
                         )
                         if app.id != apps.last?.id {
                             SettingsRowDivider()
                         }
+                    }
+                    .onMove { source, destination in
+                        store.mutate { $0.favoriteApps.moveFavorites(fromOffsets: source, toOffset: destination) }
                     }
                 }
                 SettingsRowDivider()
@@ -243,6 +270,14 @@ struct FavoriteAppsSettingsView: View {
         FavoriteIconProvider.delete(fileName: iconFile)
         icons[id] = nil
         check()
+    }
+
+    /// 上移/下移，语义同收藏文件夹。
+    private func move(_ id: UUID, by offset: Int) {
+        store.mutate { settings in
+            guard let index = settings.favoriteApps.firstIndex(where: { $0.id == id }) else { return }
+            settings.favoriteApps.moveFavorite(from: index, by: offset)
+        }
     }
 
     /// Existence and icons are resolved off the render path: menu building must
@@ -318,11 +353,20 @@ struct FavoriteWebsitesSettingsView: View {
                             removeHelp: store.text(.commonRemove),
                             onEdit: { editor = .edit(website) },
                             onReveal: nil,
+                            moveUpHelp: store.text(.commonMoveUp),
+                            moveDownHelp: store.text(.commonMoveDown),
+                            canMoveUp: website.id != websites.first?.id,
+                            canMoveDown: website.id != websites.last?.id,
+                            onMoveUp: { move(website.id, by: -1) },
+                            onMoveDown: { move(website.id, by: 1) },
                             onRemove: { remove(website.id) }
                         )
                         if website.id != websites.last?.id {
                             SettingsRowDivider()
                         }
+                    }
+                    .onMove { source, destination in
+                        store.mutate { $0.favoriteWebsites.moveFavorites(fromOffsets: source, toOffset: destination) }
                     }
                 }
                 SettingsRowDivider()
@@ -376,6 +420,14 @@ struct FavoriteWebsitesSettingsView: View {
         FavoriteIconProvider.delete(fileName: iconFile)
         icons[id] = nil
         check()
+    }
+
+    /// 上移/下移，语义同收藏文件夹。
+    private func move(_ id: UUID, by offset: Int) {
+        store.mutate { settings in
+            guard let index = settings.favoriteWebsites.firstIndex(where: { $0.id == id }) else { return }
+            settings.favoriteWebsites.moveFavorite(from: index, by: offset)
+        }
     }
 
     private func check() {
@@ -436,6 +488,14 @@ struct FavoriteRowView: View {
     let removeHelp: String
     var onEdit: (() -> Void)?
     var onReveal: (() -> Void)?
+    /// 排序。macOS 的设置卡片不是 `List`，`.onMove` 的拖动在卡片里不生效，所以每
+    /// 行额外提供上移/下移；`.onMove` 也接在 ForEach 上，列表化后即可拖动排序。
+    var moveUpHelp: String?
+    var moveDownHelp: String?
+    var canMoveUp = true
+    var canMoveDown = true
+    var onMoveUp: (() -> Void)?
+    var onMoveDown: (() -> Void)?
     let onRemove: () -> Void
 
     var body: some View {
@@ -470,6 +530,22 @@ struct FavoriteRowView: View {
                 }
                 .buttonStyle(.borderless)
                 .help(revealHelp)
+            }
+            if let onMoveUp, let onMoveDown {
+                VStack(spacing: -2) {
+                    Button(action: onMoveUp) {
+                        Image(systemName: "chevron.up")
+                    }
+                    .disabled(!canMoveUp)
+                    .help(moveUpHelp ?? "")
+                    Button(action: onMoveDown) {
+                        Image(systemName: "chevron.down")
+                    }
+                    .disabled(!canMoveDown)
+                    .help(moveDownHelp ?? "")
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.mini)
             }
             Button(action: onRemove) {
                 Image(systemName: "minus.circle")

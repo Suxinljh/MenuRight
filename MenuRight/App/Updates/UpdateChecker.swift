@@ -15,7 +15,15 @@ final class UpdateChecker: ObservableObject {
     /// `GET /repos/{owner}/{repo}/releases/latest`. The repository is public, so
     /// no token is needed; unauthenticated GitHub allows 60 requests per hour and
     /// the automatic check is throttled to one per day.
-    static let releasesEndpoint = URL(string: "https://api.github.com/repos/Suxinljh/MenuRight/releases/latest")!
+    ///
+    /// A compile-time constant, resolved once: the `guard` states that intent
+    /// without sprinkling a force-unwrap through the networking code.
+    static let releasesEndpoint: URL = {
+        guard let url = URL(string: "https://api.github.com/repos/Suxinljh/MenuRight/releases/latest") else {
+            preconditionFailure("the GitHub releases endpoint must be a valid URL")
+        }
+        return url
+    }()
 
     enum State: Equatable {
         case idle
@@ -47,13 +55,6 @@ final class UpdateChecker: ObservableObject {
     nonisolated static func bundleVersion(bundle: Bundle = .main) -> String {
         bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     }
-
-    nonisolated static func bundleBuild(bundle: Bundle = .main) -> String {
-        bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
-    }
-
-    /// The version this build reports, e.g. "1.0".
-    var runningVersion: String { currentVersion }
 
     // MARK: - Checking
 

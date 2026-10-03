@@ -259,10 +259,37 @@ public enum UnixSocketTransport {
     /// Tear down a listening socket: close the fd and remove the socket file.
     public static func closeListener(fd: Int32, socketURL: URL) {
         Darwin.close(fd)
-        try? FileManager.default.removeItem(at: socketURL)
+        // Not `try?`: a socket file we cannot remove keeps the next `bind()`
+        // failing (or, worse, leaves the path pointing at a dead listener), so
+        // the failure must be visible in the log rather than swallowed.
+        do {
+            try FileManager.default.removeItem(at: socketURL)
+        } catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileNoSuchFileError {
+            // Already gone: nothing to clean up, and this is the common case
+            // when the listener was never reachable at this path.
+        } catch {
+            log.notice("could not remove socket file \(socketURL.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     // MARK: - Framing
+
+    /// Time to wait for the next frame under a per-request wall-clock budget.
+    ///
+    /// `readTimeout` bounds a *single* read (so a half frame cannot hang the
+    /// caller); `overallDeadline` bounds the sum of all reads. Returns `nil`
+    /// once the overall deadline is spent, which is the caller's signal to give
+    /// up even though progress frames kept arriving. Pure so it can be unit
+    /// tested without waiting.
+    public static func nextFrameTimeout(
+        readTimeout: TimeInterval,
+        overallDeadline: TimeInterval,
+        elapsed: TimeInterval
+    ) -> TimeInterval? {
+        let remaining = overallDeadline - elapsed
+        guard remaining > 0 else { return nil }
+        return min(readTimeout, remaining)
+    }
 
     /// Read exactly `n` bytes from `fd`, looping over partial reads and EINTR.
     /// Returns nil on EOF before n bytes arrived, on timeout, or on any

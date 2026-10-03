@@ -47,9 +47,12 @@ enum SecurityScopedBookmark {
         }
     }
 
-    /// TEMPORARY DIAGNOSTICS: dump full NSError + attempt a plain (no-security-scope)
-    /// resolve to isolate whether the failure is the security-scope identity check
-    /// or the bookmark data itself. Pure logging, no behavior change.
+    /// Dumps the full NSError for a bookmark that would not resolve, plus a plain
+    /// (no-security-scope) resolve to separate "the data is bad" from "the OS
+    /// rejects the scope for this process". Verbose and `.public` on purpose:
+    /// this is the only place a field failure becomes diagnosable, and it is the
+    /// single implementation of that dump (`FolderAuthorizationAccess` uses it
+    /// through `ScopedAccessConfiguration.system` instead of duplicating it).
     private static func diagnoseFailure(_ nsError: NSError, data: Data) {
         bookmarkDiag.log("BOOKMARK resolve(withSecurityScope) FAILED outer domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) desc=\(nsError.localizedDescription, privacy: .public)")
 

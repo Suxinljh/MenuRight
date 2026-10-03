@@ -136,6 +136,10 @@ public enum LifecycleDiagnostics {
     /// Hard cap for the diagnostics file. Once it grows past this, it is
     /// rotated once to `bootstrap-diagnostics.log.1` (the previous `.1` is
     /// replaced). Without a cap this file grows forever on every IPC call.
+    ///
+    /// Retention is therefore bounded by construction: the live file plus one
+    /// rotated generation, ≈2 MiB, which is what keeps the absolute paths these
+    /// lines contain from accumulating in the App Group container.
     public static let maxFileBytes: Int64 = 1024 * 1024
 
     public static func record(_ event: String, from source: String) {
@@ -187,7 +191,15 @@ public enum LifecycleDiagnostics {
         var st = stat()
         guard stat(url.path, &st) == 0, st.st_size > maxFileBytes else { return }
         let rotated = url.appendingPathExtension("1")
-        try? FileManager.default.removeItem(at: rotated)
+        do {
+            if FileManager.default.fileExists(atPath: rotated.path) {
+                try FileManager.default.removeItem(at: rotated)
+            }
+        } catch {
+            // Best effort: failing to drop the old `.1` must never stop the
+            // rotation below — an unbounded live file is the worse outcome.
+            log.notice("diagnostics rotation could not remove the previous .1: \(String(describing: error), privacy: .public)")
+        }
         do {
             try FileManager.default.moveItem(at: url, to: rotated)
             log.notice("diagnostics log rotated: \(url.lastPathComponent, privacy: .public) exceeded \(maxFileBytes, privacy: .public) bytes")

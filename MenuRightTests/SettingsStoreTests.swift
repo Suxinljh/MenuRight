@@ -203,4 +203,64 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertFalse(store.isAllowed(.createFile))
         XCTAssertTrue(store.isAllowed(.copyPath))
     }
+
+    // MARK: - Threading
+
+    /// `settings` is read from the IPC connection queue (the file dispatcher's
+    /// settings closures) while the main thread replaces the whole tree. Every
+    /// read must therefore observe one *complete* write: the two fields below
+    /// always change together, so a torn read shows up as a mismatched pair.
+    func testAReaderOnAnotherThreadNeverSeesAHalfReplacedTree() {
+        let store = makeStore()
+        let writes = 200
+        let readerDone = expectation(description: "reader finished")
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            for _ in 0..<(writes * 4) {
+                let snapshot = store.settings
+                if let index = Int(snapshot.general.skippedUpdateVersion ?? "") {
+                    XCTAssertEqual(
+                        snapshot.general.language == .english,
+                        index % 2 == 0,
+                        "torn read: version \(index) came with \(snapshot.general.language)"
+                    )
+                }
+            }
+            readerDone.fulfill()
+        }
+
+        for index in 0..<writes {
+            store.mutate { settings in
+                settings.general.skippedUpdateVersion = "\(index)"
+                settings.general.language = index % 2 == 0 ? .english : .simplifiedChinese
+            }
+        }
+
+        wait(for: [readerDone], timeout: 60)
+    }
+
+    /// A reload on a background thread must still reach observers the way a
+    /// mutation does: main thread, republished, and announced — a value that
+    /// changed on disk is a value the UI has to redraw.
+    func testReloadFromAnotherThreadRepublishesOnTheMainThreadAndNotifies() {
+        let store = makeStore()
+        let other = makeStore()
+        other.mutate { $0.codeTheme.themeID = "dracula" }
+
+        let notified = expectation(description: "settings changed")
+        // `object: nil`: the notification's `object` is the store, and filtering
+        // on a non-NSObject instance is not what the queue checks.
+        let token = NotificationCenter.default.addObserver(
+            forName: SettingsStore.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in notified.fulfill() }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        DispatchQueue.global(qos: .userInitiated).async { store.reload() }
+
+        wait(for: [notified], timeout: 60)
+        XCTAssertTrue(Thread.isMainThread)
+        XCTAssertEqual(store.settings.codeTheme.themeID, "dracula")
+    }
 }

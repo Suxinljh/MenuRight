@@ -84,10 +84,24 @@ final class FinderArchivesTests: XCTestCase {
 
     func testDisabledFormatsAreNotOffered() throws {
         var settings = MenuRightSettings.default
+        settings.archives.enabledFormats = [.zip]
+        try write(settings: settings)
+        XCTAssertEqual(FinderArchives.enabledExtractionSuffixes(from: defaults), ["zip"])
+        XCTAssertTrue(FinderArchives.classify([URL(fileURLWithPath: "/tmp/a.zip")], defaults: defaults).canExtract)
+        XCTAssertFalse(FinderArchives.classify([URL(fileURLWithPath: "/tmp/a.7z")], defaults: defaults).canExtract)
+    }
+
+    /// 把所有格式取消勾选后 `enabledFormats` 是空集合。空集合按文档含义是「未
+    /// 配置」：回落到本构建支持的全部后缀（与 `enabledCompressionFormats` 同一
+    /// 语义），否则 Finder 菜单里一个「解压为…」都不会剩。
+    func testEmptyEnabledFormatsFallBackToEverySupportedSuffix() throws {
+        var settings = MenuRightSettings.default
         settings.archives.enabledFormats = []
         try write(settings: settings)
-        XCTAssertEqual(FinderArchives.enabledExtractionSuffixes(from: defaults), [])
-        XCTAssertFalse(FinderArchives.classify([URL(fileURLWithPath: "/tmp/a.zip")], defaults: defaults).canExtract)
+        let all = Set(ArchiveFormat.allCases.filter(\.isSupported).flatMap(\.pathExtensions))
+        XCTAssertFalse(all.isEmpty)
+        XCTAssertEqual(FinderArchives.enabledExtractionSuffixes(from: defaults), all)
+        XCTAssertTrue(FinderArchives.classify([URL(fileURLWithPath: "/tmp/a.zip")], defaults: defaults).canExtract)
     }
 
     /// Stage 2 added the library backends, so the formats the user enabled are

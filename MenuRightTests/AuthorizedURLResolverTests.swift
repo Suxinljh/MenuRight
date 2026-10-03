@@ -97,4 +97,67 @@ final class AuthorizedURLResolverTests: XCTestCase {
             of: URL(fileURLWithPath: "/tmp/menuright-dir/")
         ))
     }
+
+    /// Component comparison is case sensitive unless the caller says otherwise:
+    /// the default must not silently widen a scope.
+    func testContainsIsCaseSensitiveByDefault() {
+        let ancestor = URL(fileURLWithPath: "/Users/foo/Downloads")
+        let differentlyCased = URL(fileURLWithPath: "/Users/foo/downloads/a.txt")
+
+        XCTAssertFalse(AuthorizedURLResolver.contains(ancestor, differentlyCased))
+        XCTAssertTrue(AuthorizedURLResolver.contains(ancestor, differentlyCased, caseSensitive: false))
+        XCTAssertTrue(AuthorizedURLResolver.contains(ancestor, URL(fileURLWithPath: "/Users/foo/Downloads/a.txt"), caseSensitive: false))
+        XCTAssertFalse(AuthorizedURLResolver.contains(ancestor, URL(fileURLWithPath: "/Users/foo/dl/a.txt"), caseSensitive: false))
+    }
+
+    /// The on-disk check follows the real volume: on the APFS default a folder
+    /// spelled two ways is one folder, on a case-sensitive volume it is not.
+    func testContainsOnDiskFollowsTheVolumeRule() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mr-case-\(UUID().uuidString)", isDirectory: true)
+        let realDirectory = root.appendingPathComponent("Downloads", isDirectory: true)
+        try FileManager.default.createDirectory(at: realDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let differentlyCased = root.appendingPathComponent("downloads")
+        let caseSensitive = AuthorizedURLResolver.volumeSupportsCaseSensitiveNames(for: differentlyCased)
+        let reported = try realDirectory.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey])
+            .volumeSupportsCaseSensitiveNames ?? true
+        XCTAssertEqual(caseSensitive, reported, "the cached lookup must agree with the volume itself")
+
+        XCTAssertEqual(
+            AuthorizedURLResolver.containsOnDisk(realDirectory, differentlyCased),
+            !caseSensitive
+        )
+        // A path that exists in no spelling is still rejected on either volume.
+        XCTAssertFalse(AuthorizedURLResolver.containsOnDisk(realDirectory, root.appendingPathComponent("missing")))
+    }
+
+    /// `isDirectChild` uses the same volume rule, so a file created one level
+    /// below is accepted on a case-insensitive volume and rejected where the
+    /// spelling really names a different directory.
+    func testIsDirectChildFollowsTheVolumeRuleForTheParentName() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mr-case-child-\(UUID().uuidString)", isDirectory: true)
+        let realDirectory = root.appendingPathComponent("Downloads", isDirectory: true)
+        try FileManager.default.createDirectory(at: realDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let differentlyCasedParent = root.appendingPathComponent("downloads")
+        let caseSensitive = AuthorizedURLResolver.volumeSupportsCaseSensitiveNames(for: differentlyCasedParent)
+
+        XCTAssertEqual(
+            AuthorizedURLResolver.isDirectChild(
+                differentlyCasedParent.appendingPathComponent("Untitled.txt"),
+                of: realDirectory
+            ),
+            !caseSensitive
+        )
+
+        // A file two levels below is never a direct child, on any volume.
+        XCTAssertFalse(AuthorizedURLResolver.isDirectChild(
+            differentlyCasedParent.appendingPathComponent("sub/deep.txt"),
+            of: realDirectory
+        ))
+    }
 }

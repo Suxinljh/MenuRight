@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Live progress and control for one in-flight archive operation.
 ///
@@ -31,8 +32,22 @@ final class ArchiveOperationControl: @unchecked Sendable {
     private var state: State
     private var progressHandler: ((Double) -> Void)?
 
-    init(cancelled: Bool = false) {
+    /// How long a pause may last before the worker gives up on it.
+    ///
+    /// A pause nobody can end is worse than a cancelled operation: the worker
+    /// blocks forever, `ArchiveOperationRegistry` keeps the entry, and the only
+    /// window that could send 继续/取消 disappears once the extension's progress
+    /// read budget expires (`MenuRightIPC.fileOperationTimeoutSeconds`, 600 s).
+    /// The bound is deliberately longer than that budget: by the time it fires,
+    /// the extension has already stopped waiting for this operation, so nothing
+    /// can recover it and ending it as a cancel is the honest outcome.
+    private let maximumPauseDuration: TimeInterval
+
+    private static let log = Logger(subsystem: "xin.ljhsu.MenuRight", category: "archive-control")
+
+    init(cancelled: Bool = false, maximumPauseDuration: TimeInterval = 900) {
         state = cancelled ? .cancelled : .running
+        self.maximumPauseDuration = maximumPauseDuration
     }
 
     var currentState: State {
@@ -73,8 +88,10 @@ final class ArchiveOperationControl: @unchecked Sendable {
     }
 
     /// Called by the worker between entries: throws when cancelled, and blocks
-    /// cheaply while paused.
+    /// cheaply while paused — but never forever: a pause that outlives
+    /// `maximumPauseDuration` is turned into a cancel (see the property's note).
     func checkpoint() throws {
+        var pausedSince: Date?
         while true {
             switch currentState {
             case .cancelled:
@@ -84,6 +101,12 @@ final class ArchiveOperationControl: @unchecked Sendable {
             case .paused:
                 // 50 ms: responsive to a 继续 click without spinning a core.
                 Thread.sleep(forTimeInterval: 0.05)
+                let start = pausedSince ?? Date()
+                pausedSince = start
+                if Date().timeIntervalSince(start) >= maximumPauseDuration {
+                    Self.log.notice("archive stayed paused for \(self.maximumPauseDuration, privacy: .public)s with no resume or cancel; ending it as a cancel so its registry entry cannot leak")
+                    cancel()
+                }
             }
         }
     }

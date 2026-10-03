@@ -42,7 +42,40 @@ import os
 ///
 /// A requirement that is *checked and fails* is never retried through the
 /// fallback: only an unusable live-code API is.
+///
+/// ### The sandbox fallback is a deliberate, bounded downgrade
+///
+/// When even the static code cannot be read (both signing APIs unusable), a
+/// peer may still be accepted on its kernel-reported executable path **plus**
+/// our own uid/gid, and the result carries
+/// `verificationLevel == .executablePathOnly`. Fail-closed is not an option
+/// there: this is the FinderSync extension talking to its own main app, and
+/// refusing every connection would break MenuRight's Finder integration
+/// outright. The path check is exact (symlinks and `..` resolved, no prefix
+/// match), so it blocks a same-user process at any other path and any peer under
+/// a different uid/gid. It cannot block a same-user attacker who can replace the
+/// binary at that exact path — but same-uid is already the same trust domain
+/// (such an attacker can also read the App-Group socket), which is exactly why
+/// failing closed would buy nothing here.
 public enum PeerIdentity {
+
+    /// How a peer's identity was actually established.
+    ///
+    /// Callers that need a *signature* guarantee — not merely "a process at the
+    /// path we expected" — must look at this instead of treating `.verified` as
+    /// uniformly strong. The FinderSync extension cannot do better than
+    /// `.executablePathOnly` in the appex sandbox (see `verify`), so the value
+    /// is surfaced rather than hidden inside a log line.
+    public enum VerificationLevel: String, Sendable {
+        /// The peer's code was checked against the designated requirement,
+        /// either as the live code object from its audit token or as the static
+        /// code at its kernel-reported executable path.
+        case codeSignature
+        /// Code-signing APIs were unusable in this process (measured: appex
+        /// sandbox, OSStatus 100001), so the peer was accepted on the kernel's
+        /// `proc_pidpath_audittoken` report alone, under our own uid/gid.
+        case executablePathOnly
+    }
 
     public struct Verified {
         public let pid: pid_t
@@ -51,6 +84,30 @@ public enum PeerIdentity {
         public let bundleIdentifier: String
         public let teamIdentifier: String
         public let executablePath: String
+        /// Which check actually passed. `.executablePathOnly` means no
+        /// signature/team check was possible on this side.
+        public let verificationLevel: VerificationLevel
+
+        /// Explicit so `verificationLevel` can default: test doubles that only
+        /// exercise the *shape* of a verified peer keep working, while every
+        /// production call site states the level it really established.
+        init(
+            pid: pid_t,
+            uid: uid_t,
+            gid: gid_t,
+            bundleIdentifier: String,
+            teamIdentifier: String,
+            executablePath: String,
+            verificationLevel: VerificationLevel = .codeSignature
+        ) {
+            self.pid = pid
+            self.uid = uid
+            self.gid = gid
+            self.bundleIdentifier = bundleIdentifier
+            self.teamIdentifier = teamIdentifier
+            self.executablePath = executablePath
+            self.verificationLevel = verificationLevel
+        }
     }
 
     public enum Result {
@@ -113,9 +170,11 @@ public enum PeerIdentity {
     /// every step succeeds.
     /// - Parameter expectedExecutablePath: when non-nil, the peer's executable
     ///   path (as reported by the kernel via `proc_pidpath_audittoken`, which the
-    ///   peer cannot forge) must equal this path exactly. This is the one strong
-    ///   check that also works inside an app-extension sandbox, where the code
-    ///   signing APIs are unavailable (see `verify`'s documentation).
+    ///   peer cannot forge) must equal this path exactly after symlink
+    ///   resolution. This is the one strong check that also works inside an
+    ///   app-extension sandbox, where the code-signing APIs are unavailable
+    ///   (see `verify`'s documentation); the same-uid/gid requirement in that
+    ///   fallback is documented on `executablePathOnlyDecision`.
     public static func verify(
         fd: Int32,
         requirement requirementString: String = PeerIdentity.extensionRequirementString,
@@ -198,7 +257,8 @@ public enum PeerIdentity {
             return finish(v: Verified(
                 pid: peerPid, uid: uid, gid: gid,
                 bundleIdentifier: "?", teamIdentifier: "?",
-                executablePath: execPath
+                executablePath: execPath,
+                verificationLevel: .codeSignature
             ), execPath: execPath, expectedTeam: expectedTeam, requirement: requirementString)
         }
 
@@ -213,18 +273,38 @@ public enum PeerIdentity {
             // Both signature paths are unusable -> this process is denied the
             // code-signing APIs entirely (measured: the FinderSync appex on
             // macOS 26.6.1 returns OSStatus 100001 for both calls, while the main
-            // app performs them fine). Accept only when the caller supplied a
-            // kernel-verified expected path that matched, and say so loudly.
-            guard expectedExecutablePath != nil else {
+            // app performs them fine). Fail-closed is deliberately NOT used here:
+            // this is the extension talking to its own main app, and rejecting
+            // every connection would break MenuRight's Finder integration
+            // outright. Instead this is a bounded downgrade to a path-only check
+            // (see `executablePathOnlyDecision`) whose result is tagged
+            // `.executablePathOnly` so callers can tell it apart from a real
+            // signature check.
+            guard let expectedExecutablePath else {
                 return reject("SecStaticCodeCreateWithPath failed OSStatus=\(staticStatus) path=\(execPath)", requirement: requirementString)
             }
-            log.notice("peer accepted on kernel-reported executable path alone: code-signing APIs unavailable here (OSStatus=\(staticStatus, privacy: .public), path=\(execPath, privacy: .public)). The main app still verifies this process's signature server-side.")
-            return .verified(Verified(
-                pid: peerPid, uid: uid, gid: gid,
-                bundleIdentifier: expectedExecutablePath.map { URL(fileURLWithPath: $0).deletingLastPathComponent().path } ?? "?",
-                teamIdentifier: "unavailable",
-                executablePath: execPath
-            ))
+            switch executablePathOnlyDecision(
+                peerExecutablePath: execPath,
+                expectedExecutablePath: expectedExecutablePath,
+                peerUID: uid,
+                peerGID: gid
+            ) {
+            case .accept:
+                log.notice("peer accepted on kernel-reported executable path alone: code-signing APIs unavailable here (OSStatus=\(staticStatus, privacy: .public), path=\(execPath, privacy: .public), uid=\(uid)). Level=executablePathOnly; its limits are documented at PeerIdentity.VerificationLevel. The main app still verifies this process's signature server-side.")
+                return .verified(Verified(
+                    pid: peerPid, uid: uid, gid: gid,
+                    bundleIdentifier: URL(fileURLWithPath: expectedExecutablePath).deletingLastPathComponent().path,
+                    teamIdentifier: "unavailable",
+                    executablePath: execPath,
+                    verificationLevel: .executablePathOnly
+                ))
+            case .rejectPathMismatch(let got, let expected):
+                return reject("peer executable path mismatch (path-only fallback): got=\(got) expected=\(expected)", requirement: requirementString)
+            case .rejectUIDMismatch(let got, let expected):
+                return reject("peer uid mismatch (path-only fallback): got=\(got) expected=\(expected)", requirement: requirementString)
+            case .rejectGIDMismatch(let got, let expected):
+                return reject("peer gid mismatch (path-only fallback): got=\(got) expected=\(expected)", requirement: requirementString)
+            }
         }
         let staticValidity = SecStaticCodeCheckValidity(staticCodeRef!, SecCSFlags(), requirement)
         guard staticValidity == errSecSuccess else {
@@ -235,7 +315,8 @@ public enum PeerIdentity {
         return finish(v: Verified(
             pid: peerPid, uid: uid, gid: gid,
             bundleIdentifier: "?", teamIdentifier: "?",
-            executablePath: execPath
+            executablePath: execPath,
+            verificationLevel: .codeSignature
         ), execPath: execPath, expectedTeam: expectedTeam, requirement: requirementString)
     }
 
@@ -252,11 +333,57 @@ public enum PeerIdentity {
 
     // MARK: - Helpers
 
-    /// Standardized comparison of two executable paths. Internal (not private)
-    /// so the unit tests can pin it: this check is what remains enforceable
-    /// inside a sandbox that denies the code-signing APIs.
+    /// Canonical form of an executable path: symlinks resolved, then
+    /// standardized, so a symlinked parent, `/a/b/../c` and the real path all
+    /// compare equal. Internal for the tests.
+    static func normalizedExecutablePath(_ path: String) -> String {
+        URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
+    /// Canonical comparison of two executable paths. Internal (not private) so
+    /// the unit tests can pin it: this check is what remains enforceable inside
+    /// a sandbox that denies the code-signing APIs. Exact equality only — never
+    /// a prefix or substring match, either of which would let a sibling binary
+    /// (`…/MenuRight2`, `…/MenuRight/evil`) pass.
     static func executablePathsMatch(_ lhs: String, _ rhs: String) -> Bool {
-        URL(fileURLWithPath: lhs).standardizedFileURL.path == URL(fileURLWithPath: rhs).standardizedFileURL.path
+        normalizedExecutablePath(lhs) == normalizedExecutablePath(rhs)
+    }
+
+    /// Verdict of the path-only sandbox fallback, kept a pure value so the unit
+    /// tests can exercise every branch without a signed peer.
+    enum PathOnlyDecision: Equatable {
+        case accept
+        case rejectPathMismatch(got: String, expected: String)
+        case rejectUIDMismatch(got: uid_t, expected: uid_t)
+        case rejectGIDMismatch(got: gid_t, expected: gid_t)
+    }
+
+    /// Decides whether a peer may be accepted on its kernel-reported executable
+    /// path alone, once both code-signing APIs are unusable.
+    ///
+    /// Requires an exact, symlink-resolved path match **and** that the peer runs
+    /// under our own uid/gid: a process at our path but under another user is
+    /// not the process we asked to talk to. This is the strictest check left in
+    /// that sandbox, and it deliberately does not fail closed — failing closed
+    /// would deny the extension every connection to its own main app.
+    static func executablePathOnlyDecision(
+        peerExecutablePath: String,
+        expectedExecutablePath: String,
+        peerUID: uid_t,
+        peerGID: gid_t,
+        currentUID: uid_t = geteuid(),
+        currentGID: gid_t = getegid()
+    ) -> PathOnlyDecision {
+        guard executablePathsMatch(peerExecutablePath, expectedExecutablePath) else {
+            return .rejectPathMismatch(got: peerExecutablePath, expected: expectedExecutablePath)
+        }
+        guard peerUID == currentUID else {
+            return .rejectUIDMismatch(got: peerUID, expected: currentUID)
+        }
+        guard peerGID == currentGID else {
+            return .rejectGIDMismatch(got: peerGID, expected: currentGID)
+        }
+        return .accept
     }
 
     private enum LiveCodeOutcome {
@@ -311,30 +438,35 @@ public enum PeerIdentity {
         }
         var infoRef: CFDictionary?
         // Empirically, the team identifier is populated only when
-        // kSecCSSigningInformation (flag bit 1, value 2) is passed.
-        // kSecCSRequirementInformation (bit 2, value 4) is documented
+        // kSecCSSigningInformation (flag bit 1) is passed.
+        // kSecCSRequirementInformation (bit 2) is documented
         // to return the Designated Requirement but does NOT include the
         // team identifier in this macOS version's Sec framework.
-        let infoStatus = SecCodeCopySigningInformation(staticCodeRef, SecCSFlags(rawValue: 2), &infoRef)
+        let infoStatus = SecCodeCopySigningInformation(
+            staticCodeRef, SecCSFlags(rawValue: kSecCSSigningInformation), &infoRef
+        )
         guard infoStatus == errSecSuccess, let infoRef else {
             return reject("SecCodeCopySigningInformation failed OSStatus=\(infoStatus)", requirement: requirement)
         }
-        let identKey = Unmanaged.passUnretained(kSecCodeInfoIdentifier).toOpaque()
-        let teamKey = Unmanaged.passUnretained(kSecCodeInfoTeamIdentifier).toOpaque()
-        if let identCF = CFDictionaryGetValue(infoRef, identKey) {
+        // Bridge the CFDictionary through Swift's safe toll-free bridging
+        // instead of unsafeBitCast-ing raw values to CFString.
+        let info = infoRef as? [CFString: Any] ?? [:]
+        if let identifier = info[kSecCodeInfoIdentifier] as? String {
             v = Verified(
                 pid: v.pid, uid: v.uid, gid: v.gid,
-                bundleIdentifier: unsafeBitCast(identCF, to: CFString.self) as String,
+                bundleIdentifier: identifier,
                 teamIdentifier: v.teamIdentifier,
-                executablePath: v.executablePath
+                executablePath: v.executablePath,
+                verificationLevel: v.verificationLevel
             )
         }
-        if let teamCF = CFDictionaryGetValue(infoRef, teamKey) {
+        if let team = info[kSecCodeInfoTeamIdentifier] as? String {
             v = Verified(
                 pid: v.pid, uid: v.uid, gid: v.gid,
                 bundleIdentifier: v.bundleIdentifier,
-                teamIdentifier: unsafeBitCast(teamCF, to: CFString.self) as String,
-                executablePath: v.executablePath
+                teamIdentifier: team,
+                executablePath: v.executablePath,
+                verificationLevel: v.verificationLevel
             )
         }
         guard v.teamIdentifier == expectedTeam else {

@@ -13,9 +13,13 @@ struct UpdateRelease: Equatable, Sendable {
     let title: String
     /// Release body (Markdown).
     let notes: String
-    /// Release page on GitHub — what "Download" opens.
+    /// Release page on GitHub — what the "前往发布页" button opens.
     let pageURL: URL
     /// First `.zip` asset, when the release carries one.
+    ///
+    /// Parsed for completeness only: nothing downloads or installs it (see the
+    /// note on `UpdateChecker`). Kept because the API payload is decoded as a
+    /// whole and the menu/status UI stays free to start using it later.
     let downloadURL: URL?
 
     func isNewer(than current: String) -> Bool {

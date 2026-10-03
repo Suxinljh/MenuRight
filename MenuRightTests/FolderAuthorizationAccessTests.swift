@@ -191,4 +191,49 @@ final class FolderAuthorizationAccessTests: XCTestCase {
         XCTAssertEqual(record.bodyCalls, 0)
         XCTAssertTrue(record.started.isEmpty)
     }
+
+    /// The authoritative check (`authorizeResolvedRoot`) accepts a case-only
+    /// difference only where the volume does. The metadata spelling is what the
+    /// user picked earlier, the bookmark resolves to the on-disk name, so the
+    /// pre-filter (exact spelling) passes on both volumes and only the
+    /// resolved-root check can differ.
+    func testResolvedRootAllowsACaseOnlyDifferenceOnlyOnACaseInsensitiveVolume() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mr-auth-case-\(UUID().uuidString)", isDirectory: true)
+        let realDirectory = root.appendingPathComponent("Downloads", isDirectory: true)
+        try FileManager.default.createDirectory(at: realDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let differentlyCasedRoot = root.appendingPathComponent("downloads")
+        let target = differentlyCasedRoot.appendingPathComponent("Untitled.txt")
+        let caseSensitive = AuthorizedURLResolver.volumeSupportsCaseSensitiveNames(for: target)
+
+        let authorized = AuthorizedFolder(
+            displayName: "Downloads",
+            originalPath: differentlyCasedRoot.path,
+            bookmarkData: Data(realDirectory.path.utf8)
+        )
+
+        let record = Recording()
+        var thrown: Error?
+        do {
+            try FolderAuthorizationAccess.withAccess(
+                to: target,
+                folders: [authorized],
+                configuration: configuration(record: record)
+            ) { _ in record.bodyCalls += 1 }
+        } catch {
+            thrown = error
+        }
+
+        if caseSensitive {
+            XCTAssertEqual(thrown as? FolderAuthorizationError, .authorizationRequired(target))
+            XCTAssertEqual(record.bodyCalls, 0)
+        } else {
+            XCTAssertNil(thrown)
+            XCTAssertEqual(record.bodyCalls, 1)
+        }
+        XCTAssertEqual(record.started, [realDirectory.path], "the resolved bookmark URL is what gets started")
+        XCTAssertEqual(record.stopped, [realDirectory.path], "stop must balance start")
+    }
 }

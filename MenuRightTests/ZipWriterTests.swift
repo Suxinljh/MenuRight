@@ -251,4 +251,72 @@ final class ZipWriterTests: XCTestCase {
             }
         }
     }
+
+    /// An EOCD count of exactly 0xFFFF is the ZIP64 sentinel — readers treat it
+    /// as "the real count lives in a ZIP64 record", and `ZipReader` rejects the
+    /// archive for it. Stopping one short is what keeps our own output readable.
+    /// 65535 one-byte entries are cheap; a 65534-entry archive would not be.
+    func testRejectsTheEntryCountThatMeansZip64() {
+        let entries = (0..<0xFFFF).map { ZipArchiveEntry(name: "e\($0)", contents: Data([0])) }
+        XCTAssertThrowsError(try ZipWriter.archive(entries)) { error in
+            guard case ZipWriterError.zip64Required = error else {
+                return XCTFail("expected zip64Required, got \(error)")
+            }
+        }
+    }
+
+    func testAcceptsASingleEntryAtTheLowEnd() throws {
+        let reader = try ZipTestReader(try ZipWriter.archive([ZipArchiveEntry(name: "a", contents: Data([0]))]))
+        XCTAssertEqual(reader.entries.map(\.name), ["a"])
+    }
+
+    /// The extractor's `safeRelativePath` refuses NUL, so a name carrying one
+    /// would describe an archive this app can write but not unpack.
+    func testRejectsAnEntryNameWithAnEmbeddedNUL() {
+        for name in ["nul\u{0}.xml", "a\u{0}b"] {
+            XCTAssertThrowsError(
+                try ZipWriter.archive([ZipArchiveEntry(name: name, contents: Data())]),
+                "“\(name)” must be rejected"
+            ) { error in
+                guard case ZipWriterError.invalidEntryName = error else {
+                    return XCTFail("expected invalidEntryName for “\(name)”, got \(error)")
+                }
+            }
+        }
+    }
+
+    /// The EOCD's offset/size fields are the only ones the per-entry guards do
+    /// not cover, so the boundary is checked directly: 0xFFFF_FFFF is the last
+    /// representable value, anything past it has to throw instead of trapping.
+    /// The values are synthetic — a real 4 GiB archive in a unit test would be
+    /// absurd.
+    func testCentralDirectoryOffsetAcceptsTheLargestRepresentableArchive() throws {
+        XCTAssertEqual(
+            try ZipWriter.centralDirectoryOffset(archiveSize: 0xFFFF_FFFF, centralDirectorySize: 0, trailerSize: 0),
+            0xFFFF_FFFF
+        )
+    }
+
+    func testCentralDirectoryOffsetRejectsAnythingPastThe32BitFields() {
+        let oversized: [(archiveSize: Int, centralDirectorySize: Int, trailerSize: Int)] = [
+            (0x1_0000_0000, 0, 0),        // offset itself past 32 bits
+            (0, 0x1_0000_0000, 0),        // central directory past 32 bits
+            (0xFFFF_FFFF, 1, 0),          // each field fits, the archive does not
+            (0xFFFF_FFFF, 0, 22 + 1),     // the EOCD trailer tips it over
+        ]
+        for value in oversized {
+            XCTAssertThrowsError(
+                try ZipWriter.centralDirectoryOffset(
+                    archiveSize: value.archiveSize,
+                    centralDirectorySize: value.centralDirectorySize,
+                    trailerSize: value.trailerSize
+                ),
+                "\(value.archiveSize)/\(value.centralDirectorySize)/\(value.trailerSize) must not fit"
+            ) { error in
+                guard case ZipWriterError.zip64Required = error else {
+                    return XCTFail("expected zip64Required, got \(error)")
+                }
+            }
+        }
+    }
 }

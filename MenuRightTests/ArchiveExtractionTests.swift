@@ -699,4 +699,265 @@ final class ArchiveExtractionTests: XCTestCase {
             XCTAssertEqual(error as? ArchiveError, .cancelled)
         }
     }
+
+    // MARK: - Decompression bounds (解压炸弹)
+
+    /// `rawInflate` 的既有行为不能因为上限而改变：数据正确时结果完整，
+    /// `expectedSize == 0` 的空 archive 特判仍然成立，坏流还是 nil。
+    func testRawInflateKeepsItsUnlimitedResultAndItsSpecialCases() throws {
+        let original = Data((0..<200_000).map { UInt8($0 % 251) })
+        let deflated = try XCTUnwrap(ZipWriter.rawDeflate(original))
+        XCTAssertEqual(try XCTUnwrap(ZipReader.rawInflate(deflated, expectedSize: original.count)), original)
+
+        // 空 payload：声明为 0 时是空结果，声明大于 0 时是「不完整」。
+        XCTAssertEqual(try ZipReader.rawInflate(Data(), expectedSize: 0), Data())
+        XCTAssertNil(try ZipReader.rawInflate(Data(), expectedSize: 5))
+
+        var truncated = deflated
+        truncated.removeLast()
+        XCTAssertNil(try ZipReader.rawInflate(truncated, expectedSize: original.count))
+    }
+
+    /// 压缩炸弹：DEFLATE 的压缩比可以任意高，所以上限必须在 inflate 的循环
+    /// 里生效，而不是等 `output` 全部攒完再量。
+    func testRawInflateRefusesToInflatePastTheLimit() throws {
+        let bomb = Data(repeating: 0x41, count: 8 * 1024 * 1024)
+        let deflated = try XCTUnwrap(ZipWriter.rawDeflate(bomb))
+        XCTAssertLessThan(deflated.count, 64 * 1024, "a bomb must be tiny next to its payload")
+
+        // 调用方的限额：声明大小是真的，但仍不许超过 extractor 的上限。
+        assertInflateExceedsLimit(
+            try ZipReader.rawInflate(deflated, expectedSize: bomb.count, maximumBytes: 64 * 1024)
+        ) { detail in
+            XCTAssertTrue(detail.contains("limit 65536"), detail)
+        }
+
+        // 头部说谎：声明的 uncompressedSize 只有 1 KiB，实际 8 MiB。
+        assertInflateExceedsLimit(try ZipReader.rawInflate(deflated, expectedSize: 1024)) { detail in
+            XCTAssertTrue(detail.contains("limit 1024"), detail)
+        }
+    }
+
+    /// 伪造 `uncompressedSize` 的 ZIP：reader 层直接拒绝，source 层把它翻译成
+    /// `tooLarge`，而不是先解压几 MiB 再报「CRC 不对」。
+    func testZipEntryThatLiesAboutItsSizeIsRefusedAsTooLarge() throws {
+        let bomb = Data(repeating: 0x42, count: 4 * 1024 * 1024)
+        let built = try ZipWriter.archive([ZipArchiveEntry(name: "bomb.txt", contents: bomb)])
+        let archive = try write(try patchingDeclaredSize(of: built, to: 1024), as: "bomb.zip")
+
+        let reader = try ZipReader(fileURL: archive)
+        XCTAssertEqual(reader.entries.map(\.uncompressedSize), [1024])
+        assertInflateExceedsLimit(try reader.contents(of: reader.entries[0])) { detail in
+            XCTAssertTrue(detail.contains("bomb.txt"), detail)
+            XCTAssertTrue(detail.contains("declared 1024"), detail)
+        }
+
+        // 上限取 min(声明, maximumPayloadBytes)，所以调用方不设限也拦得住。
+        let source = try ZipMemberSource(url: archive, maximumPayloadBytes: .max)
+        assertTooLarge(try source.contents(of: try XCTUnwrap(source.members().first)))
+
+        // 调用方更小的上限同样生效，即使声明是真的。
+        let honest = try write(try ZipWriter.archive([ZipArchiveEntry(name: "honest.txt", contents: bomb)]), as: "honest.zip")
+        let capped = try ZipMemberSource(url: honest, maximumPayloadBytes: 64 * 1024)
+        assertTooLarge(try capped.contents(of: try XCTUnwrap(capped.members().first)))
+    }
+
+    /// 端到端：planner 只能看到声明值（1 KiB），所以炸弹会被排进计划；但解压
+    /// 到上限就停，条目报成体积超限，目标目录里不留半个字节。
+    func testLyingZipHeaderIsRefusedByTheExtractorAndWritesNothing() throws {
+        let bomb = Data(repeating: 0x46, count: 4 * 1024 * 1024)
+        let built = try ZipWriter.archive([ZipArchiveEntry(name: "bomb.txt", contents: bomb)])
+        let archive = try write(try patchingDeclaredSize(of: built, to: 1024), as: "liar.zip")
+        let out = try destination("liar-out")
+
+        let (results, summary) = try ArchiveExtractor.extract(
+            archiveURL: archive,
+            to: out,
+            settings: policy(limitMB: 1)
+        )
+
+        XCTAssertEqual(summary.written, 0)
+        XCTAssertEqual(summary.failed, 1)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: out.path), [])
+        guard case .failed(let message) = try XCTUnwrap(results.first).outcome else {
+            return XCTFail("expected a failed entry, got \(results)")
+        }
+        XCTAssertTrue(message.contains("size limit"), message)
+    }
+
+    /// gzip 改走 zlib 流式解压后的回归：正确数据仍然完整读出来。
+    func testSingleMemberSourceReadsGzipThroughZlib() throws {
+        let payload = Data(String(repeating: "tar-ish payload ", count: 4096).utf8)
+        let url = try write(try GzipWriter.archive(payload, level: 1), as: "payload.gz")
+
+        let source = try ArchiveMemberSourceFactory.make(url: url, format: .gzip, maximumPayloadBytes: 4 * 1024 * 1024)
+        XCTAssertEqual(try source.members().count, 1)
+        XCTAssertEqual(try source.contents(of: try XCTUnwrap(source.members().first)), payload)
+    }
+
+    /// ISIZE 是攻击者可控的：把它改小（预判失效）也拦不住流式 inflate 的上限。
+    func testGzipBombWithALyingTrailerIsStoppedMidStream() throws {
+        let bomb = Data(repeating: 0x43, count: 512 * 1024)
+        var gzip = try GzipWriter.archive(bomb, level: 1)
+        gzip.replaceSubrange((gzip.count - 4)..<gzip.count, with: littleEndian(512))
+        let url = try write(gzip, as: "lying.gz")
+
+        let source = try ArchiveMemberSourceFactory.make(url: url, format: .gzip, maximumPayloadBytes: 4096)
+        XCTAssertEqual((source as? SingleMemberSource)?.declaredPayloadSize(), 512)
+        assertTooLarge(try source.contents(of: try XCTUnwrap(source.members().first))) { detail in
+            XCTAssertTrue(detail.contains("expands past"), detail)
+        }
+    }
+
+    /// `.tar.gz` 的 `members()` 以前先整体解压再判断；现在超限在解压途中就抛
+    /// `tooLarge`。解压失败也必须原样抛出，不能被 `try?` 吞成「这不是 TAR」。
+    func testCompressedTarMembersFailsOnTheLimitInsteadOfMaskingIt() throws {
+        let bomb = Data(repeating: 0x44, count: 256 * 1024)
+        let url = try write(try GzipWriter.archive(bomb, level: 1), as: "bomb.tar.gz")
+        let source = try ArchiveMemberSourceFactory.make(url: url, format: .gzip, maximumPayloadBytes: 4096)
+        assertTooLarge(try source.members())
+
+        var corrupt = try GzipWriter.archive(bomb, level: 1)
+        corrupt.removeLast(8)
+        let corruptURL = try write(corrupt, as: "corrupt.tar.gz")
+        let corruptSource = try ArchiveMemberSourceFactory.make(url: corruptURL, format: .gzip)
+        XCTAssertThrowsError(try corruptSource.members()) { error in
+            guard let archiveError = error as? ArchiveError, case .notAnArchive(let detail) = archiveError else {
+                return XCTFail("expected notAnArchive, got \(error)")
+            }
+            XCTAssertTrue(detail.contains("gzip"), detail)
+        }
+    }
+
+    /// bzip2 不声明解压后大小、也没有流式 API，上限只能在解压后跑（残留风险，
+    /// README 有说明）；xz 的 stream index 则能在解压前预判。
+    func testBZip2AndXZBoundsRunBeforeAndAfterDecompression() throws {
+        let bzip2 = try XCTUnwrap(Data(base64Encoded: Self.bzip2Fixture))
+        let bzip2URL = try write(bzip2, as: "small.bz2")
+        let bzip2Source = try ArchiveMemberSourceFactory.make(url: bzip2URL, format: .bzip2, maximumPayloadBytes: 1024)
+        XCTAssertEqual(try bzip2Source.contents(of: try XCTUnwrap(bzip2Source.members().first)), Data("hello bzip2".utf8))
+
+        let cappedBZip2 = try ArchiveMemberSourceFactory.make(url: bzip2URL, format: .bzip2, maximumPayloadBytes: 4)
+        assertTooLarge(try cappedBZip2.contents(of: try XCTUnwrap(cappedBZip2.members().first))) { detail in
+            XCTAssertTrue(detail.contains("expands to"), detail)
+        }
+
+        let xz = try XCTUnwrap(Data(base64Encoded: Self.xzFixture))
+        let xzURL = try write(xz, as: "small.xz")
+        let xzSource = try ArchiveMemberSourceFactory.make(url: xzURL, format: .xz, maximumPayloadBytes: 1024)
+        // index 声明 15 字节，正常档案照样读得出来。
+        XCTAssertEqual((xzSource as? SingleMemberSource)?.declaredPayloadSize(), 15)
+        XCTAssertEqual(try xzSource.contents(of: try XCTUnwrap(xzSource.members().first)), Data("hello xz bounds".utf8))
+
+        // 声明超限：在不启动 xz 解压的情况下就抛 tooLarge。
+        let cappedXZ = try ArchiveMemberSourceFactory.make(url: xzURL, format: .xz, maximumPayloadBytes: 4)
+        assertTooLarge(try cappedXZ.contents(of: try XCTUnwrap(cappedXZ.members().first))) { detail in
+            XCTAssertTrue(detail.contains("declares 15"), detail)
+        }
+    }
+
+    /// TAR 未压缩，档案文件大小就是要读进内存的量：上限必须在读之前挡住。
+    func testTarFileIsSizeCheckedBeforeBeingReadIntoMemory() throws {
+        let payload = try write(Data(repeating: 0x45, count: 4096), as: "payload.bin")
+        let report = try ArchiveCompressor.compress(
+            [payload],
+            into: root,
+            preferredName: "big.tar",
+            format: .tar,
+            conflictPolicy: .keepBoth,
+            sizeLimitMB: 64
+        )
+
+        let source = try ArchiveMemberSourceFactory.make(
+            url: report.archiveURL,
+            format: .tar,
+            maximumPayloadBytes: 1024
+        )
+        assertTooLarge(try source.contents(of: try XCTUnwrap(source.members().first))) { detail in
+            XCTAssertTrue(detail.contains("larger than"), detail)
+        }
+    }
+
+    /// 读不出来的文件和「不是这种格式」必须分开报：前者是 `readFailed`，
+    /// 后者才允许退化成 `unsupportedFormat`。
+    func testMissingArchiveFileIsReportedAsReadFailed() {
+        let missing = root.appendingPathComponent("missing.tar")
+        XCTAssertThrowsError(try ArchiveMemberSourceFactory.make(url: missing, format: .tar)) { error in
+            guard let archiveError = error as? ArchiveError, case .readFailed = archiveError else {
+                return XCTFail("expected readFailed, got \(error)")
+            }
+        }
+        XCTAssertNil(LibraryMemberSource(url: missing, format: .tar))
+    }
+
+    // MARK: - Decompression bounds: helpers
+
+    /// A real xz stream of "hello xz bounds", so the index pre-check is exercised
+    /// against bytes a real encoder wrote rather than a hand-made index.
+    private static let xzFixture =
+        "/Td6WFoAAATm1rRGAgAhARYAAAB0L+WjAQAOaGVsbG8geHogYm91bmRzAADVSsSt1JQAKAABJw/fGvxqH7bzfQEAAAAABFla"
+    /// A real bzip2 stream of "hello bzip2".
+    private static let bzip2Fixture = "QlpoOTFBWSZTWVVaRPcAAAIZgEAAEAASZMAQIAAiAGnqEAMF07Yhg8XckU4UJBVWkT3A"
+
+    private func assertInflateExceedsLimit<T>(
+        _ expression: @autoclosure () throws -> T,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ check: (String) -> Void = { _ in }
+    ) {
+        XCTAssertThrowsError(try expression(), file: file, line: line) { error in
+            guard let zipError = error as? ZipReaderError, case .inflateExceedsLimit(let detail) = zipError else {
+                return XCTFail("expected inflateExceedsLimit, got \(error)", file: file, line: line)
+            }
+            check(detail)
+        }
+    }
+
+    private func assertTooLarge<T>(
+        _ expression: @autoclosure () throws -> T,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ check: (String) -> Void = { _ in }
+    ) {
+        XCTAssertThrowsError(try expression(), file: file, line: line) { error in
+            guard let archiveError = error as? ArchiveError, case .tooLarge(let detail) = archiveError else {
+                return XCTFail("expected tooLarge, got \(error)", file: file, line: line)
+            }
+            check(detail)
+        }
+    }
+
+    private func littleEndian(_ value: UInt32) -> Data {
+        var little = value.littleEndian
+        return withUnsafeBytes(of: &little) { Data($0) }
+    }
+
+    /// 把 ZIP 声明的 uncompressedSize 改成谎话（本地头和中央目录一起改），
+    /// 模拟「声明 1 KiB、实际几 MiB」的解压炸弹头部。
+    private func patchingDeclaredSize(of data: Data, to size: UInt32) throws -> Data {
+        var patched = data
+        let base = patched.startIndex
+        guard patched.count >= 22 else { throw ArchiveError.notAnArchive("no end-of-central-directory record") }
+        let eocd = base + patched.count - 22
+        guard patched[eocd] == 0x50, patched[eocd + 1] == 0x4b,
+              patched[eocd + 2] == 0x05, patched[eocd + 3] == 0x06 else {
+            throw ArchiveError.notAnArchive("no end-of-central-directory record")
+        }
+        let central = Int(uint32(patched, at: eocd + 16))
+        writeUInt32(size, at: base + central + 24, in: &patched)
+        let local = Int(uint32(patched, at: base + central + 42))
+        writeUInt32(size, at: base + local + 22, in: &patched)
+        return patched
+    }
+
+    private func uint32(_ data: Data, at offset: Int) -> UInt32 {
+        UInt32(data[offset])
+            | (UInt32(data[offset + 1]) << 8)
+            | (UInt32(data[offset + 2]) << 16)
+            | (UInt32(data[offset + 3]) << 24)
+    }
+
+    private func writeUInt32(_ value: UInt32, at offset: Int, in data: inout Data) {
+        data.replaceSubrange(offset..<(offset + 4), with: littleEndian(value))
+    }
 }

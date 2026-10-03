@@ -323,6 +323,100 @@ final class UnixSocketTransportTests: XCTestCase {
         XCTAssertEqual(lstat(url.path, &st), 0)
         return st.st_mode & 0o777
     }
+
+    // MARK: - Overall read deadline (item 3)
+
+    func testNextFrameTimeoutUsesTheShortFrameBudgetWhileThereIsTime() {
+        // A 600 s frame budget inside a 1800 s total: the per-frame timeout is
+        // unchanged early on (it still guards a half-written frame).
+        XCTAssertEqual(
+            UnixSocketTransport.nextFrameTimeout(readTimeout: 600, overallDeadline: 1800, elapsed: 0),
+            600
+        )
+        XCTAssertEqual(
+            UnixSocketTransport.nextFrameTimeout(readTimeout: 600, overallDeadline: 1800, elapsed: 1700),
+            100,
+            "near the total deadline the frame wait must shrink to what is left"
+        )
+    }
+
+    func testNextFrameTimeoutEndsAtTheOverallDeadline() {
+        XCTAssertNil(
+            UnixSocketTransport.nextFrameTimeout(readTimeout: 600, overallDeadline: 1800, elapsed: 1800),
+            "at the total deadline there is no time left to wait"
+        )
+        XCTAssertNil(
+            UnixSocketTransport.nextFrameTimeout(readTimeout: 600, overallDeadline: 1800, elapsed: 1800.001)
+        )
+    }
+
+    func testContinuousProgressFramesCannotExtendTheOverallDeadline() {
+        // A live peer that keeps sending progress frames restarts the *per-frame*
+        // wait every time; the overall cap is recomputed from the wall clock and
+        // must therefore fire no matter how many frames arrive. Simulated here
+        // rather than with a real socket because peer verification rejects any
+        // non-MenuRight peer, so the loop's arithmetic is what can be pinned.
+        let readTimeout: TimeInterval = 600
+        let overall: TimeInterval = 1800
+        var elapsed: TimeInterval = 0
+        var frames = 0
+        while let timeout = UnixSocketTransport.nextFrameTimeout(
+            readTimeout: readTimeout, overallDeadline: overall, elapsed: elapsed
+        ) {
+            // 每次收到帧只重置「单帧等待」，总预算仍在按墙钟消耗：所以等待时间
+            // 只会被总预算压缩，绝不会被后续帧拉回 600s（这正是要防的漏洞）。
+            XCTAssertLessThanOrEqual(timeout, readTimeout, "单帧等待不得超过单帧预算")
+            XCTAssertGreaterThan(timeout, 0, "总预算未耗尽时总还剩一点可等")
+            elapsed += 1
+            frames += 1
+            if frames > 100_000 {
+                XCTFail("the overall deadline never fired")
+                break
+            }
+        }
+        XCTAssertEqual(frames, 1800, "the cap must be a hard wall-clock limit, not a frame count")
+        XCTAssertGreaterThanOrEqual(elapsed, overall)
+    }
+
+    // MARK: - Unverified-connection cap (item 2)
+
+    func testUnverifiedConnectionGateRejectsBeyondTheLimitWithoutDisturbingReservations() {
+        let gate = UnverifiedConnectionGate(limit: 3)
+        XCTAssertTrue(gate.tryAcquire())
+        XCTAssertTrue(gate.tryAcquire())
+        XCTAssertTrue(gate.tryAcquire())
+        XCTAssertEqual(gate.current, 3)
+
+        // The fourth connection is refused immediately, and — the point of the
+        // test — the three already admitted are untouched.
+        XCTAssertFalse(gate.tryAcquire())
+        XCTAssertEqual(gate.current, 3)
+
+        // Releasing one frees exactly one slot.
+        gate.release()
+        XCTAssertEqual(gate.current, 2)
+        XCTAssertTrue(gate.tryAcquire())
+        XCTAssertFalse(gate.tryAcquire())
+    }
+
+    func testUnverifiedConnectionGateReleaseCannotWidenTheCap() {
+        let gate = UnverifiedConnectionGate(limit: 1)
+        gate.release() // spurious release before any acquire
+        XCTAssertEqual(gate.current, 0)
+        XCTAssertTrue(gate.tryAcquire())
+        XCTAssertFalse(gate.tryAcquire())
+        gate.release()
+        gate.release() // extra release must not drive the count negative
+        XCTAssertEqual(gate.current, 0)
+        XCTAssertTrue(gate.tryAcquire(), "the cap must still hold after extra releases")
+    }
+
+    func testUnverifiedConnectionGateClampsAZeroLimitToOne() {
+        let gate = UnverifiedConnectionGate(limit: 0)
+        XCTAssertEqual(gate.limit, 1)
+        XCTAssertTrue(gate.tryAcquire())
+        XCTAssertFalse(gate.tryAcquire())
+    }
 }
 
 /// Minimal thread-safe box for a value produced on a background queue.

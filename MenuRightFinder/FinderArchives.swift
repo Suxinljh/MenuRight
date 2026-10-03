@@ -84,7 +84,10 @@ enum FinderArchives {
     /// No payload, or an empty enabled set, falls back to "everything this build
     /// supports": a fresh install must not look like a build without extraction.
     static func enabledExtractionSuffixes(from defaults: UserDefaults = FinderFavorites.appGroupDefaults) -> Set<String> {
-        guard let rawFormats = archives(from: defaults)?.enabledFormats else {
+        // `!rawFormats.isEmpty` is the documented fallback, and it is what
+        // `enabledCompressionFormats` below already does: a payload whose boxes
+        // were all unticked means "not configured", not "hide every item".
+        guard let rawFormats = archives(from: defaults)?.enabledFormats, !rawFormats.isEmpty else {
             return Set(extractionSuffixesByFormat.values.flatMap { $0 })
         }
         let suffixes = rawFormats.flatMap { extractionSuffixesByFormat[$0] ?? [] }
