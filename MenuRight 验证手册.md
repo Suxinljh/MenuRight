@@ -185,7 +185,7 @@ MENURIGHT_SELFTEST_SETTINGS=reset "$APP"   # 还原为默认值
 | 7 | 改 `MARKETING_VERSION` 重新构建 | 品牌区小字跟着变(取自 `CFBundleShortVersionString`) | 仍显示 1.0 → 版本被硬编码 |
 | 8 | 看每个分组卡片的四边留白 | 上下左右**一致**(12pt);卡片高度 = 12 + 内容 + 12 | 上/下比左右大 → 某行又加了自己的 `.padding(.vertical,)`;卡片变窄(约 150pt)→ 开关行退回了裸 `Toggle` |
 | 9 | 看每行右侧控件(选择器/开关/步进器/值) | 全部落在同一条竖线上,距卡片右缘 12pt | 选择器偏左 → 少了 `.frame(..., alignment: .trailing)` |
-| 10 | 通用设置最底部「恢复默认设置…」 | **没有卡片底色**;按钮文字是**警告色(红)**;确认弹窗后所有设置回默认,已授权文件夹不受影响 | 仍是灰字 → 颜色没写到 label 上(`role`/`tint` 在 macOS bordered 样式下不生效) |
+| 10 | 通用设置最底部「恢复默认设置…」 | **没有卡片底色**;按钮文字是**警告色(红)**;点它弹出的确认框正文有**两行**——第一行是固定的确认问句,第二行是「恢复默认只影响本应用的设置,不会移除已经授权的文件夹。」(2026-10-03 按用户要求从设置页移进弹窗);确认后所有设置回默认,已授权文件夹不受影响 | 仍是灰字 → 颜色没写到 label 上(`role`/`tint` 在 macOS bordered 样式下不生效);弹窗只有一行 → 检查 `GeneralSettingsView` 的 `.alert` message 是否还拼着 `generalResetFooter` |
 | 11 | 新建文件面板:每行左侧图标 | 12 种类型各有图标(txt/md/html/css/js/json/doc/xls/ppt/pages/numbers/keynote) | 某行空白 → 该资源缺失,跑 `Scripts/check-icons.sh` |
 | 12 | 文件权限面板:每行左侧图标 | 11 个动作都有图标;「打开终端」与「复制文件名」**故意是同一个图标**(规格如此) | 同上 |
 | 13 | **真实 Finder 右键菜单** | 菜单项**只有文字、没有图标**;标题左缘与 Finder 自带项(「新建文件夹」「显示简介」等)对齐,没有多出来的图标列缩进 | 文字前仍有缩进 → 菜单里还有某项带 `image`(只要有一项带图,整列都会留出图标位);检查 `FinderSync.addItem` 是否又传了图片 |
@@ -297,15 +297,31 @@ python3 Scripts/figma-mcp.py call get_screenshot     '{"nodeId":"1430:75"}'
 | 38 | 解压一个含中文名/多层目录的 zip | 目录名不乱码、层级正确 | — |
 | 39 | 设置 → 解压缩管理 → 冲突策略改成"跳过"后解压一个会撞名的包 | 已有文件**不动**,只解出新的 | `written`/`skipped` 计数 |
 | 40 | 解压 `.tar` / `.tar.gz`(`.tgz`) / `.tar.bz2` / `.7z` / `.xz` | 都能解压;7z 若用了 BCJ/BCJ2 过滤器会明确报"不支持的编码器"(不是"损坏") | `DISPATCH extractArchive DONE …` |
-| 41 | `压缩 ▸` 里四项各点一次 | 分别生成 `<名>.zip` / `.tar` / `.tar.gz` / `.tar.bz2`,系统双击都能打开 | `DISPATCH compressItems SUCCESS … format=…` |
+| 41 | `压缩 ▸` 里各项各点一次 | 分别生成 `<名>.zip` / `<名>.7z` / `.tar` / `.tar.gz` / `.tar.bz2`,系统双击都能打开(7z 用 `bsdtar -tf` 能列出内容) | `DISPATCH compressItems SUCCESS … format=…` |
 | 42 | 打开 设置 → 解压缩管理,关掉某格式后右键对应类型 | 该格式**不再出现** `解压 ▸` | `preview-finder-menu.sh` 的 favorites/availability 行 |
-| 44 | `压缩 ▸` → `自定义压缩…` | 主 App 前置并弹出对话框:保存为/标签/位置/压缩格式/压缩模式;加密·分卷·固实三个开关**置灰且旁边写明原因** | 日志 `ARCHIVE dialog presented` |
+| 44 | `压缩 ▸` → `自定义压缩…`（**先把设置窗口关掉**——主 App 是常驻菜单栏程序，此时它一个窗口都没有） | 主 App 前置并弹出对话框:最上面「保存为/标签/位置」三行**整体居中**;下面「压缩格式」和「压缩模式」的标签紧贴各自的弹出菜单(间隔 ~12pt,不是半行空档);「加密压缩」那一行的**密码框横跨整行**(左右顶到对话框内边);**ZIP 与 7Z 时「加密压缩」「分卷压缩」都可用**,7Z 的「加密文件名（仅 7z）」在**「固实压缩」同一行的右端**(与「压缩格式/压缩模式」同一形状),TAR / TAR.GZ / TAR.BZ2 时这几项**置灰(勾选框不勾)**。**对话框里不再有整段灰色说明文字**(2026-10-03 用户要求):那些规则改成了鼠标悬停提示 | 日志 `ARCHIVE dialog presented`;**光看这条日志会假阳性**,必须再看 `SELFTEST archiveDialog … visibleAfterClose=0 … dialogVisible=true`(一键复现见 §6 的 2026-10-03 条目) |
 | 45 | 对话框里改「保存为」和「压缩模式(极限)」后保存 | 生成的文件名与所填一致;系统 `unzip -z` 能看到「标签」;极限压缩产物不大于快速压缩 | `ARCHIVE dialog SUCCESS path=…` |
-| 46 | 对话框里选「压缩格式 = TAR.BZ2」 | 「标签」输入框变灰并提示仅 ZIP 写入 | — |
-| 47 | 对话框里点「位置 → 选择…」换目录 | 压缩产物出现在新选的目录 | — |
+| 46 | 对话框里选「压缩格式 = TAR.BZ2」 | 「标签」输入框变灰;为什么变灰(只有 ZIP 写注释)在它的悬停提示里 | — |
+| 47 | 对话框里点「位置」那一行(**原生弹出菜单**:文件夹自己的 Finder 图标 + 文件夹名 + 上下箭头,右边一个单独的「⌄」小按钮) | 弹出**系统原生**目录选择框(带「位置 / 个人收藏 / 最近访问的位置」侧栏);选完弹出菜单上换成新的文件夹。菜单里还能看到本次对话框访问过的文件夹和「选择…」(也是开同一个面板) | — |
 | 48 | `解压 ▸` → `解压到指定位置…` | 弹出目录选择框;选中的目录里出现解压结果 | `DISPATCH extractArchive DONE` |
 | 49 | 上一步在选择框里点「取消」 | **不解压任何东西**,不产生半成品 | 日志 `extractArchive CANCELLED` |
-| 43 | 解压一个加密的 zip | 明确报"受密码保护、本版本不支持",不是 CRC 之类的困惑错误 | `archive_unsupported` |
+| 43 | 解压一个加密的 zip(自己压的或第三方压的 zip 都行) | 主 App 前置并弹出密码框:压缩包图标 + 「压缩包已加密」+ 文件名 + 密码输入框(占位符「输入密码」)+「把密码存进密码本」勾选框 + 取消/解压。**密码输入框要横跨整个对话框内容宽度**(与上方说明文字同宽,左右各留 16pt 边距),不能缩成占位符那么窄。**输对密码 → 正常解压**;点取消 → **一个文件都不写**,扩展端也不弹错误框 | 一键复现见 §6 的 2026-10-03「解压加密 zip」条目 |
+| 50 | 对话框里选「压缩格式 = 7Z」后保存 | 生成 `.7z`;`bsdtar -tf <文件>` 能列出内容;系统双击能解开。**空目录不会进 7z**(libplzma 不写目录条目),zip/tar 会保留空目录——这是已知差异 | `ARCHIVE dialog SUCCESS path=…` |
+| 51 | 对话框里勾「加密压缩」并输入密码后保存 | 生成加密 zip;`unzip -P <密码> -t` 报 "No errors detected";不带密码的 `unzip -t` 报密码错误(而不是解出坏文件) | `ARCHIVE dialog SUCCESS path=…` |
+| 52 | 对话框里格式选 TAR 类 | 「加密压缩」那一行**消失**,回到置灰的加密开关——密码不会跟着切到存不下它的格式 | — |
+| 53 | 设置 → 解压缩管理 → 密码本:点 `+` 加一行、改名称/密码、勾选「自动保存压缩时输入的加密密码」 | 行内容立刻写进钥匙串(退出 App 再进来仍在);`批量导出` 得到 `MenuRight-Passwords.json`,改完再 `批量导入` 能读回;坏 JSON 会明确报错且**不清空**已有条目 | — |
+| 54 | 第 51 步勾着「自动保存…」再压缩一次加密包 | 密码本自动多一条(名称 = 归档文件名) | — |
+| 55 | 对话框里点「加密压缩」右边的**钥匙按钮**(只显示图标,悬停提示「从密码本选择」) | 菜单列出密码本的名称;选中后密码填入并自动勾选「加密压缩」 | — |
+| 56 | 先在第 51 步/第 54 步把密码存进密码本,再解压同一个加密包 | **完全不弹框**,直接解压成功(密码本命中就够) | `SELFTEST archiveUnlock … book=batch(items=1 failed=0 …) bookExtracted=true` |
+| 57 | 解压加密包时在密码框里连输三次错误密码 | 第一次正文是「“<文件名>” 已用密码加密。输入密码后才能解压。」,第二次起正文换成「密码不正确,请再试一次。」(标题始终是「压缩包已加密」);三次之后放弃返回,**目录里没有任何文件**(不会留下半成品) | `SELFTEST … alertResult=failure(code=cancelledByUser …) alertExtracted=false`;断言见 `MenuRightTests/ArchivePasswordResolverTests.swift` 的 `testThreeWrongAnswersAbandonTheExtraction` |
+| 58 | 密码框里点取消,或留空直接点「解压」 | 静默取消:不写字、不打日志、扩展端因为 `cancelled_by_user` 不弹错误框 | `alertResult=failure(code=cancelledByUser msg=No password was given; nothing was extracted.)` |
+| 59 | 对话框里格式选 7Z、勾「加密压缩」+「加密文件名」并输入密码后保存 | 生成 AES-256 加密的 `.7z`(内容与条目名都加密):`bsdtar -tf` 或任何工具**不开密码列不出内容**;本 App 用同一密码能正常解压回原文件 | `SELFTEST archiveDialog … confirm=SUCCESS … confirmParts=3 confirmEncrypted=true confirmExtract=written:1 failed:0 names:selftest-source.txt`(一键复现见 §6 的 2026-10-03「三个压缩模式…」条目) |
+| 60 | 对话框里选「分卷压缩 = 50 MB」再压一个大于 50 MB 的文件夹 | 得到 `name.zip.001` / `.002` / …;7-Zip / Keka / WinRAR 打开 `.001` 能直接解;本 App 右键 `.001` 也能解(选 `.002` 会被当成普通文件——只有 `.001` 是归档开头) | §6 的命令(3 MB 源 + 1 MB 档位 ⇒ `confirmParts=3`) |
+| 61 | 同上但格式选 7Z | 得到 `name.7z.001` / `.002` …(7z 原生分卷,同一命名),同样能解 | `confirmParts=3` |
+| 62 | 对话框里格式选 7Z,关掉「固实压缩」再压多个小文件 | 生成的 7z 可以**直接取出单个文件**而不用解开整包(体积比固实略大);勾着固实时体积最小 | 断言见 `MenuRightTests/ArchiveModeAndSevenZipTests.swift` |
+| 63 | 对话框里对同一份源依次用「快速/标准/极限」压 zip / 7z / TAR.GZ / TAR.BZ2 | zip、7z、tar.gz 产物依次变小(极限 < 标准 < 快速),bzip2 同理(块大小档位);**TAR 三档字节完全相同**(它本身不压缩;这条规则现在只在「压缩模式」的悬停提示里,对话框正文不再写) | 同上 |
+| 64 | 解压一个加密的 7z(自己压的或第三方压的) | 与加密 zip 一样弹密码框(先试密码本、最多 3 次);输对就解,取消则一个文件都不写;密码本命中则完全不弹框 | `MenuRightTests/FileOperationDispatcherTests.swift` 的 `testExtractArchiveUnlocksAnEncryptedSevenZipFromThePasswordBook` / `…AsksForAnUnknownSevenZipPassword` / `…CancelsQuietlyWhenTheSevenZipPromptIsDismissed` |
+| 65 | 经 Finder 菜单解压 `.7z` / `.tar` / `.tar.gz` | 正常解压(**不再**报 `Not a readable archive`) | `testExtractArchiveReadsASevenZipThroughTheMenu` / `testExtractArchiveReadsATarGzThroughTheMenu` |
 
 > **安全规则(自动化已覆盖,人工只需确认"能正常用")**:`../`、绝对路径、反斜杠、NUL、`C:` 形式
 > 一律拒绝;符号链接条目**不会**被创建;声明的解压体积超过设置上限时**在写盘前**整体拒绝;
@@ -391,6 +407,33 @@ python3 Scripts/figma-mcp.py call get_screenshot     '{"nodeId":"1430:75"}'
 > 旧版本 payload 的默认值兼容;并用**真实** GitHub 响应(SWCompression / Sparkle 的 releases/latest)跑通了解析路径。
 > **需要你手动做的是第 73 项**(发布一个真实的 Release)——它会改 GitHub 上的状态,我不替你点。
 
+
+### 3.12 设置界面「少文案」(2026-10-03 用户要求)
+
+用户原话:「除了恢复默认设置的文案在二次确认弹窗显示，其他的文案我框起来的，都可以去掉，以后不要在前端显示废话文案和实施进度」。
+**规矩**:设置界面只放**能操作的控件与状态**,不再有整段解释性文字、也没有「实现进度」卡片;规则要么放进鼠标悬停提示,要么干脆不显示。
+(对话框那边的同一条规矩见 §3.8 第 44 项。)
+
+一键复现(真沙箱、不开真窗口,直接把面板渲染成 PNG):
+
+```bash
+CONTAINER="$HOME/Library/Group Containers/group.xin.ljhsu.MenuRight"
+for p in general filePermissions archives codeTheme; do
+  MENURIGHT_SELFTEST_SETTINGS_PNG="$p:$CONTAINER/pane-$p.png" \
+    build/DerivedData/Build/Products/Debug/MenuRight.app/Contents/MacOS/MenuRight
+done
+ls -la "$CONTAINER"/pane-*.png        # 四张 720×1600 的整栏截图
+```
+
+| # | 操作 | 预期结果 | 失败时看什么 |
+| - | ---- | -------- | ------------ |
+| 1 | 看 通用设置 全部三张卡片 | 「界面语言」「登录时自动启动」「自动检查更新」下面**都没有**灰色说明段;「产品网站」那一行**只有官网按钮、没有 URL 小字**;底部「恢复默认设置…」下面也**没有**小字 | 还在 → `GeneralSettingsView` 里又写了 `footer:`/`subtitle:`;文案 key 已从 `Localization.swift` 删掉,写错 key 会编译不过 |
+| 2 | 点 通用设置 底部「恢复默认设置…」 | 那句话说在**二次确认弹窗里**(见 §3.5 第 10 项) | 弹窗只有一行 → `.alert` message 没拼 `generalResetFooter` |
+| 3 | 看 文件权限 面板底部 | 「Finder 扩展不含任何文件写入权限…」那段**消失**;只保留「仅在已授权的文件夹内创建或修改文件」这一行的开关副标题(用户没框它) | 少的是开关副标题 → 删过头了 |
+| 4 | 看 解压缩管理 面板 | 标题下只有一句副标题(不再提 RAR 借口);「RAR」行只有「不支持」徽标、**没有**小字;「体积上限」「密码本」两张卡片**都没有**页脚;面板里**没有**「实现进度」卡片 | 卡片还在 → `ArchiveSettingsView.noteGroup` 又被加回来了 |
+| 5 | 看 代码主题 面板 | 预览卡片下面**没有**「实现进度」卡片;标题下那句说的是「扩展读取同一份配置」,不再出现「P8 接入后」这类进度话 | 同上 → `CodeThemeSettingsView.noteGroup` |
+
+> 上面 5 项的外观由 PNG 自测(真沙箱、真 SwiftUI 视图)取证;真实窗口里的点击项(第 2 项)仍按 §3.5 的既有条目人工核验。
 
 ## 4. 这些现象**不是** bug(平台限制)
 
@@ -1093,6 +1136,566 @@ Manual:
       预期:出现「正在解压」进度窗口(同一套样式),进度条真实推进,
       可暂停/继续/取消;完成后窗口自动消失
 ```
+
+### 2026-10-03 — 「自定义压缩…」不再依赖设置窗口（P9 第③步的真实缺口）
+
+```
+Automated: PASS  (591 XCTest,2 skipped,0 失败;+10:对话框呈现/尺寸/进程级窗口)
+Automated: PASS  (MenuRight + MenuRightFinder 两个 target 均构建成功)
+Automated: PASS  (app 内自测:visibleAfterClose=0 时对话框仍然 visible —— 见下)
+Manual:    PENDING(§3.8 第 44–49 项:真实右键点击与外观)
+```
+
+- **发现的问题**:「自定义压缩…」的对话框原来是挂在设置窗口上的 `.sheet`,而主 App 自 2026-10-01 起是
+  「关窗口不退出」的常驻菜单栏程序 —— 用户关掉设置窗口后再点「自定义压缩…」,**什么都不弹**。
+  更糟的是日志 `ARCHIVE dialog presented` 照样打印,所以手册里以日志为证据的验证是**假阳性**
+  (§3.8 第 44 行原来「失败时看什么」只写了这条日志)。
+- **改法**:对话框改由**主 App 进程**持有 —— 新增 `CustomCompressionDialogWindow`(`NSWindow` +
+  `NSHostingController`,`level = .floating`、`identifier = "archive-dialog"`、**故意没有关闭按钮**:
+  取消/确定是唯一出口),`ArchiveRequestCenter.present(_:)` 通过新的 `ArchiveDialogPresenting` 协议
+  把请求交给它;`SettingsRootView` 里的 `.sheet` 与 `@StateObject` 一并删除。presenter 可注入(spy),
+  单测因此能断言「请求确实交给了对话框」,而不只是「请求被停在 center 上」。
+- **一键复现**(DEBUG 构建;自测会先把主 App 的窗口全部关掉,再走一次真实的 `compressItems` 派发):
+
+  ```
+  MENURIGHT_SELFTEST_ARCHIVE_DIALOG=/Users/suxin/Desktop \
+  MENURIGHT_SELFTEST_ARCHIVE_DIALOG_PNG="$HOME/Library/Group Containers/group.xin.ljhsu.MenuRight/archive-dialog.png" \
+  build/DerivedData/Build/Products/Debug/MenuRight.app/Contents/MacOS/MenuRight
+  ```
+
+  2026-10-03 实测输出:
+  `SELFTEST dir=/Users/suxin/Desktop/MenuRight-Selftest fixture=skipped(…) visibleBefore=2 visibleAfterClose=0 dispatch=SUCCESS createdPath=<none> pending=true dialogWindow=true dialogVisible=true png=… size=(520.0, 408.0) dismissedVisible=false`
+  → `visibleAfterClose=0` = 派发时主 App 一个窗口都没有;`dialogVisible=true` = 对话框照样出现;
+  `dismissedVisible=false` = 「取消」之后窗口真的消失。**修复前这里会是 `dialogVisible=false`**。
+- **坑**:签名沙箱版 app 写不了 `/tmp`、也写不了 `~/Desktop/...`(报 "You don't have permission to save…"),
+  所以 PNG 只能往 App Group 容器里写;`fixture=skipped(…)` 是正常的 —— 自测停在对话框,根本不用那个源文件。
+  测试进程里拿对话框截图要走 `TEST_RUNNER_MENURIGHT_DUMP_ARCHIVE_DIALOG=<路径>`
+  (xcodebuild 只转发 `TEST_RUNNER_` 前缀的变量),但那个渲染没有窗口背景,版式以 app 内自测的 PNG 为准。
+- **已知边界**:`ArchiveRequestCenter.pending` 仍然只保存最近一次请求;同一时刻只存在一个对话框,
+  第二次请求会替换第一次(不是叠窗口)。真实 Finder 右键这一环依旧只能人工点。
+
+### 2026-10-03 — P9 第④步：7z 写入 + 自研 ZIP 加密 + 密码本（用户四项要求）
+
+```
+Automated: PASS  (623 XCTest,2 skipped,0 失败;591 基线 +32:ZipCrypto 10、密码本 14、7z/加密落盘 8)
+Automated: PASS  (MenuRight Debug/Release + MenuRightFinder Debug 均构建成功)
+Automated: PASS  (7z 产物被 /usr/bin/bsdtar -tf 列出;加密 zip 被 /usr/bin/unzip -P 打开)
+Automated: PASS  (app 内自测:visibleAfterClose=0 时对话框仍然 visible,size=(520.0, 384.0))
+Manual:    PENDING(§3.8 第 44、50–55 项:真实右键点击、7z/加密/密码本的外观与手感)
+Manual:    PENDING(解压一个加密 zip 仍报"不能解"——见下,这是本版本有意的边界)
+```
+
+- **用户要求**(原话,m00594):「自定义压缩弹出的面板,顶部有一大块空白,请你去掉;压缩格式和压缩模式对齐位置
+  有问题 / 界面设计请你参考我给你的第二张 FastZip 的设计 / 我们现在没有 7z 压缩功能吗,可以加上吗。需要自研
+  zip 加密,有开源的功能可以参考吗 / 加密压缩应当有一个密码本,用户可以编辑,在加密压缩输入密码的时候可以直接选择」。
+  四项**全部落地**。
+- **① UI**:窗口从 `.titled + .fullSizeContentView + 标题隐藏` 改成普通 `.titled`(标题栏显示"自定义压缩"),
+  内容里的重复标题与 `Spacer(minLength: 44)` 删除 —— 顶部那块空白就是这两处叠出来的;压缩格式/压缩模式改为
+  **同一行**(`HStack` + `Spacer`)。内容高度 408 → 331pt(当时的版式)。回归护栏:单测断言
+  `content.height <= fitting.height + 0.5` 与 `!styleMask.contains(.fullSizeContentView)`。
+- **② 7z 写入**:走 **PLzmaSDK 1.4.2**(MIT,SPM `.exact("1.4.2")`,基于 LZMA SDK 23.01,LZMA2),
+  新文件 `Shared/Archive/SevenZipWriter.swift`;`ArchiveCompressor.writableFormats` 加 `.sevenZip`、
+  `fileNameExtension` 返回 `"7z"`。**已知边界**:libplzma 不写目录条目(目录只作为文件名的前缀存在),
+  所以**空目录不会进 7z**,zip/tar 仍保留空目录 —— 这是实现差异,不是失败。第三方声明补在
+  `MenuRight/Resources/Third-Party-Notices/PLzmaSDK-LICENSE.txt`。
+- **③ 自研 ZIP 加密**:`Shared/FileOperations/ZipCrypto.swift` 实现 PKWARE 传统加密(ZipCrypto):
+  12 字节加密头(10 随机 + CRC 高 16 位 + 校验字节)、三键 keystream、通用位 bit0。
+  `ZipWriter.archive(…, encryption: ZipEncryption(password:)…)`。单测以**外部实现**收尾:
+  `/usr/bin/unzip -P` 能读我们写的,`/usr/bin/zip -e` 写的我们能读。**已知边界**:只做 ZipCrypto
+  (兼容优先,强度有限),不做 WinZip AES;能**写**加密 zip,**读**还没做 —— 解压加密包仍报
+  `archive_unsupported`,下一步再做(密码要进解压流程,而密码**不进 IPC 契约**,得在 App 内弹框)。
+- **④ 密码本**:`Shared/Settings/ArchivePasswordBook.swift`(**钥匙串**存储,不是设置 JSON —— 设置是
+  App Group 明文且 Finder 扩展可读),设置 → 解压缩管理里可增删改、勾选「自动保存压缩时输入的加密密码」、
+  批量导入/导出 JSON;压缩对话框在格式为 ZIP 时显示「加密压缩」勾选框 + 密码框 + 眼睛 + 「从密码本选择」。
+- **一键复现**(与上一条相同,已刷新尺寸):
+
+  ```
+  MENURIGHT_SELFTEST_ARCHIVE_DIALOG=/Users/suxin/Desktop \
+  MENURIGHT_SELFTEST_ARCHIVE_DIALOG_PNG="$HOME/Library/Group Containers/group.xin.ljhsu.MenuRight/archive-dialog.png" \
+  build/DerivedData/Build/Products/Debug/MenuRight.app/Contents/MacOS/MenuRight
+  ```
+
+  2026-10-03 实测:`… visibleAfterClose=0 dispatch=SUCCESS pending=true dialogWindow=true dialogVisible=true png=… size=(520.0, 384.0) dismissedVisible=false`。
+- **密码本界面取证**(同一个自测进程,`设置 → 解压缩管理`):
+
+  ```
+  MENURIGHT_SELFTEST_PASSWORD_BOOK_PNG="$HOME/Library/Group Containers/group.xin.ljhsu.MenuRight/password-book.png" \
+  build/DerivedData/Build/Products/Debug/MenuRight.app/Contents/MacOS/MenuRight
+  ```
+
+  实测:`SELFTEST passwordBook png=… size=(720.0, 1500.0)`,PNG 里能看到「密码本」分组:
+  自动保存开关、序号/名称/密码 表头、两行(名称 + 圆点密码 + 眼睛 + 减号)、左下 `+`/`-`、
+  右下 批量导入/批量导出。**这两行密码来自内存册**(`InMemoryArchivePasswordBookStorage`),
+  自测**不会**往真钥匙串写示例密码。窗口高度取 1500pt 是故意的:再矮就会把密码本这段裁掉。
+- **坑(自测退出)**:`NSApp.terminate(nil)` 只是"请求",run loop 正忙时可能被忽略(实测进程写完后不退出),
+  `reportSelfTest` 现在在它之后再挂一个 1 秒后的 `exit(0)` 兜底。
+- **坑(新建文件)**:pbxproj 里**必须**给每个新文件独立的 fileRef ID —— 两个文件共用 `AAPWB001` 时测试类
+  根本没被编进 bundle(`Executed 0 tests`,`nm MenuRightTests` 里也找不到),排查花了很久。
+
+### 2026-10-03 — 自定义压缩对话框写盘必须自己重新取得 security-scoped access（用户报「加密压缩失败」）
+
+```
+Automated: PASS  (626 XCTest,2 skipped,0 失败;623 → +3:对话框写盘的 scope/越权/取消三个用例)
+Automated: PASS  (MenuRight Debug/Release + MenuRightFinder Debug 均构建成功)
+Automated: PASS  (app 内自测,真沙箱:confirm=SUCCESS … unscopedRead=DENIED(…permission…))
+Automated: PASS  (/usr/bin/unzip:无密码报 unable to get password,`-P hunter2` 报 No errors detected)
+Manual:    PENDING(§3.8 第 44、50–55 项:真实右键点击)
+```
+
+- **现象(用户截图 m01529)**:格式 ZIP、勾了「加密压缩」并输入密码,点「确定」后红字
+  `压缩失败: Could not read the archive: “mr-代码主题.webp” could not be read: The file … you don't have permission to view it.`。
+- **根因**:`FileOperationDispatcher.handleCompressItems` 的 customize 分支只把请求**停**在
+  `ArchiveRequestCenter` 上就 `return .success(createdPath: nil)`,**没有走 `withAuthorizations`**;
+  非自定义分支才在 `withAuthorizations` 里做写入。用户按「确定」时距 `dispatch` 已过去几分钟,
+  那次 security-scoped access 早已 stop,沙箱于是拒绝读源文件。**与加密无关**:不加密的自定义压缩
+  同样会失败,只是用户在测加密。
+- **修法**:新增 `FileOperationDispatcher.performCustomCompression(sources:into:preferredName:format:mode:label:password:settings:control:) throws -> ArchiveCompressor.Report`
+  —— 重算 `scopeTargets`(`static func scopeTargets(sources:destination:)`,与同步路径共用一份算法)、
+  先做 `AuthorizedURLResolver.folderMatching` 前置校验、再把 `ArchiveCompressor.compress` 放进
+  `FolderAuthorizationAccess.withAccesses(configuration: scopedConfig, persistRefreshedBookmark: persistenceHook())`;
+  授权失败抛 `FileOperationDispatcher.CustomCompressionFailure(message:)`(对话框直接显示这句),
+  `.cancelled` 仍原样透传(「取消」不能变成红字)。`CustomCompressionSheet.save()` 改调它。
+- **顺带修的误导文案**:`ArchiveError.readFailed` 只由压缩器读源文件时抛,`ArchiveExtractor.describe`
+  却写作 `Could not read the archive: …` —— 把整个排查方向带偏(看起来像压缩包坏了)。现在是
+  `Could not read “<文件>”: <系统原因>`;`sources.isEmpty` 改抛 `.writeFailed`;测试只断言 case
+  与「detail 里要有文件名」,不受影响。
+- **测试**:`testTheDialogWriteTakesItsOwnScopedAccess`(停请求 → 清空 spy 记录 → 调新方法 →
+  断言 `started == [authorized]` 且 `stopped == [authorized]`,证明写盘确实发生在 scope 里)、
+  `testTheDialogWriteRefusesAPathOutsideAnyAuthorizedFolder`、`testTheDialogWriteKeepsTheCancellationIdentity`。
+- **真沙箱端到端取证**(可复现):
+
+```bash
+mkdir -p ~/MenuRight-ScopeProbe/MenuRight-Selftest
+printf 'MenuRight scoped-access probe\n' > ~/MenuRight-ScopeProbe/MenuRight-Selftest/selftest-source.txt
+MENURIGHT_SELFTEST_ARCHIVE_DIALOG=~/MenuRight-ScopeProbe \
+MENURIGHT_SELFTEST_ARCHIVE_DIALOG_CONFIRM=1 \
+MENURIGHT_SELFTEST_ARCHIVE_DIALOG_CONFIRM_PASSWORD=hunter2 \
+  build/DerivedData/Build/Products/Debug/MenuRight.app/Contents/MacOS/MenuRight
+# SELFTEST … confirm=SUCCESS path=…/selftest-confirm.zip
+#          unscopedRead=DENIED(The file “selftest-source.txt” couldn’t be opened because you don’t have permission to view it.)
+unzip -P hunter2 -t ~/MenuRight-ScopeProbe/MenuRight-Selftest/selftest-confirm.zip   # No errors detected
+```
+  `unscopedRead=DENIED` 是**负对照**:同一份源文件,不走授权包装读一次,得到的正是用户截图里那句话 ——
+  证明「沙箱确实会拒」且「是这次取得的 scope 让写盘得以成立」。
+- **坑**:`MenuRight-ScopeProbe` 只是临时探针目录(在已授权的 `/Users/suxin` 下),取证完要删掉。
+
+### 2026-10-03 — 解压加密 zip:主 App 在写盘前问密码(用户报「软件加密压缩的文件自己解不开」)
+
+```
+Automated: PASS  (651 XCTest,2 skipped,0 失败;基线 626,本轮 +25:ArchivePasswordResolverTests 17 + FileOperationDispatcherTests 4 + ArchivePasswordPrompterTests 4)
+Interop:   PASS  (/usr/bin/zip -e -P hunter2 写的流式加密包,用密码本里的密码走完整解压路径,内容逐字节一致)
+Manual:    PENDING(§3.8 第 43、56–58 项:真实右键解压时的密码框外观、连错三次、取消)
+```
+
+- **用户报的**(截图 m01697 + m01698「通过软件加密压缩的文件,自己解压的时候发现无法解压」):弹窗
+  `无法完成"解压压缩包"。Not a readable archive: the archive is password-protected, which this build does not support`。
+- **根因**:P9 第④步让 App 能**写** ZipCrypto 加密 zip,但读路径没有密码入口 —— `ZipReader` 一看到通用位
+  bit0 就抛 `encryptedNotSupported`,于是解压链路把它翻成"本版本不支持"。不是文件坏了,也不是 CRC 问题。
+- **设计(三条规矩)**:
+  1. **密码永不进 IPC**。扩展只发"解压这个压缩包";主 App 是唯一解压者,也是唯一问密码的地方
+     (`ArchivePasswordPrompting` 是策略与解压机器的接缝)。
+  2. **写盘之前先定密码**。`ArchivePasswordResolver.resolve` 在进入写盘循环前对每个归档解析一次,并用
+     `ZipReader.validates(password:)` 拿**最小的那个加密条目**真解一次来验密码;验不过就问,最多 3 次
+     (第 2 次起文案变成"密码不对"),取消/留空/用完 → `.abandoned` → dispatcher 直接返回
+     `.cancelledByUser`(**扩展端 7 处 `guard code != .cancelledByUser` 保证静默,不弹错误框**),一个文件都不写。
+  3. 先查密码本再问人;勾了「把密码存进密码本」就按 `url.lastPathComponent` 记下(与压缩对话框存的键一致)。
+- **动的文件**:`Shared/Archive/ZipReader.swift`(`ZipEntryRecord.isEncrypted`、`ZipReaderError` 的
+  `.passwordRequired`/`.badPassword` 取代 `.encryptedNotSupported`、`needsPassword`/`passwordProbe`/
+  `validates(password:)`/`contents(of:password:)`,加密条目下 inflate/size/CRC 不符一律报"密码不对");
+  `Shared/Archive/ArchiveMemberSource.swift`(`make(url:format:password:)`、`ZipMemberSource(url:password:)`);
+  `Shared/Archive/ArchiveExtractor.swift`(`ArchiveError.passwordRequired/badPassword`、`extract(… password:)`);
+  新增 `Shared/Archive/ArchivePasswordResolver.swift`;新增 `MenuRight/App/Settings/ArchivePasswordPrompter.swift`
+  (NSAlert + `NSSecureTextField` + 密码本勾选框,全部经 `onMain` 跳主线程,因为 dispatcher 跑在 IPC 的后台并发队列上);
+  `Shared/FileOperations/FileOperationDispatcher.swift`(init 注入 `archivePasswordPrompting`、`handleExtractArchive`
+  写盘前解析、`mapArchiveError` 的 `.passwordRequired/.badPassword → .archiveFailed`);
+  `MenuRight/IPC/MainAppIPCServer.swift:89` 默认 dispatcher 注入 `ArchivePasswordPrompter.shared`;`Shared/Settings/Localization.swift` 6 条新文案。
+- **测试**:`MenuRightTests/ArchivePasswordResolverTests.swift`(17 例,含手写 STORED 加密夹具、流式 bit3 夹具、
+  `testThreeWrongAnswersAbandonTheExtraction`、`testWhatWeEncryptWeCanExtractAgain`、
+  `testAnArchiveInfoZipEncryptedIsUnlockedAndExtracted` 用 `/usr/bin/zip -e` 真产物)+
+  `MenuRightTests/FileOperationDispatcherTests.swift` 4 例(密码本命中不问人;取消 → `.cancelledByUser` 且目录为空;
+  没有 prompter 时报"受密码保护";**两个归档时第二个取消 → 第一个的文件也不会被写出来**)。
+- **真沙箱端到端取证**(可复现;`MenuRight-ScopeProbe` 在已授权的 `/Users/suxin` 下):
+
+```bash
+MENURIGHT_SELFTEST_ARCHIVE_UNLOCK=~/MenuRight-ScopeProbe \
+MENURIGHT_SELFTEST_ARCHIVE_UNLOCK_ALERT=1 \
+MENURIGHT_SELFTEST_ARCHIVE_UNLOCK_PNG="$HOME/Library/Group Containers/group.xin.ljhsu.MenuRight/unlock-alert.png" \
+  build/DerivedData/Build/Products/Debug/MenuRight.app/Contents/MacOS/MenuRight
+# SELFTEST … noPrompt=batch(items=1 failed=1 msg=“selftest-encrypted.zip” is password-protected — enter its password to extract it)
+#            lockedExtracted=false                      ← 没人问密码:明确报"受密码保护",不写盘
+#            book=batch(items=1 failed=0 msg=-) bookExtracted=true   ← 密码本命中:直接解开
+#            alertVisible=true alertControls=[secureField(输入密码) button(把密码存进密码本|off) button(取消|off) button(解压|off)]
+#            alertLabels=[压缩包已加密 / “selftest-encrypted.zip” 已用密码加密。输入密码后才能解压。]
+#            alertResult=failure(code=cancelledByUser msg=No password was given; nothing was extracted.) alertExtracted=false
+```
+- **两个坑(下次别踩)**:
+  - **`NSAlert.runModal()` 期间主队列不会被 drain**,`DispatchQueue.main.asyncAfter` **永不触发**(第一版自测因此
+    挂在模态循环里被 kill)。要观察/结束模态要会话,得用 `Timer` 并把它同时加进
+    `RunLoop.Mode.default`/`.common`/`.modalPanel`,再用 `NSApp.stopModal()`。
+  - **`NSAlert` 的 vibrancy 材质在窗口外 `cacheDisplay` 会渲染成不透明白底**,浅色文字直接白底白字;所以自测里
+    「提示到底写了什么」用**视图树 dump**(`alertControls`/`alertLabels`)断言,PNG 只看布局。另:alert 窗口的
+    `title` 是空的,别拿它判定。
+- **仍不支持(有意)**:WinZip AES(method 99)加密的 **zip** 仍报"不支持/受保护";加密 **7z**(AES-256,含加密文件名)
+  已支持。zip 侧只处理 PKWARE 传统加密(ZipCrypto),写侧也是同一套自研实现(强度有限,兼容优先)。
+
+#### 同日补修 — 密码框只有半个对话框宽(用户 m02310)
+
+用户原话:「输入密码的密码框宽度应该和弹出的宽度一样,当前的只有一半宽度的样子」,并确认「输入密码解压功能没有问题」。
+
+- **根因**:密码框和「把密码存进密码本」原先装在竖直 `NSStackView`(`alignment = .leading`)里,而 stack view 按**固有宽度**
+  排布子视图 —— 文本框的固有宽度就是占位符的宽度 —— 所以设了 300pt 的 frame 也不生效。真机实测
+  `alertFieldWidth=126` / `alertContentWidth=332`,正好是"一半宽"。
+- **修法**:`ArchivePasswordPrompter.makePrompt(text:archiveName:afterFailedAttempt:)` 把 alert 构造抽成可测的纯函数
+  (`struct Prompt { alert, field, remember }`),accessory 改成**纯 frame 布局**的 `NSView(320×58)`:密码框
+  `NSSecureTextField(frame: NSRect(x: 0, y: 34, width: 320, height: 24))` + `field.autoresizingMask = [.width]`,
+  勾选框 `y = 4`、宽度取 `remember.fittingSize.width`。**不要再用 NSStackView**。
+- **取证**:同一条自测命令现在输出 `alertFieldWidth=320 alertContentWidth=352` —— 左右各 16pt 边距,与正文同宽;
+  PNG(`unlock-alert-width.png`,`size=(352.0, 293.0)`)里密码框已横跨整个对话框。
+- **回归网**:`MenuRightTests/ArchivePasswordPrompterTests.swift`(4 例)钉住:密码框与所在 accessory 同宽、宽度可随父视图
+  伸缩、accessory 不是 `NSStackView`、勾选框在密码框下方 8pt、重试文案换成「密码不正确,请再试一次。」。
+  **反证**:把 `makePrompt` 临时改回 NSStackView,这些断言立刻变红(`XCTAssertFalse`/`autoresizingMask`/勾选框位置 3 条),
+  改回后全绿。
+- **顺手修的测试隔离(重要)**:`CustomCompressionDialogWindow` 改用 `passwordBookProvider`(**闭包**,默认
+  `MainActor.assumeIsolated { ArchivePasswordBook.shared }`)去取密码本,测试注入
+  `ArchivePasswordBook(storage: InMemoryArchivePasswordBookStorage())`。原因:真实密码本在**钥匙串**里,而单元测试进程
+  读它会**卡死在 `SecItemCopyMatching`** —— 现场用 `sample` 抓到栈
+  `CustomCompressionDialogTests.testCloseTakesTheWindowAwayAndLeavesNoDialog → CustomCompressionDialogWindow.show →
+  ArchivePasswordBook.shared → KeychainArchivePasswordBookStorage.load → SecItemCopyMatching`,整套测试挂了 10 分钟直到被
+  kill;`/usr/bin/security find-generic-password -s xin.ljhsu.MenuRight.password-book -a compression` 也同样阻塞(同一条
+  keychain 上新建/读/删探针条目都秒回,说明是**这个 item 的 ACL 需要授权弹窗**,不是钥匙串坏了)。测试从此不碰真钥匙串。
+
+### 2026-10-03 — 三个压缩模式真的不一样了 + 分卷 / 固实 / 7z AES-256(用户报「本版本不支持」)
+
+**用户要求**(原话,m02602):「继续完成自定义压缩未完成的功能，还有压缩模式的三个模式有区别吗，请你完成三个模式的区别」;
+截图里对话框底部三行是灰掉的 `加密压缩 本版本不支持` / `分卷压缩 本版本不支持` / `固实压缩（仅 7z） 本版本不支持`。
+两个方案由用户拍板(m02663/m02664):7z 加密选「**ZIP + 7z AES,并且这轮也把 AES 加密 7z 的解压做出来**」;
+分卷命名选「**`xxx.zip.001` / `.002` …**」(7z 用原生分卷、同一命名)。
+
+- **① 三个模式的区别(以前基本是摆设)**:`ArchiveCompressionMode` 的 `fast/standard/maximum` 现在对每种可写格式都落到实处 ——
+  zip/7z/tar.gz 用压缩等级 1/6/9;bzip2 用块大小 1/5/9 ×100KB;**TAR 本身不压缩,模式对它无效**(对话框里明写这句)。
+  关键改动:`.tar.gz` 以前走 SWCompression 的 `GzipArchive.archive(data:…)`,它的 deflate 只有「stored vs 静态 Huffman」两种,
+  **等级根本传不进去**;新增 `Shared/Archive/GzipWriter.swift`(自己用 zlib 的 `ZipWriter.rawDeflate(_:level:)` + CRC32/ISIZE 拼 gzip 头),
+  模式才真的生效。
+- **② 分卷压缩**:新文件 `Shared/Archive/ArchiveVolumeSet.swift` —— 写侧 `write(_:baseURL:volumeBytes:overwrite:)` 按 `count` 切片、
+  命名 `name.ext.001/.002…`(最多 999 片,`partSuffix` 3 位);重写时 `removeStaleParts` 清掉尾巴分片。
+  读侧 `resolve(_:)` 把多片拼到 `temporaryDirectory/MenuRight-Volumes/<UUID>/` 的 scratch 文件再交给原有的单流读出器,
+  `discard()` 保证临时目录不残留;`ArchiveExtractor.extract` 与 `ArchivePasswordResolver.resolve` 都在入口先 `resolve`,
+  「解压后删除压缩包」也改成删**全部分片**。`ArchiveFormats.detect` 靠 magic 就能认出 `.001`(它就是归档开头)。
+- **③ 固实压缩(仅 7z)**:`SevenZipWriter.archive(entries:mode:password:solid:encryptsFileNames:control:onEntry:)` 透传
+  PLzmaSDK 的 `setShouldCreateSolidArchive(_:)`(库默认 true,关掉后每个文件独立压缩,能直接取出单个文件)。
+- **④ 7z AES-256(读 + 写)**:写侧同一函数里 `setPassword` + `setShouldEncryptContent(true)`,
+  勾「加密文件名」时再加 `setShouldEncryptHeader(true)`(打开前就要密码)。读侧新文件
+  `Shared/Archive/SevenZipPasswordSource.swift`:`SevenZipEncryption.needsPassword/validates` +
+  `SevenZipPasswordMemberSource`(先 `OutStream` 试解最小加密项验证密码,再整包 `extract(to:)` 到 scratch 目录后取文件 ——
+  7z 默认固实,逐项解码会重复解整块)。SWCompression 明确拒绝加密 7z(`SevenZipError.encryptionNotSupported`),
+  所以加密路径整个走 PLzmaSDK。**取舍**:加密 7z 解压时符号链接不落盘(库没有符号链接 API),`members()` 不报目录项。
+- **⑤ 顺手修掉的回归(用户没提,但会让 7z/tar 全废)**:`FileOperationDispatcher.swift:569` 对**每个**归档无条件调
+  `ArchivePasswordResolver.resolve`,而它内部直接 `try ZipReader(fileURL:)`;非 ZIP 一律抛 `notAnArchive` ⇒
+  经 Finder 菜单解压 **7z / tar / tar.gz / tar.bz2 全报「Not a readable archive」**(测试没抓到是因为那批用例清一色用
+  `RawZipBuilder` 造 zip)。现在 resolver 先 `ArchiveFormats.detect`,zip → ZIP 探测、7z → 7z 探测、其余 → `.notNeeded`。
+- **动的文件**:新增 `Shared/Archive/ArchiveVolumeSet.swift`、`Shared/Archive/GzipWriter.swift`、`Shared/Archive/SevenZipPasswordSource.swift`;
+  改 `Shared/Archive/ArchiveCompressor.swift`、`Shared/Archive/ArchiveExtractor.swift`、`Shared/Archive/ArchiveMemberSource.swift`、
+  `Shared/Archive/SevenZipWriter.swift`、`Shared/Archive/ArchivePasswordResolver.swift`、
+  `Shared/FileOperations/FileOperationDispatcher.swift`、`Shared/Settings/Localization.swift`(删掉 `.archiveOptionUnsupported` /
+  `.archiveUnsupportedOptionsNote`,新增 9 条说明文案)、`MenuRight/App/Settings/CustomCompressionSheet.swift`(UI:三个选项按格式启用/置灰)、
+  `MenuRight/App/MenuRightApp.swift`(自测钩子)。
+- **验证三层**:
+  - `Automated: PASS (692 XCTest,2 skipped,0 失败;基线 651,本轮 +41:ArchiveVolumeSetTests 8 + GzipWriterTests 4 +
+    ArchiveModeAndSevenZipTests 20 + FileOperationDispatcherTests 8 + ArchiveCompressorTests 拆成 2)`。
+    其中 `-only-testing:` 逐类跑过,`build/TestResults-full-modes.xcresult` 是整套结果。
+  - `Sandbox: PASS`(下面那条一键命令,真 App、真沙箱、真对话框)。
+  - `Manual: PENDING`(§3.8 第 44、59–65 项;`/Applications/MenuRight.app` 还是 2026-10-01 的旧版,要先 `Scripts/install-dev-app.sh`)。
+- **一键复现**(格式名用 `ArchiveFormat` 的 rawValue,7z 是 `sevenZip` 而不是 `7z` —— 写错会被 dispatch 判成"不支持的格式"):
+  ```bash
+  rm -rf /Users/suxin/MenuRight-ScopeProbe && mkdir -p /Users/suxin/MenuRight-ScopeProbe/MenuRight-Selftest
+  dd if=/dev/urandom of=/Users/suxin/MenuRight-ScopeProbe/MenuRight-Selftest/selftest-source.txt bs=1024 count=2500
+  MENURIGHT_SELFTEST_ARCHIVE_DIALOG=/Users/suxin/MenuRight-ScopeProbe \
+  MENURIGHT_SELFTEST_ARCHIVE_DIALOG_FORMAT=sevenZip \
+  MENURIGHT_SELFTEST_ARCHIVE_DIALOG_CONFIRM=1 \
+  MENURIGHT_SELFTEST_ARCHIVE_DIALOG_CONFIRM_FORMAT=sevenZip \
+  MENURIGHT_SELFTEST_ARCHIVE_DIALOG_CONFIRM_FILE_NAMES=1 \
+  MENURIGHT_SELFTEST_ARCHIVE_DIALOG_CONFIRM_SPLIT=1 \
+  MENURIGHT_SELFTEST_ARCHIVE_DIALOG_CONFIRM_PASSWORD=hunter2 \
+  build/DerivedData/Build/Products/Debug/MenuRight.app/Contents/MacOS/MenuRight
+  ```
+  输出(实测):`dispatch=SUCCESS … dialogVisible=true confirm=SUCCESS path=…/selftest-confirm.7z.001 confirmParts=3
+  confirmEncrypted=true confirmExtract=written:1 failed:0 names:selftest-source.txt unscopedRead=DENIED(…)`
+  —— 即:真对话框 → 真加密 → 真分卷(3 片)→ 本 App 自己再解开(1 个文件、0 失败);`unscopedRead=DENIED` 是负对照。
+  想看三个选项的版式加 `MENURIGHT_SELFTEST_ARCHIVE_DIALOG_PNG=<路径>`,截到 `size=(520.0, 489.0)`。
+- **外部工具互操作(实测)**:
+  - 分卷 + 加密 zip:`cat selftest-confirm.zip.00* > /tmp/joined.zip` 后 `/usr/bin/unzip -P hunter2 -t /tmp/joined.zip`
+    → `testing: selftest-source.txt OK` / `No errors detected in compressed data` ⇒ 分片就是标准 ZipCrypto zip 的**朴素切分**,
+    拼回来 Info-ZIP 就能解(7-Zip / Keka / WinRAR 同理)。
+  - 新的 gzip 写入器(`GzipWriter`):`/usr/bin/gunzip -t selftest-confirm.tar.gz` 通过,`/usr/bin/tar -tzf …` 列出
+    `selftest-source.txt` ⇒ 自己拼的 gzip 头/尾(CRC32 + ISIZE)是对的。
+  - 7z 侧**没有**第三方工具可作证(本机 `/opt/homebrew/bin` 无 `7z/7za/7zz`,Python 无 `py7zr`),只有「本 App 往返 + PLzmaSDK」。
+- **坑**:
+  - `ArchiveFormat` 是 `String` 枚举且 `case sevenZip` **没有显式 rawValue**,所以 rawValue 是 `"sevenZip"`,`"7z"` 只是扩展名
+    (`fileNameExtension(for:)`)。自测 env 写 `7z` 会得到 `archive_unsupported`。
+  - 7z 的**头在文件末尾**(加密文件名时整个头也加密),所以对 `.001` 单片做 `SevenZipEncryption.needsPassword` 一定是 `false`;
+    必须先 `ArchiveVolumeSet.resolve` 拼回整包再判断(自测里一开始就踩了这个,`confirmEncrypted=false`)。
+  - 沙箱里 `createDirectory` 也要 security-scoped access:自测的回读步骤把「建输出目录 + 解压 + 判断加密」全放进
+    `FolderAuthorizationAccess.withAccesses(to:folders:)`,否则 `NSCocoaErrorDomain Code=513 … Operation not permitted`。
+  - 本机没有 7z 命令行(`/opt/homebrew/bin` 里也没有 `7z/7za/7zz`,Python 也没 `py7zr`),所以 7z 的**外部互操作**这轮没有第三方工具作证,
+    只有「本 App 往返 + PLzmaSDK」;zip 侧仍可用 `unzip`/`zip`。
+
+#### 同日补修 — 对话框改成「少文案」版式(用户 m03272)
+
+用户原话:「文案……可以去掉，用户前端可以不显示 / 从密码本选择的下拉只显示按钮和功能，不显示文案 /
+压缩格式和压缩模式的选项和文案之间有很大的间隔，请你减小一点，参考保存为 / 位置选项直接使用系统原生的文件夹选择，
+参考图一 / 固实压缩不可用的模式下置灰 / 保存为、标签、位置三个居中；下面的其他选项保持现状」。
+
+- **动的文件**:`MenuRight/App/Settings/CustomCompressionSheet.swift`(版式)、`MenuRight/App/MenuRightApp.swift`(自测可选种一个内存密码本)。
+  文案本身**没删**(`Shared/Settings/Localization.swift` 一字未改),只是从正文挪进了悬停提示。
+- 六条一一对应:
+  1. 正文里 5 段灰色说明(`archiveModeNote` / `archiveEncryptionNote` / `archiveEncryptSevenZipNote` /
+     `archiveSplitNote` / `archiveSolidNote`)+ `archiveEncryptFormatsNote` + 标签下那行 `archiveLabelZipOnly` 全部不再渲染,
+     改成 `.help()`(悬停提示)。
+  2. 密码本下拉从「从密码本选择 ▾」变成**只有钥匙图标**的 `Menu`(`.menuStyle(.borderlessButton)`,提示里保留原话)。
+  3. 「压缩格式 / 压缩模式」的两个 `Picker` 由 `.frame(width: 150)`(标题在 150pt 里居中 ⇒ 看着像半行空档)
+     改成 `.fixedSize()`,标签与弹出菜单只隔 `spacing: 12` —— 与「保存为」行一致。
+  4. 「位置」由「等宽路径文本 + 选择…按钮」改成**整行可点的文件夹控件**:蓝色文件夹图标 + 文件夹名 + 上级路径(截头),
+     点它直接开系统 `NSOpenPanel`(就是图一那个带「位置/个人收藏/最近访问的位置」侧栏的原生面板)。
+  5. 「固实压缩」在非 7z 下用计算绑定 `solidBinding` 显示成**未勾 + 置灰**(以前是「勾着但灰」,看起来像可用);
+     `solid` 状态本身仍保留给 7z,切回 7z 依旧是默认开。
+  6. 「保存为 / 标签 / 位置」用一个 `Grid` 包在 `HStack { Spacer; Grid; Spacer }` 里整体居中,三个控件统一 300pt 宽。
+- **取证(命令)**:
+  ```
+  MENURIGHT_SELFTEST_ARCHIVE_DIALOG=/Users/suxin/MenuRight-ScopeProbe \
+  MENURIGHT_SELFTEST_ARCHIVE_DIALOG_FORMAT=sevenZip \
+  MENURIGHT_SELFTEST_ARCHIVE_DIALOG_PASSWORD_BOOK=1 \
+  MENURIGHT_SELFTEST_ARCHIVE_DIALOG_PNG="$HOME/Library/Group Containers/group.xin.ljhsu.MenuRight/dialog-7z.png" \
+  build/DerivedData/Build/Products/Debug/MenuRight.app/Contents/MacOS/MenuRight
+  ```
+  `MENURIGHT_SELFTEST_ARCHIVE_DIALOG_PASSWORD_BOOK=1` 会给对话框注入一个**内存**密码本(一条示例条目),
+  这样钥匙按钮会出现在 PNG 里,**不会**往真钥匙串写东西。实测 `size=(520.0, 350.0)`(zip 时 328)。
+- **坑**:沙箱里 `NSHomeDirectory()` 是容器路径,`abbreviatingWithTildeInPath` **不会**把 `/Users/suxin/...` 缩成 `~/...`;
+  上级路径就按原样显示,并用 `.truncationMode(.head)` 保证「当前在哪个文件夹」那一半可见。
+- `Automated: PASS (692 XCTest,2 skipped,0 失败;与本轮 UI 改动前同数,`build/TestResults-ui.xcresult`)`;
+  版式只能靠 PNG 目测,已附 `dialog-7z.png` / `dialog-zip.png`;真机点击仍记在 §3.8 第 44/46/47/55 项(PENDING)。
+
+#### 同日补修 — 「位置」换成原生弹出菜单 + 三处间距(用户 m03393)
+
+用户原话:「位置的样式不能做成原生的吗 / 分卷压缩选项前面依旧有很大空隙，请你修复 / 加密压缩这个选项宽度左右顶到头 /
+选择7z后，加密文件名选项放在固实压缩同一行右侧，类似压缩格式、模式那一行」。
+第 3 条含义有歧义,我追问了一次,用户选的是「加宽:密码框尽量长,整行左右都顶到对话框内边」。
+
+- **动的文件**:`MenuRight/App/Settings/CustomCompressionSheet.swift`、
+  `MenuRightTests/CustomCompressionDialogTests.swift`(+3 例)、`MenuRight/App/MenuRightApp.swift`(只多了一条 `MENURIGHT_SELFTEST_ARCHIVE_DIALOG_PASSWORD_BOOK=1` 的截图用注入,上一小节已记)。
+- 四条一一对应:
+  1. 「位置」不再是自绘控件,而是**真 AppKit 的 `NSPopUpButton`**:
+     `struct NativeFolderPicker: NSViewRepresentable`,菜单项图标用 `NSWorkspace.shared.icon(forFile:)` 取文件夹**自己的 Finder 图标**
+     (带标签颜色的那种,所以和参考图一致),按钮上显示「图标 + 文件夹名 + 系统上下箭头」,右边再跟一个单独的「⌄」小按钮开 `NSOpenPanel`。
+     弹出菜单 = 当前文件夹 → 本次对话框访问过的文件夹(去重、最多 5 个) → 「选择…」(没有 URL,表示开面板)。
+     菜单内容由纯函数 `NativeFolderPicker.menu(directory:recent:chooseTitle:) -> [Entry]` 生成,不依赖 AppKit,所以能单测。
+  2. 「分卷压缩」的 `Picker` 由 `.frame(width: 140)` 改成 `.fixedSize()` —— 与上一轮格式/模式**同一个根因**(`NSPopUpButton` 把标题在给定宽度里居中),
+     这是最后一处。
+  3. 「加密压缩」的密码框由 `.frame(width: 200)` 改成 `.frame(maxWidth: .infinity)`,选项那一列加 `.frame(maxWidth: .infinity, alignment: .leading)`,
+     整行左右顶到对话框内边。
+  4. 「加密文件名（仅 7z）」从独占一行改成**「固实压缩」同一行的右端**(`Spacer(minLength: 24)` 分隔),形状与「压缩格式 / 压缩模式」一致。
+- **取证(命令)**:与上一小节同一条 PNG 自测命令,`MENURIGHT_SELFTEST_ARCHIVE_DIALOG_FORMAT=zip|sevenZip`;
+  实测两个格式现在都是 `size=(520.0, 328.0)`(7z 因为「加密文件名」不再单独占一行,高度与 zip 相同;上一轮是 350)。
+- `Automated: PASS (695 XCTest,2 skipped,0 失败;基线 692,本轮 +3:位置菜单三例,`build/TestResults-ui2.xcresult`)`;
+  **AppKit 版式本身没有断言**(单测进程里没有真模态窗口,量不出最终尺寸),只能靠 PNG 目测 + 真机点击:
+  §3.8 第 44 项(整行宽度、加密文件名位置)与第 47 项(原生弹出菜单的菜单项、小按钮)仍是 PENDING。
+
+#### 同日补修 — 设置界面「少文案」:去掉说明段与「实现进度」(用户 m03593)
+
+用户原话:「除了恢复默认设置的文案在二次确认弹窗显示，其他的文案我框起来的，都可以去掉，以后不要在前端显示废话文案和实施进度 /
+44和47已经核验，前端没问题」。
+
+- **动的文件**(只动前端与文案表,没碰任何文件操作逻辑):
+  `MenuRight/App/Settings/Panes/GeneralSettingsView.swift`(删三处 `footer:` + 「产品网站」行的 `subtitle:`,
+  `resetGroup` 的页脚移进 `.alert` 的 message)、`MenuRight/App/Settings/Panes/FilePermissionSettingsView.swift`(删 `sandboxNote`)、
+  `MenuRight/App/Settings/Panes/ArchiveSettingsView.swift`(删 `noteGroup`、RAR 行小字、体积上限与密码本的页脚)、
+  `MenuRight/App/Settings/Panes/CodeThemeSettingsView.swift`(删 `noteGroup`)、`Shared/Settings/Localization.swift`(删 11 条 key)、
+  `MenuRight/App/MenuRightApp.swift`(新增 `MENURIGHT_SELFTEST_SETTINGS_PNG` 截图钩子,见下)、`MenuRight 验证手册.md`、`README.md`。
+- 逐条对应:界面语言页脚 / 登录项页脚 / 更新页脚 / 产品网站 URL / 恢复默认页脚(→ 移进确认弹窗)/ 文件权限页脚 RAR 借口 /
+  RAR 行小字 / 体积上限说明 / 密码本说明 / 代码主题「实现进度」,共 11 处,全部来自用户 m03589–m03592 框出的那些。
+- **刻意保留**(用户没框):文件权限里那个开关的副标题「关闭后依然受 macOS 沙盒限制:没有授权书签的路径无法写入。」、
+  开源许可的说明、以及文件操作通道异常时才出现的提示。
+- 文案表一致性:`Shared/Settings/Localization.swift` 现在 `case` 320 条 == `Localization.table` 320 条
+  (`LocalizationTests.testCatalogHasNoUnknownOrDuplicateKeys` 钉住);11 条 key 的 `case` 与 `Entry` 是**一起**删的。
+  另外 `.archiveIntro` 去掉 RAR 那句、`.codeThemeIntro` 把「扩展在 P8 接入后读取同一份配置」改成「扩展读取同一份配置」。
+- **取证**:新增自测钩子 `MENURIGHT_SELFTEST_SETTINGS_PNG=<pane>:/abs/path.png`
+  (`pane ∈ general | filePermissions | archives | codeTheme`,archives 用内存密码本),真沙箱渲染四张 720×1600 的整栏 PNG
+  (命令见 §3.12);实测四个面板都不再有被框的段落,也不再出现「实现进度」卡片。
+  代价:PNG 里的开关是**未着色**的(真实窗口的紫色来自设置窗口根节点的 tint),只看截图时别把它当 bug。
+- `Automated: PASS (695 XCTest 共 693 passed / 2 skipped / 0 失败;`build/TestResults-nofuss.xcresult`,与改动前基线同数)`;
+  Debug / Release / `MenuRightFinder` Debug 三个构建均 `BUILD SUCCEEDED`。
+- 手册新增 §3.12(5 项),并把 §3.5 第 10 项改成「确认弹窗正文两行」。
+
+### 2026-10-03 — P7 收口:开关真正生效 + 终端 App / 模板目录 + 陈旧说明订正
+
+**本轮动的东西**(详见 `Memory/Memory-10-03-13.md`):`Shared/Settings/MenuRightSettings.swift`(schema 2、`FileAction.compressArchive`、
+`GeneralSettings.terminalApplicationPath/terminalServiceName`、`NewFileSettings.templateDirectoryPath/Bookmark`)、
+`Shared/Settings/Localization.swift`、`Shared/FileOperations/{FileOperationDispatcher,SystemOpener,DocumentTemplateCatalog}.swift`、
+`MenuRightFinder/{FinderSettings,FinderMenuBuilder,FinderSync}.swift`、`MenuRight/App/Settings/DestructiveActionPrompter.swift`(新)、
+各设置面板、`MenuRight.xcodeproj/project.pbxproj`。新增图标 `SettingsIcons.xcassets/lucide-archive.imageset`。
+
+#### A. 此前"有 UI 没效果"的两个开关,现在真的生效(可自动化,已自动化)
+
+- **文件权限 → 「只在已授权的文件夹内创建或修改文件」**:关闭后 `FileOperationDispatcher` 跳过自己的
+  `pathOutsideAuthorizedScope` 预检(`DISPATCH … scope-precheck-skipped (restrictToAuthorizedFolders=off)` / `auth bypassed`),
+  macOS 沙盒仍是最终裁判;打开时行为与之前完全一致。
+- **文件权限 → 「敏感操作前二次确认」**:打开后 锁定/解锁、剪切(移动)会先弹主 App 的
+  `DestructiveActionPrompter` 确认框(`确认操作` + 「即将执行“锁定所选项目”…」;多于 1 项时补 `(N 项)`);
+  选「取消」返回 `cancelledByUser`,扩展按静默取消处理,不弹错误。
+- **文件权限 → 各操作开关**:现在**真的裁剪 Finder 菜单**(此前注释就写着"以后用来过滤菜单",但没有调用点)。
+  关掉的动作从菜单消失;`新建文件 ▸` 里所有类型都关掉、或 `解压 ▸`/`压缩 ▸` 里所有变体都关掉时,该子菜单整体隐藏。
+  为此新增 `FileAction.compressArchive`(设置 → 文件权限 里可单独关掉"压缩所选项目")。
+- **新建文件 → 启用类型 / 顺序 / 默认文件名**:`新建文件 ▸` 按设置里的开关与拖拽顺序显示,创建时用设置里的默认文件名
+  (此前扩展硬编码 `Untitled.<ext>`)。
+- **自动化**:`FinderSettingsTests`、`MenuRightSettingsTests`、`DocumentTemplateCatalogTests`、`FileOperationDispatcherTests`
+  覆盖以上全部路径(载荷解码、裁剪、v1→v2 迁移、放行/拦截/确认/取消)。`Automated: PASS`(见文末本轮结论)。
+
+#### B. 两个新设置项(需要人工点一遍)
+
+- **通用设置 → 终端应用**(默认空 = 系统 Terminal):留空时行为与之前一样;选一个第三方 .app 后还要填它的
+  **Finder 服务名**(沙盒下打开终端只能走 Finder 服务,见 `SystemOpener`)。所配 App 不存在时回退内置终端并记
+  `DISPATCH terminal app missing …` 日志。**人工门**:选 Terminal.app 再点「打开终端」应落在正确 cwd;
+  选一个不存在的路径时应仍能打开并出现回退日志。
+- **设置 → 新建文件 → 模板目录**(留空 = 应用内置模板):选一个自定义文件夹后,`新建文件 ▸` 只显示该文件夹里
+  确实存在模板的类型;路径与安全作用域书签一起保存;文件夹被删后回退内置模板并在面板上告警。
+  **人工门**:覆盖目录只放 `blank.key` 时,菜单里只有 Keynote;恢复默认后 Pages/Numbers/Keynote 都回来。
+
+#### C. 陈旧说明订正(以下行号是**订正前**的位置,原文保留,勿再引用)
+
+> 订正方式:原文不删(手册是日志),以本节为准。
+
+- **L444**「它们**不能创建**,菜单里不会出现」→ 现在 **7Z 可以创建**(`SevenZipWriter` / PLzmaSDK),压缩菜单里有
+  7Z;仅 **XZ** 仍是"只能解不能压",RAR 仍完全不做。
+- **L487**「Finder 菜单尚未读取新设置(P7-b),本轮的设置项只影响界面与持久化数据」→ 已不成立:
+  扩展现在每次都从 App Group 读设置并裁剪菜单、排序/命名新建文件(本轮 A 节)。
+- **L609**「`FinderMenuBuilder.plan` 里**没有任何常用项** —— 即 P7-b 未实现」→ 已不成立:
+  常用软件/网页/文件夹三个子菜单早已接入,本轮再叠加一层"开关关掉则隐藏"。
+- **L721**「7-Zip / XZ **只能解不能压** … 加密/分卷/固实仍未实现」→ 已不成立:7Z 可创建;
+  加密(ZIP=ZipCrypto、7Z=AES-256 且可选文件名加密)、分卷(zip/7z,10/50/100/250/700 MB)、固实(仅 7z)**都已实现**,
+  设置里按格式置灰而不是"一律不可用"。仅 XZ 创建与 RAR 仍缺席。
+- **L787**「加密压缩 / 分卷压缩 / 固实压缩**未实现**」→ 同上,已实现。
+- **L1205**「能**写**加密 zip,**读**还没做 —— 解压加密包仍报 `archive_unsupported`」→ 已不成立:
+  解压加密 zip/7z 走 `ArchivePasswordResolver`(密码本 → 最多 3 次弹框,取消即放弃)。
+- 顺带订正:`README.md` 不再说"唯一的第三方依赖是 SWCompression"(现有 SWCompression + BitByteData + PLzmaSDK,
+  均为 MIT),底部许可清单与「通用设置 → 关于 → 开源许可」页脚都已补上 PLzmaSDK;
+  `FileOperationDispatcher` 的"不能创建该格式"错误文案已改成 `ZIP, 7Z, TAR, TAR.GZ and TAR.BZ2`。
+
+#### D. 仍然 PENDING 的人工门
+
+本手册里原有的 53 处 `PENDING` 都是**必须在真机上点一遍**的验收项(Finder 菜单外观、对话框、
+GBK zip、7z/tar.xz 经 Finder 实解、暂停/取消等),本轮没有改动它们的行为,所以**保持 PENDING**,
+不能用本轮的自动化结果代替。本轮新增的人工门见上面 B 节(终端应用 2 项、模板目录 1 项)。
+
+#### E. 本轮结论
+
+```
+Automated: PASS (740 XCTest 共 738 passed / 2 skipped / 0 失败, build/TestResults-fix-p7c.xcresult)
+  Debug / Release / MenuRightFinder 三个构建均 BUILD SUCCEEDED
+Manual: PENDING(53 处存量人工门 + 本轮新增 3 项,见 B 节)
+```
+
+顺带修掉一个**既有 flaky 断言**(不是本轮引入):`ArchiveModeAndSevenZipTests.testEveryCompressingFormatGetsSmallerFromFastToMaximum`
+里 7z 的严格递减断言 —— PLzmaSDK 的 LZMA2 在"极度冗余、压完只有 ~470 B"的输入上不保证 level 越高越小,
+且整包跑与单独跑会给出 471/470/478 这类浮动值(基线 `TestResults-final-modes.xcresult` 里它是 Passed)。
+现改为:7z 三个档位都必须把输入压到 4096 B 以下、且极慢不超过快速 5%;zip/gzip/bzip2 仍严格递减。
+
+### 2026-10-03 — Dock 右键「退出」只关设置窗口,不再结束服务
+
+**背景**:此前 Dock 图标右键「退出」(以及 ⌘Q)会直接结束主应用,于是 Finder 右键菜单里的每一项都变成
+「主应用未运行」。用户要求:Dock 退出 = 关掉设置面板;只有菜单栏图标的「退出」才停掉整个服务。
+
+**改动**(`MenuRight/App/StatusMenu/AppLifecycle.swift`、`MenuRight/App/MenuRightApp.swift`、
+`MenuRight/App/StatusMenu/StatusMenuView.swift`、`MenuRight/App/Settings/SettingsRootView.swift`):
+
+- 新规则 `AppLifecycle.shouldTerminate(intentionalQuitRequested:systemIsPoweringOff:)`,由
+  `AppDelegate.applicationShouldTerminate` 转发:无"意图退出"标记且系统不在关机/注销 → 关掉设置窗口后返回 `.terminateCancel`,
+  进程、`MainAppIPCServer` 与 Finder 菜单继续工作。
+- 只有三处会打标记:`StatusMenuView` 的「退出」(先 `(NSApp.delegate as? AppDelegate)?.requestQuit()` 再 `NSApp.terminate`)、
+  设置里的「重启应用」(`SettingsRootView.relaunch`,替换实例已在运行)、以及 DEBUG 自测钩子(它们本来就是"跑完即退出")。
+- 关机/注销/重启不拦:`applicationWillFinishLaunching` 订阅 `NSWorkspace.willPowerOffNotification` 后放行,避免拒绝关机。
+- 被拒绝时调用 `dismissRegularWindows()`:关掉**常规窗口**(设置窗口,以及从它打开的自定义压缩对话框等),
+  只有 `window is NSPanel` 的**面板**一律留下 —— 更新提示、密码框、确认框都是"待决定的交互",顺手关掉会丢掉这次决定。
+
+#### 人工门(需要真机点一遍)
+
+1. **Dock 右键「退出」**:设置窗口应关闭,菜单栏图标仍在;再点菜单栏「打开设置」窗口应能回来;
+   打开 Finder 右键菜单,操作仍能正常执行(不再出现「主应用未运行」)。
+2. **⌘Q**(设置窗口聚焦时,或应用菜单里的「退出 MenuRight」):同上,只关窗口。
+3. **菜单栏图标 →「退出 MenuRight」**:这次必须真正结束进程(`pgrep -x MenuRight` 应无输出),
+   之后 Finder 菜单项应报「主应用未运行」——这条正是与上两条的对照。
+4. **关机/注销**(或用 `osascript -e 'tell app "loginwindow" to «event aevtrsdn»'` 之外的真实注销):
+   系统不应被 MenuRight 拦住;注销前确认日志里有 `willPowerOff` 放行路径。
+   **自动化**:`StatusMenuTests` 钉住纯规则(不意图退出 → 不终止;意图退出 → 终止;关机 → 终止)、
+   `applicationShouldTerminate` 的转发与 `.terminateCancel`、`willPowerOffNotification` 订阅、
+   以及「菜单栏退出项必须先打标记」「重启应用也必须打标记」两处源码守卫(共 4 个新测试,`MenuRightTests/StatusMenuTests.swift`)。
+
+### 2026-10-03 — 状态栏图标失灵回归 + 「退出」通路（同日第二轮）
+
+**背景**:用户真机测试报出两点:(a) Dock 右键「退出」只关窗口、主程序仍活跃(符合上一条的预期);
+(b) **状态栏图标左右键都点不开** —— 这是上一节改动引入的回归。
+
+**三个根因**:
+
+1. `dismissRegularWindows()` 初版扫 `NSApp.windows`、只排除 `NSPanel`,把 SwiftUI `MenuBarExtra` 的窗口
+   (`NSStatusBarWindow`,`level = .statusBar`(25),**普通 `NSWindow`,不是 `NSPanel`**)也一起关了
+   → 图标还在,但点击不再弹菜单。
+2. `NSApp.delegate` 实际是 **SwiftUI 自己的 `SwiftUI.AppDelegate`**,所以 `NSApp.delegate as? AppDelegate` 恒为 nil:
+   设置窗口从未登记(拒绝退出时"什么都不关")、菜单栏「退出」与设置里的「重启应用」从不打意图标记
+   (**等于退不出去**)、自定义压缩对话框窗口也没登记。
+3. `NSApp.terminate(nil)` 与 `NSRunningApplication.current.terminate()` 在进程内**都退不掉**这个 app
+   (实测两次;`applicationShouldTerminate` 完全没被调用)。Dock 的 AppleEvent 路径倒是会调到 delegate。
+
+**改动**(`MenuRight/App/StatusMenu/AppLifecycle.swift`、`MenuRight/App/MenuRightApp.swift`、
+`MenuRight/App/Settings/CustomCompressionDialogWindow.swift`、`MenuRight/App/StatusMenu/StatusMenuView.swift`、
+`MenuRight/App/Settings/SettingsRootView.swift`):
+
+- `AppLifecycle.mayDismiss(windowLevel:isVisible:isPanel:)` = `isVisible && !isPanel && level < .mainMenu`:
+  菜单层级及以上(主菜单 24、状态项 25、弹出菜单 101)一律关不得;设置窗口(0)与自定义压缩对话框(`.floating`=3)可关;
+  不可见窗口与 `NSPanel`(更新提示/密码框/确认框)不碰。
+- `dismissRegularWindows()` 改为只遍历**显式登记**的两个窗口,不再 sweep `NSApp.windows`;
+  设置窗口由 `SettingsWindowReader`/`WindowReportingView`(`viewDidMoveToWindow`)报给 delegate,
+  对话框在 `show`/`close` 里登记 / 注销。
+- 新增 `MainAppGate` 协议 + `MainAppGateRegistry.gate`(弱引用,`AppDelegate.init()` 里发布),
+  所有需要 delegate 的地方改走它(不再 cast `NSApp.delegate`)。
+- `AppDelegate.quit()`:打意图标记 → `NSApp.terminate(nil)`(尽力) → 0.75 秒(quitGracePeriod)后
+  `finishQuitDirectly()`:`ipcServer.stop()` + `exit(0)` —— 保证菜单栏「退出」一定结束进程。
+
+**自动化**:`StatusMenuTests` 新增/改写 5 个测试(`testTheGateEndsTheAppWithoutAppKit`、
+`testNothingReachesTheDelegateThroughNSAppDelegate`、`testTheStatusMenuItemQuitsThroughTheGate`、
+`testTheRelaunchPathAlsoQuitsThroughTheGate`、
+`testARefusedQuitKeepsTheMenuBarItemAndClosesTheOtherWindows`),其中最后一个是 `mayDismiss` 的纯规则真值表;
+另有两条端到端自测钩子(不是人工门,可直接跑):
+
+```
+# 拒绝退出:状态项窗口保住、设置窗口关闭
+MENURIGHT_SELFTEST_REFUSED_QUIT=1 build/.../MenuRight.app/Contents/MacOS/MenuRight
+→ SELFTEST verdict status-item-window-visible true->true settings-window-visible true->false
+→ SELFTEST PASS a refused quit keeps the status item and dismisses the settings window
+
+# 意图退出:真进程结束
+open -n build/.../MenuRight.app --env MENURIGHT_SELFTEST_INTENTIONAL_QUIT=1 -o <log> --stderr <log>
+→ 日志只有 SELFTEST intentional-quit gate=true;9 秒后 pgrep 无进程
+→ 诊断日志:AppKit did not terminate the app; finishing the quit directly / MainAppIPCServer.stop
+→ ipc.sock 已被删除
+```
+
+**本轮自动化结果**:`xcodebuild test -project MenuRight.xcodeproj -scheme MenuRight -configuration Debug \
+-destination 'platform=macOS' -derivedDataPath build/DerivedData-fix -resultBundlePath build/TestResults-quit-fix3.xcresult`
+→ `Executed 747 tests, with 2 tests skipped and 0 failures`(2 个 skip 恒为 `testWindowRendersToAnImageWhenAsked` /
+`testDialogRendersToAnImageWhenAsked`);Release 构建 `BUILD SUCCEEDED`。
+
+**顺带记录(既存偶发,与本轮改动无关)**:本轮第一次全量跑(747 tests)时,`ArchiveModeAndSevenZipTests` 里
+**固实 7z** 的两处解压断言偶发失败(`failed == 3`,同测试的非固实 7z/zip/gzip/bzip2 都通过),
+而 `-only-testing:MenuRightTests/ArchiveModeAndSevenZipTests` 连跑 3 次全绿、该测试在历史 4 次全量跑里都 passed,
+本轮也没有改任何压缩代码 —— 判断为 PLzmaSDK(LZMA2)在整包负载下不稳定(那次 level 9 编码单测耗时 44.7 秒)。
+**没有放宽固实解压断言**,只给它加了"哪个条目、什么原因"的失败信息(`failureReasons(_:)`),方便下次复现定位。
+需要单独人工确认的一条:**用 MenuRight 压缩一批文件为「7z + 固实压缩」,再从 Finder 解压回来,文件内容要对**。
+
+#### 人工门(需要真机点一遍,接上一节的 1–4)
+
+5. **Dock 右键「退出」之后,菜单栏图标左右键都还能弹出菜单**(本次回归的直接症状)。
+6. **菜单栏「退出 MenuRight」→ 进程真的结束**(`pgrep -x MenuRight` 无输出),
+   之后 Finder 菜单才报「主应用未运行」。
+7. 设置窗口开着「自定义压缩」对话框时,Dock 退出 → 两个窗口一起关掉,状态项仍在、可继续使用。
 
 ### 结论怎么写
 

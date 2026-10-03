@@ -83,6 +83,24 @@ App Group `UserDefaults(suiteName:)` 存设置 → 设置 UI(软件选择器、�
 **关键点**:常用软件**不在菜单构建时校验存在性**(避免 IO/延迟),改在点击时校验并给出清晰错误。
 **人工门**:增删配置后菜单即时反映;软件被卸载后点击有明确报错。
 
+> **落地状态(2026-10-03 补记,原文保留在上)**:P7 **已交付**,并补上了此前"有 UI、无效果"的两个开关。
+>
+> - **菜单可见性真正接线**(此前只存设置、不裁剪菜单):扩展侧新增 `MenuRightFinder/FinderSettings.swift`,
+>   从 App Group 解 `filePermissions.allowedActions` / `newFile.{baseName,types,enabledTypes}`;
+>   `FinderMenuBuilder.plan(…, permissions:)` 过滤每个动作(含 `解压 ▸` / `压缩 ▸` 两个子菜单,子菜单清空即隐藏),
+>   `menuKinds(availability:settings:)` 负责 `新建文件 ▸` 的开关与排序,`NewFileKind.defaultName(baseName:)` 负责命名。
+>   为此 `FileAction` 新增 `compressArchive`(`MenuRightSettings.currentSchemaVersion = 2`;v1 的"全开"载荷迁移后仍全开)。
+> - **「仅在已授权的文件夹内创建或修改文件」生效**:关闭后 `FileOperationDispatcher` 跳过自己的路径预检
+>   (沙盒仍是最终裁判);**「敏感操作前二次确认」生效**:锁定/解锁、剪切(移动)先经主 App 的 `DestructiveActionPrompter`,
+>   取消返回 `cancelledByUser`(扩展按静默取消处理)。
+> - **终端 App 可配置**:`通用设置 → 终端应用`(默认空 = 系统 Terminal);第三方终端需要其 Finder 服务名,
+>   因为沙盒下打开终端只能走 Finder 服务(见 `SystemOpener`)。所配置的 App 不存在时回退到内置终端并记日志。
+> - **模板目录可选覆盖**:`设置 → 新建文件 → 模板目录`(安全作用域书签随路径一起保存);
+>   `DocumentTemplateCatalog.resolvedDirectory(for:)` 覆盖优先,缺失的文件类型照旧从菜单隐藏,覆盖目录失效时回退内置模板并告警。
+> - **自动化**:`FinderSettingsTests`(载荷解码 / 菜单裁剪 / 命名 / `permissionKey` 与 `FileAction` 原始值互钉)、
+>   `MenuRightSettingsTests`(v1→v2 迁移、终端字段、模板目录字段)、`DocumentTemplateCatalogTests`(覆盖目录解析与发布)、
+>   `FileOperationDispatcherTests`(两个开关的放行/拦截/确认路径)。
+
 ### P8 — Quick Look 代码高亮 + 主题(原 P1)
 
 新增第三个 target `MenuRightCodePreview`(Quick Look Preview Extension)嵌入主 App;轻量高亮器(按扩展名/UTI 选语言:Swift/Python/JS/TS/HTML/CSS/JSON/YAML/Markdown/Shell/SQL/C/C++/Go/Rust/Java…);主题 ≥6 套由主 App 配置、App Group 共享。
@@ -231,6 +249,16 @@ App Group `UserDefaults(suiteName:)` 存设置 → 设置 UI(软件选择器、�
 >      置灰并写明原因;7z/XZ 只读,不能创建。
 > - 已完成:**解压侧的进度/暂停/取消**(与压缩同一套进度窗口)、**1GB 大包的内存行为(S8,用户实测通过)**、**只读目标目录(人工门,用户实测通过)**。
 > - 仍未做(见 README「解压与压缩」):RAR 支持(无纯 Swift/MIT 方案)、创建 7z/xz、加密/分卷/固实压缩 —— 均在设置界面置灰并写明原因。
+
+> **落地状态(2026-10-03 补记,原文保留在上)**:上一条"仍未做"里的**压缩侧能力已实现**,只剩 XZ 创建与 RAR。
+>
+> - **7z 创建**:`Shared/Archive/SevenZipWriter.swift` 走 PLzmaSDK(主 App 与测试 target 链接,扩展不链接),
+>   `ArchiveCompressor.writableFormats = [.zip, .sevenZip, .tar, .gzip, .bzip2]`。
+> - **加密**:ZIP 用传统 ZipCrypto(自写 `ZipWriter`),7Z 用 AES-256 且可选**文件名加密**;加密开关只对 zip/7z 可用(其余格式点击即报错)。
+> - **分卷**:`ArchiveVolumeSet` 按字节切片命名 `name.zip.001/.002…`(7z 原生分卷),档位 10/50/100/250/700 MB,上限 999 个分卷,解压时先合卷再识别格式。
+> - **固实**:仅 7z(默认开),其余格式置灰。
+> - **仍缺席**:XZ **只能解压不能创建**(`ArchiveCompressor` 对 `.xz` 抛 `unsupportedFormat`);RAR 完全不做(含探测:见 `ArchiveFormats.swift` 的排除分支)。
+> - 相关的陈旧说明已同步:README 的「唯一的第三方依赖」不再成立(见下),`FileOperationDispatcher` 的「不能创建该格式」文案已改成 ZIP/7Z/TAR/TAR.GZ/TAR.BZ2。
 
 ### P10 — 快捷键与高级行为(原 P2)
 
