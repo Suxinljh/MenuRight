@@ -171,8 +171,11 @@
 		ABP6B06 /* OOXMLDocumentFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B02 /* OOXMLDocumentFactory.swift */; };
 		ABP6B07 /* DocumentTemplateCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B03 /* DocumentTemplateCatalog.swift */; };
 		ABP6B08 /* NewFileAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B04 /* NewFileAvailability.swift */; };
+		ABZCR01 /* ZipCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAZCR01 /* ZipCrypto.swift */; };
+		ABZCR02 /* ZipCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAZCR01 /* ZipCrypto.swift */; };
 		ABP6B09 /* NewFileAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B04 /* NewFileAvailability.swift */; };
 		ABP6B10 /* ZipWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B05 /* ZipWriterTests.swift */; };
+		ABZCT01 /* ZipCryptoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAZCT01 /* ZipCryptoTests.swift */; };
 		ABP6B11 /* OOXMLDocumentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B06 /* OOXMLDocumentTests.swift */; };
 		ABP6B12 /* DocumentTemplateCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B07 /* DocumentTemplateCatalogTests.swift */; };
 		ABP6B13 /* NewFileAvailabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAP6B08 /* NewFileAvailabilityTests.swift */; };
@@ -366,10 +369,12 @@
 		AAONB04 /* FolderAuthorizationAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderAuthorizationAction.swift; sourceTree = "<group>"; };
 		AAP6B01 /* ZipWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipWriter.swift; sourceTree = "<group>"; };
 		AASZP01 /* SevenZipWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SevenZipWriter.swift; sourceTree = "<group>"; };
+		AAZCR01 /* ZipCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipCrypto.swift; sourceTree = "<group>"; };
 		AAP6B02 /* OOXMLDocumentFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OOXMLDocumentFactory.swift; sourceTree = "<group>"; };
 		AAP6B03 /* DocumentTemplateCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentTemplateCatalog.swift; sourceTree = "<group>"; };
 		AAP6B04 /* NewFileAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFileAvailability.swift; sourceTree = "<group>"; };
 		AAP6B05 /* ZipWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipWriterTests.swift; sourceTree = "<group>"; };
+		AAZCT01 /* ZipCryptoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipCryptoTests.swift; sourceTree = "<group>"; };
 		AAP6B06 /* OOXMLDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OOXMLDocumentTests.swift; sourceTree = "<group>"; };
 		AAP6B07 /* DocumentTemplateCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentTemplateCatalogTests.swift; sourceTree = "<group>"; };
 		AAP6B08 /* NewFileAvailabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFileAvailabilityTests.swift; sourceTree = "<group>"; };
@@ -587,6 +592,7 @@
 				AAFREF02 /* FinderMenuLocalizationTests.swift */,
 				AAONB02 /* OnboardingFlowTests.swift */,
 				AAP6B05 /* ZipWriterTests.swift */,
+				AAZCT01 /* ZipCryptoTests.swift */,
 				AAP6B06 /* OOXMLDocumentTests.swift */,
 				AAP6B07 /* DocumentTemplateCatalogTests.swift */,
 				AAP6B08 /* NewFileAvailabilityTests.swift */,
@@ -632,6 +638,7 @@
 				AA00000000000000000005F1 /* FileOperationDispatcher.swift */,
 				AA0000000000000000000S01 /* SystemOpener.swift */,
 				AAP6B01 /* ZipWriter.swift */,
+				AAZCR01 /* ZipCrypto.swift */,
 				AAP6B02 /* OOXMLDocumentFactory.swift */,
 				AAP6B03 /* DocumentTemplateCatalog.swift */,
 			);
@@ -1026,6 +1033,7 @@
 				ABDLG001 /* CustomCompressionDialogWindow.swift in Sources */,
 				ABP6B01 /* ZipWriter.swift in Sources */,
 				ABSZP01 /* SevenZipWriter.swift in Sources */,
+				ABZCR01 /* ZipCrypto.swift in Sources */,
 				ABP6B02 /* OOXMLDocumentFactory.swift in Sources */,
 				ABP6B03 /* DocumentTemplateCatalog.swift in Sources */,
 				ABP6B04 /* NewFileAvailability.swift in Sources */,
@@ -1149,10 +1157,12 @@
 				ABONB03 /* OnboardingFlowTests.swift in Sources */,
 				ABP6B05 /* ZipWriter.swift in Sources */,
 				ABSZP02 /* SevenZipWriter.swift in Sources */,
+				ABZCR02 /* ZipCrypto.swift in Sources */,
 				ABP6B06 /* OOXMLDocumentFactory.swift in Sources */,
 				ABP6B07 /* DocumentTemplateCatalog.swift in Sources */,
 				ABP6B08 /* NewFileAvailability.swift in Sources */,
 				ABP6B10 /* ZipWriterTests.swift in Sources */,
+				ABZCT01 /* ZipCryptoTests.swift in Sources */,
 				ABP6B11 /* OOXMLDocumentTests.swift in Sources */,
 				ABP6B12 /* DocumentTemplateCatalogTests.swift in Sources */,
 				ABP6B13 /* NewFileAvailabilityTests.swift in Sources */,
