@@ -1,7 +1,9 @@
 import SwiftUI
+import AppKit
 
 /// New File pane: the default file name, which kinds the Finder submenu offers,
-/// and their order — with a live preview of the resulting menu.
+/// their order, and which folder supplies the blank templates — with a live
+/// preview of the resulting menu.
 struct NewFileSettingsView: View {
     @EnvironmentObject private var store: SettingsStore
 
@@ -14,8 +16,82 @@ struct NewFileSettingsView: View {
         ) {
             baseNameGroup
             typesGroup
+            templateDirectoryGroup
             previewGroup
         }
+    }
+
+    /// P7: the blank iWork templates normally come from the app bundle, but a
+    /// user may point 新建文件 at their own folder of `blank.pages` /
+    /// `blank.numbers` / `blank.key`. The path travels to the main app; the
+    /// resolution (and the fallback to the bundle) lives in
+    /// `DocumentTemplateCatalog`.
+    private var templateDirectoryGroup: some View {
+        SettingsGroup(
+            title: store.text(.newFileTemplateDirectory),
+            footer: store.text(.newFileTemplateDirectoryFooter)
+        ) {
+            SettingsRow(
+                title: store.text(.newFileTemplateDirectory),
+                subtitle: templateDirectorySubtitle,
+                systemImage: "folder",
+                subtitleLineLimit: 1
+            ) {
+                HStack(spacing: 8) {
+                    Button(store.text(.newFileTemplateDirectoryChoose)) { chooseTemplateDirectory() }
+                    if settings.hasCustomTemplateDirectory {
+                        Button(store.text(.newFileTemplateDirectoryReset)) { resetTemplateDirectory() }
+                    }
+                }
+            }
+            if DocumentTemplateCatalog.hasBrokenOverride(for: settings) {
+                Text(store.text(.newFileTemplateDirectoryMissing))
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 8)
+            }
+        }
+    }
+
+    private var templateDirectorySubtitle: String {
+        guard let directory = DocumentTemplateCatalog.resolvedDirectory(for: settings) else {
+            return store.text(.commonUnsupported)
+        }
+        return directory.path
+    }
+
+    private func chooseTemplateDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.prompt = store.text(.newFileTemplateDirectoryChoose)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        // The dispatcher copies templates while holding the scoped access it
+        // already has for the destination folder; the bookmark is kept so a
+        // custom folder outside the sandbox can be granted once and reused.
+        let bookmark = try? SecurityScopedBookmark.create(for: url)
+        store.mutate {
+            $0.newFile.templateDirectoryPath = url.path
+            $0.newFile.templateDirectoryBookmark = bookmark
+        }
+        publishTemplateAvailability()
+    }
+
+    private func resetTemplateDirectory() {
+        store.mutate {
+            $0.newFile.templateDirectoryPath = ""
+            $0.newFile.templateDirectoryBookmark = nil
+        }
+        publishTemplateAvailability()
+    }
+
+    /// The Finder submenu reads the published availability; republish at once so
+    /// the next right-click already knows what the new folder can supply.
+    private func publishTemplateAvailability() {
+        DocumentTemplateCatalog.publishAvailability(settings: store.settings.newFile)
     }
 
     private var baseNameGroup: some View {
@@ -59,16 +135,20 @@ struct NewFileSettingsView: View {
         return lines.joined(separator: "\n")
     }
 
-    /// Blank templates this build does not carry, so the pane and the Finder
-    /// submenu tell the same story.
+    /// Blank templates the resolved folder does not carry, so the pane and the
+    /// Finder submenu tell the same story. Resolved — not `bundledDirectory` —
+    /// because 模板目录 can be overridden.
     private var missingTemplateFileNames: [String] {
         DocumentTemplateCatalog
-            .missingTemplateTypes(in: DocumentTemplateCatalog.bundledDirectory)
+            .missingTemplateTypes(in: DocumentTemplateCatalog.resolvedDirectory(for: settings))
             .compactMap { DocumentTemplateCatalog.templateFileName(for: $0) }
     }
 
     private func hasTemplate(_ type: NewFileType) -> Bool {
-        DocumentTemplateCatalog.canCreate(type, in: DocumentTemplateCatalog.bundledDirectory)
+        DocumentTemplateCatalog.canCreate(
+            type,
+            in: DocumentTemplateCatalog.resolvedDirectory(for: settings)
+        )
     }
 
     private var previewGroup: some View {

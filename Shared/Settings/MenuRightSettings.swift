@@ -13,7 +13,13 @@ import Foundation
 struct MenuRightSettings: Codable, Equatable, Sendable {
     /// Bumped only for breaking payload changes; additive fields do not bump it
     /// because decoding fills missing fields with defaults.
-    static let currentSchemaVersion = 1
+    ///
+    /// v2 added `FileAction.compressArchive`. A v1 payload *can* encode an
+    /// `allowedActions` array, so "missing = default" does not apply to it: the
+    /// new action would silently read as switched off for every existing user.
+    /// `normalized()` therefore migrates the decoded v1 set (see
+    /// `FilePermissionSettings.migrateAddingCompressArchive()`).
+    static let currentSchemaVersion = 2
 
     var schemaVersion: Int
     var general: GeneralSettings
@@ -61,7 +67,11 @@ struct MenuRightSettings: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        schemaVersion = try container.decodeOr(Int.self, .schemaVersion, MenuRightSettings.currentSchemaVersion)
+        // A payload without the key predates versioning, i.e. it is a v1 (or
+        // older) tree: assume the oldest version so the v1 → v2 migration below
+        // gets a chance to run. It only ever touches a set that matches exactly
+        // what a v1 build wrote, so this cannot invent a choice for the user.
+        schemaVersion = try container.decodeOr(Int.self, .schemaVersion, 1)
         general = try container.decodeOr(GeneralSettings.self, .general, GeneralSettings())
         filePermissions = try container.decodeOr(FilePermissionSettings.self, .filePermissions, FilePermissionSettings())
         newFile = try container.decodeOr(NewFileSettings.self, .newFile, NewFileSettings())
@@ -81,8 +91,16 @@ struct MenuRightSettings: Codable, Equatable, Sendable {
     /// save, so the persisted tree is always self-consistent.
     func normalized() -> MenuRightSettings {
         var copy = self
+        // Read the *decoded* version before stamping the current one: the
+        // migrations below are the only place that needs to know where the
+        // payload came from.
+        let storedVersion = schemaVersion
         copy.schemaVersion = MenuRightSettings.currentSchemaVersion
+        if storedVersion < 2 {
+            copy.filePermissions.migrateAddingCompressArchive()
+        }
         copy.newFile = newFile.normalized()
+        copy.general = general.normalized()
         copy.codeTheme = codeTheme.normalized()
         copy.archives = archives.normalized()
         return copy
@@ -101,19 +119,35 @@ struct GeneralSettings: Codable, Equatable, Sendable {
     var skippedUpdateVersion: String?
     /// When the last check finished, used to throttle the automatic one.
     var lastUpdateCheck: Date?
+    /// **P6** Path of the terminal application 打开终端 should use. Empty means
+    /// the built-in default (`SystemOpener.defaultTerminalURL()`), which is the
+    /// only terminal this build installs: `/System/Applications/Utilities/Terminal.app`.
+    ///
+    /// A third-party terminal is launched the same way Terminal is — through its
+    /// Finder service — so the service name is part of the configuration too.
+    var terminalApplicationPath: String
+    /// Name of the Finder service that opens a terminal at a folder
+    /// (`"New Terminal at Folder"` for Terminal.app).
+    var terminalServiceName: String
+
+    static let defaultTerminalServiceName = "New Terminal at Folder"
 
     init(
         language: AppLanguage = .system,
         launchAtLogin: Bool = false,
         automaticallyChecksForUpdates: Bool = true,
         skippedUpdateVersion: String? = nil,
-        lastUpdateCheck: Date? = nil
+        lastUpdateCheck: Date? = nil,
+        terminalApplicationPath: String = "",
+        terminalServiceName: String = GeneralSettings.defaultTerminalServiceName
     ) {
         self.language = language
         self.launchAtLogin = launchAtLogin
         self.automaticallyChecksForUpdates = automaticallyChecksForUpdates
         self.skippedUpdateVersion = skippedUpdateVersion
         self.lastUpdateCheck = lastUpdateCheck
+        self.terminalApplicationPath = terminalApplicationPath
+        self.terminalServiceName = terminalServiceName
     }
 
     enum CodingKeys: String, CodingKey {
@@ -122,6 +156,8 @@ struct GeneralSettings: Codable, Equatable, Sendable {
         case automaticallyChecksForUpdates
         case skippedUpdateVersion
         case lastUpdateCheck
+        case terminalApplicationPath
+        case terminalServiceName
     }
 
     init(from decoder: Decoder) throws {
@@ -136,6 +172,33 @@ struct GeneralSettings: Codable, Equatable, Sendable {
         automaticallyChecksForUpdates = try container.decodeOr(Bool.self, .automaticallyChecksForUpdates, true)
         skippedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .skippedUpdateVersion)
         lastUpdateCheck = try container.decodeIfPresent(Date.self, forKey: .lastUpdateCheck)
+        terminalApplicationPath = try container.decodeOr(String.self, .terminalApplicationPath, "")
+        terminalServiceName = try container.decodeOr(String.self, .terminalServiceName, GeneralSettings.defaultTerminalServiceName)
+    }
+
+    /// The configured terminal as a URL, or nil when the default should be used.
+    var terminalApplicationURL: URL? {
+        let path = terminalApplicationPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return nil }
+        return URL(fileURLWithPath: path)
+    }
+
+    /// True when either terminal knob differs from the built-in default, i.e.
+    /// when `SystemOpener` has to be reconfigured for this request.
+    var usesCustomTerminal: Bool {
+        terminalApplicationURL != nil || effectiveTerminalServiceName != GeneralSettings.defaultTerminalServiceName
+    }
+
+    var effectiveTerminalServiceName: String {
+        let name = terminalServiceName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? GeneralSettings.defaultTerminalServiceName : name
+    }
+
+    func normalized() -> GeneralSettings {
+        var copy = self
+        copy.terminalApplicationPath = terminalApplicationPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        copy.terminalServiceName = effectiveTerminalServiceName
+        return copy
     }
 }
 
@@ -143,8 +206,11 @@ struct GeneralSettings: Codable, Equatable, Sendable {
 
 /// A Finder-menu capability the user can switch off.
 ///
-/// Raw values are stable identifiers. The set is used as a menu filter later;
-/// nothing here performs the operation itself.
+/// Raw values are stable identifiers. The set is the menu filter: the Finder
+/// extension decodes `allowedActions` from the App Group settings payload and
+/// drops any item whose action is switched off (`FinderMenuBuilder.plan`), so a
+/// disabled action never appears in the context menu. Nothing here performs the
+/// operation itself.
 enum FileAction: String, Codable, CaseIterable, Sendable {
     case createFile
     case createFolder
@@ -156,6 +222,7 @@ enum FileAction: String, Codable, CaseIterable, Sendable {
     case lockUnlock
     case openTerminal
     case extractArchive
+    case compressArchive
     case openFavorite
 
     /// Lucide asset for the row in 文件权限.
@@ -182,6 +249,7 @@ enum FileAction: String, Codable, CaseIterable, Sendable {
         case .copyFileURL: return "lucide-link"
         case .lockUnlock: return "lucide-lock-keyhole"
         case .extractArchive: return "lucide-file-archive"
+        case .compressArchive: return "lucide-archive"
         case .openFavorite: return "lucide-star"
         }
     }
@@ -198,6 +266,7 @@ enum FileAction: String, Codable, CaseIterable, Sendable {
         case .lockUnlock: return .filePermissionActionLockUnlock
         case .openTerminal: return .filePermissionActionOpenTerminal
         case .extractArchive: return .filePermissionActionExtractArchive
+        case .compressArchive: return .filePermissionActionCompressArchive
         case .openFavorite: return .filePermissionActionOpenFavorite
         }
     }
@@ -237,6 +306,19 @@ struct FilePermissionSettings: Codable, Equatable, Sendable {
     func isAllowed(_ action: FileAction) -> Bool {
         allowedActions.contains(action)
     }
+
+    /// v1 → v2 migration (see `MenuRightSettings.currentSchemaVersion`).
+    ///
+    /// A v1 payload stored an explicit `allowedActions` list that cannot mention
+    /// the action added in v2, so the new one would decode as switched off for
+    /// every existing user. When the stored set is exactly the set a v1 build
+    /// knew — the user had everything on — the new action inherits that state.
+    /// Any other set is a deliberate choice and is left untouched.
+    mutating func migrateAddingCompressArchive() {
+        let actionsKnownInV1 = FileAction.allCases.filter { $0 != .compressArchive }
+        guard allowedActions == Set(actionsKnownInV1) else { return }
+        allowedActions.insert(.compressArchive)
+    }
 }
 
 // MARK: - New file
@@ -248,23 +330,38 @@ struct NewFileSettings: Codable, Equatable, Sendable {
     /// Menu order. `normalized()` keeps it in sync with `NewFileType.allCases`.
     var types: [NewFileType]
     var enabledTypes: Set<NewFileType>
+    /// **P7** Optional override for the folder the iWork templates are read
+    /// from. Empty means the copies shipped inside the app bundle
+    /// (`DocumentTemplateCatalog.bundledDirectory`).
+    var templateDirectoryPath: String
+    /// Security-scoped bookmark for `templateDirectoryPath`, created by the
+    /// "选择…" button over an `NSOpenPanel` URL. The bookmark — not the path —
+    /// is what lets the sandboxed app read a folder the user picked outside its
+    /// container (`SecurityScopedBookmark`).
+    var templateDirectoryBookmark: Data?
 
     static let defaultBaseName = "Untitled"
 
     init(
         baseName: String = NewFileSettings.defaultBaseName,
         types: [NewFileType] = NewFileType.allCases,
-        enabledTypes: Set<NewFileType> = Set(NewFileType.allCases)
+        enabledTypes: Set<NewFileType> = Set(NewFileType.allCases),
+        templateDirectoryPath: String = "",
+        templateDirectoryBookmark: Data? = nil
     ) {
         self.baseName = baseName
         self.types = types
         self.enabledTypes = enabledTypes
+        self.templateDirectoryPath = templateDirectoryPath
+        self.templateDirectoryBookmark = templateDirectoryBookmark
     }
 
     enum CodingKeys: String, CodingKey {
         case baseName
         case types
         case enabledTypes
+        case templateDirectoryPath
+        case templateDirectoryBookmark
     }
 
     init(from decoder: Decoder) throws {
@@ -274,6 +371,13 @@ struct NewFileSettings: Codable, Equatable, Sendable {
         types = rawTypes.compactMap(NewFileType.init(rawValue:))
         let rawEnabled = try container.decodeOr([String].self, .enabledTypes, NewFileType.allCases.map(\.rawValue))
         enabledTypes = Set(rawEnabled.compactMap(NewFileType.init(rawValue:)))
+        templateDirectoryPath = try container.decodeOr(String.self, .templateDirectoryPath, "")
+        templateDirectoryBookmark = try container.decodeIfPresent(Data.self, forKey: .templateDirectoryBookmark)
+    }
+
+    /// True when the user pointed the templates at their own folder.
+    var hasCustomTemplateDirectory: Bool {
+        !templateDirectoryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     func normalized() -> NewFileSettings {
@@ -295,6 +399,12 @@ struct NewFileSettings: Codable, Equatable, Sendable {
         }
         copy.types = ordered
         copy.enabledTypes = enabledTypes.intersection(Set(NewFileType.allCases))
+
+        // Path and bookmark travel together: clearing the path (back to the
+        // bundled templates) must not leave a stale bookmark behind.
+        let trimmedPath = templateDirectoryPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        copy.templateDirectoryPath = trimmedPath
+        if trimmedPath.isEmpty { copy.templateDirectoryBookmark = nil }
         return copy
     }
 }

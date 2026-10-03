@@ -40,6 +40,28 @@ final class FinderSync: FIFinderSync {
     /// that accepted the connection and then stalled could block it forever.
     /// All `ExtensionIPCClient` calls run here; alerts are presented back on the
     /// main queue.
+    ///
+    /// Tradeoff, made explicit after review: because this queue is **serial and
+    /// held for the whole round trip**, a long operation (folder compression)
+    /// keeps every later delegated action waiting behind it. What the user sees
+    /// during that window: their next click on New File / Extract / Compress /
+    /// Paste does nothing visible — Finder gives no spinner and the menu items
+    /// cannot be disabled (the menu is rebuilt per click and carries no state),
+    /// so the click looks ignored until the queue drains and the action then
+    /// runs normally. Nothing is dropped or reordered, and the running operation
+    /// stays controllable because pause/resume/cancel use `controlQueue` below.
+    /// No "queued" feedback is shown; the busy notice in `sendDelegated` only
+    /// appears once an operation actually starts, i.e. after it reaches the
+    /// front. (The overall deadline in `ExtensionIPCClient` bounds how long the
+    /// head of the queue can hold everything else.)
+    ///
+    /// Deliberately **not** split into a "light" and a "long" queue: the
+    /// extension has exactly one progress window and one `delegatedToken`, both
+    /// main-thread confined. A second concurrent operation bumps the token and
+    /// would orphan the first one's progress updates and dismissal, so the
+    /// single-queue serialization is the state model. Splitting the queues is
+    /// therefore a real change to that model, not a low-risk one, and was left
+    /// out of this pass.
     private let ipcQueue = DispatchQueue(
         label: "xin.ljhsu.MenuRight.FinderSync.ipc",
         qos: .userInitiated
@@ -111,7 +133,13 @@ final class FinderSync: FIFinderSync {
         // P6-b: which kinds the *running* main app can create. Also a cfprefsd
         // read, not a filesystem scan; the templates themselves are never
         // touched from this process.
-        let newFileKinds = NewFileKind.available(from: NewFileAvailability.readFromAppGroup())
+        // P7: the same payload also carries 文件权限 (which actions may appear at
+        // all) and 新建文件 (base name, per-type switches, order).
+        let settings = FinderSettings.read()
+        let newFileKinds = FinderMenuBuilder.menuKinds(
+            availability: NewFileAvailability.readFromAppGroup(),
+            settings: settings.newFile
+        )
         // P7-b: the favorites submenus. A second cfprefsd read, no file access —
         // an entry whose app was uninstalled is resolved at click time.
         let favorites = FinderFavorites.entries()
@@ -128,7 +156,8 @@ final class FinderSync: FIFinderSync {
             favorites: favorites,
             archives: archives,
             archiveDestination: FinderArchives.destination(),
-            compressionFormats: FinderArchives.enabledCompressionFormats()
+            compressionFormats: FinderArchives.enabledCompressionFormats(),
+            permissions: settings.permissions
         )
         Self.diag.log("menu(for:) plan.count=\(plan.count, privacy: .public) hasCutPayload=\(hasCutPayload, privacy: .public) newFileKinds=[\(newFileKinds.map(\.rawValue).joined(separator: ","), privacy: .public)] favorites=\(favorites.count, privacy: .public) archives=\(archives.archives.count, privacy: .public)/\(archives.compressible.count, privacy: .public)")
         guard !plan.isEmpty else {
@@ -309,7 +338,19 @@ final class FinderSync: FIFinderSync {
             return
         }
         Self.diag.log("ACTION INVOKED performCopy title=\(title, privacy: .public) payload=\(payload, privacy: .public)")
-        PasteboardWriter.write(payload)
+        let wrote = PasteboardWriter.write(payload)
+        if !wrote {
+            // `setString` can fail (e.g. another process holds the pasteboard),
+            // and a silent failure looks identical to a successful copy until
+            // the user pastes nothing. Reuse the existing presenter rather than
+            // inventing new UI; `.presenterCutFailedBody` is the only localized
+            // clipboard-write failure message available (Localization.swift is
+            // outside this change's scope), and the generic title keeps it from
+            // claiming the operation was a cut.
+            Self.diag.log("ACTION performCopy pasteboard: write FAILED (setString returned false)")
+            OperationPresenter.presentOperationFailure(title: .presenterOperationFailed, message: appText(.presenterCutFailedBody))
+            return
+        }
         let readBack = NSPasteboard.general.string(forType: .string)
         Self.diag.log("ACTION performCopy pasteboard: type=public.utf8-plain-text writeAttempted=true readbackMatches=\(readBack == payload, privacy: .public) readbackLen=\(readBack?.count ?? -1, privacy: .public)")
     }
@@ -347,6 +388,10 @@ final class FinderSync: FIFinderSync {
         }
         Self.diag.log("ACTION INVOKED performNewFile title=\(sender.title, privacy: .public) kind=\(kind.rawValue, privacy: .public) target=\(directory.path, privacy: .public) delegating=true")
 
+        // P7: 设置 → 新建文件 chooses the base name; read it at click time (the
+        // menu-build read may be stale once the user changed it in the pane).
+        let fileName = kind.defaultName(baseName: FinderSettings.read().newFile.effectiveBaseName)
+
         // Text kinds are generated here (small, no bundle resources). Document
         // kinds name themselves and let the main app do the work: the OOXML
         // archive writer must not ship inside the sandboxed extension, and the
@@ -359,7 +404,7 @@ final class FinderSync: FIFinderSync {
                 kind: .createFile,
                 args: FileOperationContract.OperationArgs(
                     directory: directory.path,
-                    name: kind.defaultName,
+                    name: fileName,
                     contentsBase64: contentsBase64
                 ),
                 clientRequestId: UUID().uuidString
@@ -369,7 +414,7 @@ final class FinderSync: FIFinderSync {
                 kind: .createDocument,
                 args: FileOperationContract.OperationArgs(
                     directory: directory.path,
-                    name: kind.defaultName,
+                    name: fileName,
                     documentKind: kind.rawValue
                 ),
                 clientRequestId: UUID().uuidString
@@ -379,20 +424,21 @@ final class FinderSync: FIFinderSync {
                 kind: .createFromTemplate,
                 args: FileOperationContract.OperationArgs(
                     directory: directory.path,
-                    name: kind.defaultName,
+                    name: fileName,
                     documentKind: kind.rawValue
                 ),
                 clientRequestId: UUID().uuidString
             )
         }
         sendDelegated(request) { [weak self] outcome in
-            self?.handleNewFileOutcome(outcome, kind: kind, directory: directory)
+            self?.handleNewFileOutcome(outcome, kind: kind, name: fileName, directory: directory)
         }
     }
 
     private func handleNewFileOutcome(
         _ outcome: ExtensionIPCClient.FileOperationOutcome,
         kind: NewFileKind,
+        name: String,
         directory: URL
     ) {
         switch outcome {
@@ -408,7 +454,7 @@ final class FinderSync: FIFinderSync {
                 return
             }
             Self.diag.log("ACTION performNewFile delegated FAILURE code=\(code.rawValue, privacy: .public) message=\(message, privacy: .public)")
-            OperationPresenter.presentDelegatedCreateFailure(name: kind.defaultName, code: code, message: message)
+            OperationPresenter.presentDelegatedCreateFailure(name: name, code: code, message: message)
         case .stillRunning:
             Self.diag.log("ACTION delegated STILL RUNNING after the file-operation budget")
             OperationPresenter.presentOperationStillRunning()

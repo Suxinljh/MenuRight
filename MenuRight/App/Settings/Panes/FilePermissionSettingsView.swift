@@ -4,14 +4,14 @@ import SwiftUI
 /// plus the safety switches that govern them.
 ///
 /// This pane is a filter over capabilities, not a permission grant: the sandbox
-/// decides what is actually possible, and that model is stated explicitly at the
-/// bottom so a disabled row is never mistaken for a full security boundary.
+/// decides what is actually possible. It deliberately does not carry a paragraph
+/// explaining that architecture — prose like that is not a setting.
 struct FilePermissionSettingsView: View {
     @EnvironmentObject private var store: SettingsStore
 
     private let createActions: [FileAction] = [.createFile, .createFolder, .createAlias, .cutPaste]
     private let copyActions: [FileAction] = [.copyName, .copyPath, .copyFileURL]
-    private let otherActions: [FileAction] = [.lockUnlock, .openTerminal, .extractArchive, .openFavorite]
+    private let otherActions: [FileAction] = [.lockUnlock, .openTerminal, .extractArchive, .compressArchive, .openFavorite]
 
     var body: some View {
         SettingsPane(
@@ -29,7 +29,6 @@ struct FilePermissionSettingsView: View {
                 )
             )
             safetyGroup
-            sandboxNote
         }
     }
 
@@ -65,14 +64,5 @@ struct FilePermissionSettingsView: View {
                 isOn: store.binding(\.filePermissions.confirmDestructiveActions)
             )
         }
-    }
-
-    /// Deliberately **not** a card and without a title: this is one sentence
-    /// about how the app is built, not a setting, and it cannot be turned off.
-    private var sandboxNote: some View {
-        Text(store.text(.filePermissionSandboxBody))
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
     }
 }

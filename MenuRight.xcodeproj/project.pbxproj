@@ -236,6 +236,11 @@
 		ABDLG002 /* CustomCompressionDialogWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AADLG01 /* CustomCompressionDialogWindow.swift */; };
 		ABAPRP01 /* ArchivePasswordPrompter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAPRP01 /* ArchivePasswordPrompter.swift */; };
 		ABAPRP02 /* ArchivePasswordPrompter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAPRP01 /* ArchivePasswordPrompter.swift */; };
+		ABDAP01 /* DestructiveActionPrompter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AADAP01 /* DestructiveActionPrompter.swift */; };
+		ABDAP02 /* DestructiveActionPrompter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AADAP01 /* DestructiveActionPrompter.swift */; };
+		ABFSET01 /* FinderSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFSET01 /* FinderSettings.swift */; };
+		ABFSET02 /* FinderSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFSET01 /* FinderSettings.swift */; };
+		ABFSET03 /* FinderSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFSET02 /* FinderSettingsTests.swift */; };
 		ABDLGT01 /* CustomCompressionDialogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AADLGT01 /* CustomCompressionDialogTests.swift */; };
 		ABAPRT01 /* ArchivePasswordResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAPRT01 /* ArchivePasswordResolverTests.swift */; };
 		ABPRMT01 /* ArchivePasswordPrompterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAPRMT01 /* ArchivePasswordPrompterTests.swift */; };
@@ -379,6 +384,9 @@
 		AAFPWT01 /* ArchiveProgressWindowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveProgressWindowTests.swift; sourceTree = "<group>"; };
 		AADLG01 /* CustomCompressionDialogWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomCompressionDialogWindow.swift; sourceTree = "<group>"; };
 		AAAPRP01 /* ArchivePasswordPrompter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivePasswordPrompter.swift; sourceTree = "<group>"; };
+		AADAP01 /* DestructiveActionPrompter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestructiveActionPrompter.swift; sourceTree = "<group>"; };
+		AAFSET01 /* FinderSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSettings.swift; sourceTree = "<group>"; };
+		AAFSET02 /* FinderSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSettingsTests.swift; sourceTree = "<group>"; };
 		AADLGT01 /* CustomCompressionDialogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomCompressionDialogTests.swift; sourceTree = "<group>"; };
 		AAAPRT01 /* ArchivePasswordResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivePasswordResolverTests.swift; sourceTree = "<group>"; };
 		AAPRMT01 /* ArchivePasswordPrompterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivePasswordPrompterTests.swift; sourceTree = "<group>"; };
@@ -588,6 +596,7 @@
 				AAFREF01 /* FinderMenuLanguage.swift */,
 				AAP6B09 /* FinderFavorites.swift */,
 				AAARC04 /* FinderArchives.swift */,
+				AAFSET01 /* FinderSettings.swift */,
 			);
 			path = MenuRightFinder;
 			sourceTree = "<group>";
@@ -625,6 +634,7 @@
 				AASETR101 /* SettingsCategoryTests.swift */,
 				AASTAT04 /* StatusMenuTests.swift */,
 				AAFREF02 /* FinderMenuLocalizationTests.swift */,
+				AAFSET02 /* FinderSettingsTests.swift */,
 				AAONB02 /* OnboardingFlowTests.swift */,
 				AAP6B05 /* ZipWriterTests.swift */,
 				AAZCT01 /* ZipCryptoTests.swift */,
@@ -797,6 +807,7 @@
 				AASHEET1 /* CustomCompressionSheet.swift */,
 				AADLG01 /* CustomCompressionDialogWindow.swift */,
 				AAAPRP01 /* ArchivePasswordPrompter.swift */,
+				AADAP01 /* DestructiveActionPrompter.swift */,
 				AAONB03 /* OnboardingView.swift */,
 			);
 			path = Settings;
@@ -1075,6 +1086,7 @@
 				ABSHEET1 /* CustomCompressionSheet.swift in Sources */,
 				ABDLG001 /* CustomCompressionDialogWindow.swift in Sources */,
 				ABAPRP01 /* ArchivePasswordPrompter.swift in Sources */,
+				ABDAP01 /* DestructiveActionPrompter.swift in Sources */,
 				ABP6B01 /* ZipWriter.swift in Sources */,
 				ABSZP01 /* SevenZipWriter.swift in Sources */,
 				ABAPRS01 /* ArchivePasswordResolver.swift in Sources */,
@@ -1130,6 +1142,7 @@
 				ABP6B09 /* NewFileAvailability.swift in Sources */,
 				ABP6B14 /* FinderFavorites.swift in Sources */,
 				ABARC08 /* FinderArchives.swift in Sources */,
+				ABFSET01 /* FinderSettings.swift in Sources */,
 				ABSHARED2 /* MenuRightAppGroup.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1237,6 +1250,9 @@
 				ABARC09 /* ArchiveExtractionTests.swift in Sources */,
 				ABSHEET2 /* CustomCompressionSheet.swift in Sources */,
 				ABAPRP02 /* ArchivePasswordPrompter.swift in Sources */,
+				ABDAP02 /* DestructiveActionPrompter.swift in Sources */,
+				ABFSET02 /* FinderSettings.swift in Sources */,
+				ABFSET03 /* FinderSettingsTests.swift in Sources */,
 				ABFAVTST01 /* FavoriteIconProvider.swift in Sources */,
 				ABARC18 /* ArchiveCompressorTests.swift in Sources */,
 				ABARC11 /* FinderArchivesTests.swift in Sources */,

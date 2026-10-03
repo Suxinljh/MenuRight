@@ -454,4 +454,213 @@ final class MenuRightSettingsTests: XCTestCase {
         XCTAssertEqual(FileAction.openTerminal.iconAsset, "lucide-square-chevron-right")
         XCTAssertEqual(FileAction.copyName.iconAsset, "lucide-copy")
     }
+
+    // MARK: - P7: the switches the Finder extension now reads
+
+    func testSchemaVersionIsTwoAfterTheCompressSwitchArrived() {
+        XCTAssertEqual(MenuRightSettings.currentSchemaVersion, 2)
+        XCTAssertEqual(MenuRightSettings.default.schemaVersion, 2)
+    }
+
+    private func rawArray(_ values: [String]) -> String {
+        "[" + values.map { "\"\($0)\"" }.joined(separator: ",") + "]"
+    }
+
+    private func decoded(_ json: String) throws -> MenuRightSettings {
+        try JSONDecoder().decode(MenuRightSettings.self, from: Data(json.utf8)).normalized()
+    }
+
+    private var versionOneActions: [String] {
+        FileAction.allCases.map(\.rawValue).filter { $0 != FileAction.compressArchive.rawValue }
+    }
+
+    /// A payload written before 压缩 had a switch was "all actions allowed", so
+    /// it must keep meaning that after the upgrade — otherwise every existing
+    /// user would silently lose 压缩 from the Finder menu.
+    func testVersionOneAllOnPayloadGainsTheCompressSwitch() throws {
+        let json = """
+        { "schemaVersion": 1, "filePermissions": { "allowedActions": \(rawArray(versionOneActions)) } }
+        """
+        let settings = try decoded(json)
+
+        XCTAssertEqual(settings.schemaVersion, 2)
+        XCTAssertEqual(settings.filePermissions.allowedActions, Set(FileAction.allCases))
+    }
+
+    /// A payload that already switched things off stays exactly as the user left
+    /// it: the migration may not re-enable anything.
+    func testVersionOneCustomisedPayloadIsNotWidened() throws {
+        let json = """
+        { "schemaVersion": 1, "filePermissions": { "allowedActions": ["createFile", "copyPath"] } }
+        """
+        let settings = try decoded(json)
+
+        XCTAssertEqual(settings.filePermissions.allowedActions, [.createFile, .copyPath])
+        XCTAssertFalse(settings.filePermissions.isAllowed(.compressArchive))
+    }
+
+    /// A payload without the key predates versioning, so it is treated as v1 and
+    /// the conservative migration runs.
+    func testPayloadWithoutSchemaVersionIsTreatedAsVersionOne() throws {
+        let json = """
+        { "filePermissions": { "allowedActions": \(rawArray(versionOneActions)) } }
+        """
+        let settings = try decoded(json)
+
+        XCTAssertEqual(settings.schemaVersion, 2)
+        XCTAssertTrue(settings.filePermissions.isAllowed(.compressArchive))
+    }
+
+    /// A v2 payload that deliberately switched 压缩 off must not be re-enabled by
+    /// a later normalize() pass.
+    func testVersionTwoPayloadKeepsTheCompressSwitchOff() throws {
+        let json = """
+        { "schemaVersion": 2, "filePermissions": { "allowedActions": ["createFile"] } }
+        """
+        let settings = try decoded(json)
+        XCTAssertEqual(settings.filePermissions.allowedActions, [.createFile])
+    }
+
+    func testFilePermissionsIsAllowedFollowsTheSetTheExtensionReads() {
+        // The extension compares raw strings; `isAllowed` and `allows(_:)` must
+        // agree on the same raw values.
+        let permissions = FilePermissionSettings(allowedActions: [.createFile, .compressArchive])
+        XCTAssertTrue(permissions.isAllowed(.compressArchive))
+        XCTAssertEqual(
+            Set(FileAction.allCases.filter { permissions.isAllowed($0) }.map(\.rawValue)),
+            ["createFile", "compressArchive"]
+        )
+    }
+
+    // MARK: - P7: 终端应用
+
+    func testDefaultTerminalIsTheBundledOne() {
+        let general = GeneralSettings()
+        XCTAssertEqual(general.terminalApplicationPath, "")
+        XCTAssertNil(general.terminalApplicationURL)
+        XCTAssertFalse(general.usesCustomTerminal)
+        XCTAssertEqual(general.terminalServiceName, GeneralSettings.defaultTerminalServiceName)
+        XCTAssertEqual(general.effectiveTerminalServiceName, "New Terminal at Folder")
+    }
+
+    func testCustomTerminalRoundTripsThroughJSON() throws {
+        var general = GeneralSettings()
+        general.terminalApplicationPath = "/Applications/Ghostty.app"
+        general.terminalServiceName = "New Ghostty Tab Here"
+        let payload = try JSONEncoder().encode(MenuRightSettings(general: general))
+
+        let decoded = try JSONDecoder().decode(MenuRightSettings.self, from: payload).general
+
+        XCTAssertEqual(decoded.terminalApplicationPath, "/Applications/Ghostty.app")
+        XCTAssertEqual(decoded.terminalServiceName, "New Ghostty Tab Here")
+        XCTAssertEqual(decoded.terminalApplicationURL?.path, "/Applications/Ghostty.app")
+        XCTAssertTrue(decoded.usesCustomTerminal)
+        XCTAssertEqual(decoded.effectiveTerminalServiceName, "New Ghostty Tab Here")
+    }
+
+    func testTerminalNormalizationTrimsAndRepairsAnEmptyServiceName() {
+        var general = GeneralSettings()
+        general.terminalApplicationPath = "  /Applications/Ghostty.app  "
+        general.terminalServiceName = "   "
+
+        let normalized = general.normalized()
+
+        XCTAssertEqual(normalized.terminalApplicationPath, "/Applications/Ghostty.app")
+        XCTAssertEqual(normalized.terminalServiceName, GeneralSettings.defaultTerminalServiceName)
+        XCTAssertTrue(normalized.usesCustomTerminal)
+    }
+
+    func testChangingOnlyTheServiceNameCountsAsACustomTerminal() {
+        var general = GeneralSettings()
+        general.terminalServiceName = "New iTerm2 Tab Here"
+        XCTAssertTrue(general.usesCustomTerminal)
+        XCTAssertNil(general.terminalApplicationURL)
+    }
+
+    // MARK: - P7: 模板目录覆盖
+
+    func testTemplateDirectoryRoundTripsThroughJSON() throws {
+        var newFile = NewFileSettings()
+        newFile.templateDirectoryPath = "/Users/me/My Templates"
+        newFile.templateDirectoryBookmark = Data("bookmark".utf8)
+        let payload = try JSONEncoder().encode(MenuRightSettings(newFile: newFile))
+
+        let decoded = try JSONDecoder().decode(MenuRightSettings.self, from: payload).newFile
+
+        XCTAssertEqual(decoded.templateDirectoryPath, "/Users/me/My Templates")
+        XCTAssertEqual(decoded.templateDirectoryBookmark, Data("bookmark".utf8))
+        XCTAssertTrue(decoded.hasCustomTemplateDirectory)
+        XCTAssertFalse(NewFileSettings().hasCustomTemplateDirectory)
+    }
+
+    /// Path and bookmark travel together: clearing the folder must clear the
+    /// stale bookmark too, or the catalog would keep resolving a folder the user
+    /// removed from the pane.
+    func testClearingTheTemplateDirectoryClearsTheBookmark() {
+        var newFile = NewFileSettings()
+        newFile.templateDirectoryPath = "   "
+        newFile.templateDirectoryBookmark = Data("stale".utf8)
+
+        let normalized = newFile.normalized()
+
+        XCTAssertEqual(normalized.templateDirectoryPath, "")
+        XCTAssertNil(normalized.templateDirectoryBookmark)
+        XCTAssertFalse(normalized.hasCustomTemplateDirectory)
+    }
+
+    func testTemplateDirectoryPathIsTrimmedAndKeepsItsBookmark() {
+        var newFile = NewFileSettings()
+        newFile.templateDirectoryPath = "  /Users/me/Templates  "
+        newFile.templateDirectoryBookmark = Data("keep".utf8)
+
+        let normalized = newFile.normalized()
+
+        XCTAssertEqual(normalized.templateDirectoryPath, "/Users/me/Templates")
+        XCTAssertEqual(normalized.templateDirectoryBookmark, Data("keep".utf8))
+    }
+
+    // MARK: - 开机自启三态
+
+    /// 映射刻意抽成纯函数：`requiresApproval`（用户还没在系统设置里允许）必须
+    /// 与「关闭」区分开，否则 `.onAppear` 会把用户刚打开的开关回写成关闭。
+    func testLaunchAtLoginStateMapsEachSystemStatus() {
+        XCTAssertEqual(LaunchAtLoginState(systemStatus: .enabled), .enabled)
+        XCTAssertEqual(LaunchAtLoginState(systemStatus: .requiresApproval), .requiresApproval)
+        XCTAssertEqual(LaunchAtLoginState(systemStatus: .notRegistered), .disabled)
+        XCTAssertEqual(LaunchAtLoginState(systemStatus: .notFound), .disabled)
+    }
+
+    func testLaunchAtLoginStateSemantics() {
+        XCTAssertTrue(LaunchAtLoginState.enabled.isOn)
+        XCTAssertFalse(LaunchAtLoginState.disabled.isOn)
+        XCTAssertFalse(LaunchAtLoginState.requiresApproval.isOn)
+
+        XCTAssertTrue(LaunchAtLoginState.requiresApproval.needsApproval)
+        XCTAssertFalse(LaunchAtLoginState.enabled.needsApproval)
+        XCTAssertFalse(LaunchAtLoginState.disabled.needsApproval)
+    }
+
+    // MARK: - 收藏项排序
+
+    /// 上移/下移按钮走的是 `moveFavorite(from:by:)`（`onMove` 的拖动在设置卡片
+    /// 里不生效）；这里确认换位正确，且越界时是 no-op。
+    func testMoveFavoriteByOffsetSwapsNeighboursAndIgnoresOutOfRange() {
+        var folders = [
+            FavoriteFolder(displayName: "A", path: "/tmp/A"),
+            FavoriteFolder(displayName: "B", path: "/tmp/B"),
+            FavoriteFolder(displayName: "C", path: "/tmp/C")
+        ]
+
+        folders.moveFavorite(from: 0, by: 1)
+        XCTAssertEqual(folders.map(\.displayName), ["B", "A", "C"])
+
+        folders.moveFavorite(from: 2, by: -1)
+        XCTAssertEqual(folders.map(\.displayName), ["B", "C", "A"])
+
+        let before = folders
+        folders.moveFavorite(from: 0, by: -1)
+        folders.moveFavorite(from: 2, by: 1)
+        folders.moveFavorite(from: 9, by: 1)
+        XCTAssertEqual(folders, before)
+    }
 }

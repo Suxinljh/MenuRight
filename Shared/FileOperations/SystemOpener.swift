@@ -75,18 +75,26 @@ struct SystemOpener: @unchecked Sendable {
 
     /// Production implementation.
     ///
-    /// Primary: Terminal's "New Terminal at Folder" service, which is the only
-    /// route the sandbox permits (see the type documentation). Fallback: ask
-    /// LaunchServices to launch Terminal directly — allowed outside the sandbox
-    /// (e.g. a future non-sandboxed build or an unsandboxed test host), denied
-    /// inside it.
-    static func openInTerminal(_ directory: URL) -> Error? {
-        if performTerminalFolderService(directory) == nil {
+    /// Primary: the terminal's "New Terminal at Folder" *service*, which is the
+    /// only route the sandbox permits (see the type documentation). Fallback:
+    /// ask LaunchServices to launch the terminal directly — allowed outside the
+    /// sandbox (e.g. a future non-sandboxed build or an unsandboxed test host),
+    /// denied inside it.
+    ///
+    /// `terminalURL` / `serviceName` come from 通用设置 when the user picked a
+    /// terminal other than the built-in default (P6: "终端 App 可配置, 默认
+    /// Terminal"). `nil` means the vendored Terminal.app candidates.
+    static func openInTerminal(
+        _ directory: URL,
+        terminalURL: URL? = nil,
+        serviceName: String = terminalFolderServiceName
+    ) -> Error? {
+        if performTerminalFolderService(directory, serviceName: serviceName) == nil {
             return nil
         }
         // The service is missing or refused. A non-sandboxed context can still
-        // launch Terminal directly, so try that before reporting failure.
-        let directError = launchTerminalDirectly(directory)
+        // launch the terminal directly, so try that before reporting failure.
+        let directError = launchTerminalDirectly(directory, terminalURL: terminalURL)
         if directError == nil {
             return nil
         }
@@ -98,21 +106,49 @@ struct SystemOpener: @unchecked Sendable {
             domain: errorDomain,
             code: 2,
             userInfo: [
-                NSLocalizedDescriptionKey: "Terminal's \"New Terminal at Folder\" service is not available. "
+                NSLocalizedDescriptionKey: "The \"\(serviceName)\" service is not available. "
                     + "Enable it in System Settings > Keyboard > Keyboard Shortcuts > Services. "
                     + "(Direct launch also failed: \(directError?.localizedDescription ?? "unknown"))"
             ]
         )
     }
 
-    /// Puts `directory` on a **private** pasteboard and runs Terminal's service.
+    /// A copy of this opener whose `openTerminal` uses `terminalURL` (nil = the
+    /// built-in default) and `serviceName`.
+    ///
+    /// `FileOperationDispatcher` builds one per 打开终端 click from the current
+    /// settings, so changing the terminal app applies to the next click without
+    /// rebuilding the dispatcher.
+    func reconfigured(terminalURL: URL?, serviceName: String) -> SystemOpener {
+        SystemOpener(
+            openTerminal: { directory in
+                Self.openInTerminal(directory, terminalURL: terminalURL, serviceName: serviceName)
+            },
+            openFolder: openFolder,
+            openURL: openURL,
+            openApplication: openApplication
+        )
+    }
+
+    /// Puts `directory` on a dedicated pasteboard and runs Terminal's service.
+    ///
+    /// **Not a private pasteboard.** `NSPasteboard(name:)` is a system-wide
+    /// named pasteboard: while it is populated any process on the machine can
+    /// read it, and the name is fixed, so the content survives this call. What
+    /// it protects is the *general* clipboard — the user's copy buffer is never
+    /// touched. The residual exposure is one folder path, and it is bounded by
+    /// `clearContents()` before every write; the alternative (clearing again as
+    /// soon as `NSPerformService` returns) is not safe, because the service may
+    /// read the pasteboard asynchronously after the call has already returned.
     ///
     /// `NSPerformService` touches AppKit/Services state, so it is performed on
     /// the main thread. The caller is an IPC connection queue, so this hops
     /// there and waits (bounded) rather than blocking the main thread or
-    /// assuming the caller's thread. A private pasteboard is used so the user's
-    /// clipboard is never clobbered.
-    static func performTerminalFolderService(_ directory: URL) -> Error? {
+    /// assuming the caller's thread.
+    static func performTerminalFolderService(
+        _ directory: URL,
+        serviceName: String = terminalFolderServiceName
+    ) -> Error? {
         let box = ErrorBox()
         let semaphore = DispatchSemaphore(value: 0)
         let run = {
@@ -127,11 +163,11 @@ struct SystemOpener: @unchecked Sendable {
                 semaphore.signal()
                 return
             }
-            guard NSPerformService(terminalFolderServiceName, pasteboard) else {
+            guard NSPerformService(serviceName, pasteboard) else {
                 box.set(NSError(
                     domain: errorDomain,
                     code: 2,
-                    userInfo: [NSLocalizedDescriptionKey: "Terminal's \"New Terminal at Folder\" service is not available."]
+                    userInfo: [NSLocalizedDescriptionKey: "The \"\(serviceName)\" service is not available."]
                 ))
                 semaphore.signal()
                 return
@@ -156,8 +192,8 @@ struct SystemOpener: @unchecked Sendable {
 
     /// Direct LaunchServices hand-off. Denied by the App Sandbox (permErr -54),
     /// kept as a fallback for non-sandboxed contexts.
-    private static func launchTerminalDirectly(_ directory: URL) -> Error? {
-        guard let terminal = defaultTerminalURL() else {
+    private static func launchTerminalDirectly(_ directory: URL, terminalURL: URL? = nil) -> Error? {
+        guard let terminal = terminalURL ?? defaultTerminalURL() else {
             return NSError(
                 domain: errorDomain,
                 code: 1,
@@ -238,11 +274,23 @@ struct SystemOpener: @unchecked Sendable {
     /// through a lock-protected box rather than a captured `var`. The wait is
     /// bounded because the caller is an IPC connection queue: a LaunchServices
     /// that never calls back must not pin that queue forever.
+    ///
+    /// The bound is only a bound on *confirmation*: LaunchServices can still
+    /// complete the launch after the timeout, so the message says so rather than
+    /// claiming the open failed.
     private static func open(
         _ urls: [URL],
         withApplicationAt application: URL? = nil,
         timeout: TimeInterval = 5
     ) -> Error? {
+        guard let primary = urls.first else {
+            return NSError(
+                domain: errorDomain,
+                code: 9,
+                userInfo: [NSLocalizedDescriptionKey: "Nothing to open."]
+            )
+        }
+
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
 
@@ -261,21 +309,21 @@ struct SystemOpener: @unchecked Sendable {
                 completionHandler: completion
             )
         } else {
-            NSWorkspace.shared.open(urls[0], configuration: configuration, completionHandler: completion)
+            NSWorkspace.shared.open(primary, configuration: configuration, completionHandler: completion)
         }
 
         if semaphore.wait(timeout: .now() + timeout) == .timedOut {
             return NSError(
                 domain: errorDomain,
                 code: 8,
-                userInfo: [NSLocalizedDescriptionKey: "Timed out asking LaunchServices to open “\(urls[0].lastPathComponent)”."]
+                userInfo: [NSLocalizedDescriptionKey: "LaunchServices has not confirmed opening “\(primary.lastPathComponent)” yet; it may still open."]
             )
         }
         return box.get()
     }
 
     static let system = SystemOpener(
-        openTerminal: openInTerminal,
+        openTerminal: { directory in openInTerminal(directory) },
         openFolder: openFavoriteFolder,
         openURL: openFavoriteWebsite,
         openApplication: openFavoriteApplication

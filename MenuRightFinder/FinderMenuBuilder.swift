@@ -102,7 +102,15 @@ enum NewFileKind: String, CaseIterable, Equatable {
     }
 
     var defaultName: String {
-        "Untitled.\(fileExtension)"
+        defaultName(baseName: FinderSettings.defaultBaseName)
+    }
+
+    /// **P7** The name a 新建文件 click asks the main app to create, using the
+    /// base name from 设置 → 新建文件 (default `Untitled` when unset/blank).
+    func defaultName(baseName: String) -> String {
+        let trimmed = baseName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stem = trimmed.isEmpty ? FinderSettings.defaultBaseName : trimmed
+        return "\(stem).\(fileExtension)"
     }
 
     /// Initial contents. `nil` means either an empty file (text kinds) or "the
@@ -375,7 +383,8 @@ enum FinderMenuBuilder {
         favorites: [FinderFavoriteEntry] = [],
         archives: FinderArchiveSelection = .none,
         archiveDestination: FinderArchives.Destination = .ask,
-        compressionFormats: [String] = FinderArchives.compressionFormats
+        compressionFormats: [String] = FinderArchives.compressionFormats,
+        permissions: FinderSettings.Permissions = .permissive
     ) -> [FinderMenuPlanItem] {
         if !containerMenu && selection.hasSelection {
             // P9: the archive actions are the only submenus in the selection
@@ -416,7 +425,10 @@ enum FinderMenuBuilder {
                 compressionItems.append(.compressItemsCustomize(items: archives.compressible))
                 items.append(.submenu(titleKey: .finderMenuCompress, actions: compressionItems))
             }
-            return items
+            // P7: 文件权限 decides what may appear at all — a switched-off action
+            // must never reach Finder, so the filter runs on the finished plan
+            // (including the 解压 ▸ / 压缩 ▸ submenus).
+            return permitted(items, permissions)
         }
 
         guard let container = selection.containerDirectory else { return [] }
@@ -432,7 +444,7 @@ enum FinderMenuBuilder {
         if !websites.isEmpty { favoritesItems.append(.submenu(titleKey: .categoryFavoriteWebsites, actions: websites)) }
         if !folders.isEmpty { favoritesItems.append(.submenu(titleKey: .categoryFavoriteFolders, actions: folders)) }
 
-        return [
+        let baseItems: [FinderMenuPlanItem] = [
             .action(.openTerminal(directory: container)),
             .action(.copyFolderName(payload: container.lastPathComponent)),
             .action(.copyFolderPath(payload: container.path)),
@@ -441,6 +453,84 @@ enum FinderMenuBuilder {
             }),
             .action(.newFolder(directory: container)),
             .action(.pasteHere(destination: container, enabled: hasCutPayload)),
-        ] + favoritesItems
+        ]
+        // P7: same filter as the selection branch. An empty 新建文件 ▸ (every
+        // type switched off) disappears with it.
+        return permitted(baseItems + favoritesItems, permissions)
+    }
+
+    // MARK: - P7 menu visibility
+
+    /// **P7** The kinds 新建文件 ▸ should show: availability first, then the
+    /// per-type switches from 设置 → 新建文件, then the user's order.
+    ///
+    /// A kind that is missing from `orderedTypes` (a type added by a newer
+    /// build, or a payload that predates the ordering) keeps `allCases` order
+    /// after the ordered ones instead of disappearing.
+    static func menuKinds(
+        availability: NewFileAvailability?,
+        settings: FinderSettings.NewFileMenu
+    ) -> [NewFileKind] {
+        let available = NewFileKind.available(from: availability).filter { settings.isEnabled($0.rawValue) }
+        guard !settings.orderedTypes.isEmpty else { return available }
+
+        var rank: [String: Int] = [:]
+        for (index, raw) in settings.orderedTypes.enumerated() where rank[raw] == nil {
+            rank[raw] = index
+        }
+        let fallback = NewFileKind.allCases.count
+        var position: [String: Int] = [:]
+        for (index, kind) in NewFileKind.allCases.enumerated() where position[kind.rawValue] == nil {
+            position[kind.rawValue] = index
+        }
+        return available.sorted {
+            let lhs = rank[$0.rawValue] ?? fallback + (position[$0.rawValue] ?? 0)
+            let rhs = rank[$1.rawValue] ?? fallback + (position[$1.rawValue] ?? 0)
+            return lhs < rhs
+        }
+    }
+
+    /// The `FileAction` raw value a plan item maps to, or nil when the item is
+    /// not switchable.
+    ///
+    /// The extension cannot see `FileAction`, so the raw strings live here;
+    /// `MenuRightSettingsTests` pins them against the app-side enum.
+    static func permissionKey(for action: FinderMenuAction) -> String? {
+        switch action {
+        case .createAlias: return "createAlias"
+        case .setLocked: return "lockUnlock"
+        case .copyName, .copyFolderName: return "copyName"
+        case .copyPath, .copyFolderPath: return "copyPath"
+        case .copyFileURL: return "copyFileURL"
+        case .cut, .pasteHere: return "cutPaste"
+        case .newFile: return "createFile"
+        case .newFolder: return "createFolder"
+        case .openTerminal: return "openTerminal"
+        case .openFavorite: return "openFavorite"
+        case .extractArchives, .extractArchivesCustomize, .extractArchivesToFolder: return "extractArchive"
+        case .compressItems, .compressItemsCustomize: return "compressArchive"
+        }
+    }
+
+    /// True when `permissions` lets this item appear.
+    static func permits(_ action: FinderMenuAction, _ permissions: FinderSettings.Permissions) -> Bool {
+        guard let key = permissionKey(for: action) else { return true }
+        return permissions.allows(key)
+    }
+
+    /// Drops switched-off actions and any submenu left without children.
+    static func permitted(
+        _ items: [FinderMenuPlanItem],
+        _ permissions: FinderSettings.Permissions
+    ) -> [FinderMenuPlanItem] {
+        items.compactMap { item in
+            switch item {
+            case .action(let action):
+                return permits(action, permissions) ? item : nil
+            case .submenu(let titleKey, let actions):
+                let kept = actions.filter { permits($0, permissions) }
+                return kept.isEmpty ? nil : .submenu(titleKey: titleKey, actions: kept)
+            }
+        }
     }
 }
