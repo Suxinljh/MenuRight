@@ -11,5 +11,5 @@
 // Use `Scripts/version.sh` to read or bump them; `Scripts/check-version.sh`
 // asserts every target agrees.
 
-MARKETING_VERSION = 1.0
-CURRENT_PROJECT_VERSION = 1
+MARKETING_VERSION = 1.1
+CURRENT_PROJECT_VERSION = 2
