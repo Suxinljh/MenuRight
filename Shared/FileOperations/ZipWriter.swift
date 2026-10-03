@@ -25,6 +25,9 @@ enum ZipWriterError: Error, Equatable {
     /// archives this app writes are OOXML packages of a few kilobytes.
     case zip64Required(String)
     case deflateFailed(String)
+    /// Encryption was requested but cannot be applied: empty password, no
+    /// randomness, or an encrypted payload that no longer fits 32-bit ZIP.
+    case encryptionFailed(String)
 }
 
 /// Minimal ZIP **writer** for the OOXML packages of P6-b (decision D6-W1).
@@ -38,7 +41,7 @@ enum ZipWriterError: Error, Equatable {
 ///
 /// Deliberately **not** supported, because nothing needs it:
 /// - ZIP64 (files/archives ≥ 4 GiB, > 65535 entries): rejected explicitly.
-/// - Encryption, data descriptors, multi-disk.
+/// - WinZip AES, data descriptors, multi-disk.
 /// - Per-entry comments (the archive-level comment **is** written: the
 ///   compression dialog's "标签" goes into the end-of-central-directory record).
 /// - Directory entries: OOXML packages only address parts by full name.
@@ -48,6 +51,12 @@ enum ZipWriterError: Error, Equatable {
 /// Compression: DEFLATE, falling back to STORED when deflating does not shrink
 /// an entry (already-compressed or tiny payloads). Both methods are read by
 /// every OOXML consumer; the choice is per entry and recorded in the headers.
+///
+/// Encryption (optional, see `ZipEncryption`): PKWARE traditional encryption
+/// ("ZipCrypto"), applied per entry as a 12-byte encrypted header followed by
+/// the encrypted payload. It exists so the compression dialog's 加密压缩 option
+/// produces an archive every consumer can open; it is compatibility, not
+/// security, and the UI says so.
 enum ZipWriter {
 
     /// Local file header / central directory / end of central directory.
@@ -66,8 +75,14 @@ enum ZipWriter {
     private static let dosDate: UInt16 = 0x0021
     /// General-purpose bit 11: file name is UTF-8 (not the legacy CP437).
     private static let utf8NameFlag: UInt16 = 0x0800
+    /// General-purpose bit 0: the entry's payload is encrypted.
+    private static let encryptedFlag: UInt16 = 0x0001
 
-    private static let maximumEntries = 0xFFFF
+    /// One below 0xFFFF on purpose: an EOCD entry count of exactly 0xFFFF is the
+    /// ZIP64 sentinel ("the real count is in a ZIP64 record"), and `ZipReader`
+    /// rejects any archive carrying it. Writing 65535 entries would therefore
+    /// produce an archive this app cannot read back.
+    private static let maximumEntries = 0xFFFF - 1
     private static let maximumSize: UInt64 = 0xFFFF_FFFF
 
     /// Builds a complete archive. Entry order is preserved; OOXML requires
@@ -78,10 +93,14 @@ enum ZipWriter {
     ///     record (the "标签" the compression dialog offers). Only ZIP carries
     ///     one; other formats leave that field disabled.
     ///   - level: DEFLATE level, so 压缩模式 can trade speed for size.
+    ///   - encryption: when non-nil, every entry is written with an encrypted
+    ///     payload and general-purpose bit 0 set. ZipCrypto's overhead is
+    ///     counted against the 4 GiB ZIP limit.
     static func archive(
         _ entries: [ZipArchiveEntry],
         comment: String? = nil,
         level: Int32 = Z_DEFAULT_COMPRESSION,
+        encryption: ZipEncryption? = nil,
         /// Called before each entry is deflated, with its index. This loop is
         /// where compression time actually goes, so it is where progress and a
         /// pause/cancel request can be observed at a useful granularity.
@@ -89,6 +108,9 @@ enum ZipWriter {
     ) throws -> Data {
         guard entries.count <= maximumEntries else {
             throw ZipWriterError.zip64Required("\(entries.count) entries exceeds the ZIP limit of \(maximumEntries)")
+        }
+        if let encryption, encryption.password.isEmpty {
+            throw ZipWriterError.encryptionFailed("the password is empty")
         }
 
         var output = Data()
@@ -105,9 +127,24 @@ enum ZipWriter {
                 throw ZipWriterError.zip64Required("archive exceeds 4 GiB")
             }
 
-            let (method, payload) = try compressed(entry, level: level)
+            let (method, compressedPayload) = try compressed(entry, level: level)
             let crc = crc32(entry.contents)
-            let flags = nameBytes.allSatisfy { $0 < 0x80 } ? 0 : utf8NameFlag
+            var flags = nameBytes.allSatisfy { $0 < 0x80 } ? 0 : utf8NameFlag
+            var payload = compressedPayload
+            if let encryption {
+                flags |= encryptedFlag
+                guard let random = encryption.randomSource.bytes(ZipCrypto.headerRandomLength) else {
+                    throw ZipWriterError.encryptionFailed("the system random number generator is unavailable")
+                }
+                // The 12-byte header is the first 12 bytes of the ciphertext and
+                // uses the same keystream as the payload, so it must be built
+                // before encryption starts.
+                let header = ZipCrypto.header(crc: crc, random: random)
+                payload = ZipCrypto.encrypt(compressedPayload, header: header, password: encryption.password)
+            }
+            guard UInt64(payload.count) <= maximumSize else {
+                throw ZipWriterError.zip64Required("entry “\(entry.name)” is larger than 4 GiB")
+            }
             let localHeaderOffset = UInt32(output.count)
 
             // Local file header
@@ -146,7 +183,19 @@ enum ZipWriter {
             centralDirectory.append(contentsOf: nameBytes)
         }
 
-        let centralDirectoryOffset = UInt32(output.count)
+        // The ZIP comment lives in the EOCD record and is capped at 64 KiB.
+        let commentBytes = Array((comment ?? "").utf8.prefix(0xFFFF))
+        // The single ledger check before the EOCD. The per-entry guards bound
+        // the local region only at the *start* of an entry, and one payload can
+        // add close to 4 GiB, so by now the offset or the central directory can
+        // be past what a non-ZIP64 record can describe. `UInt32(...)` would trap
+        // instead of throwing; funnelling both values through here is what gives
+        // every conversion below a checked antecedent.
+        let centralDirectoryOffset = try centralDirectoryOffset(
+            archiveSize: output.count,
+            centralDirectorySize: centralDirectory.count,
+            trailerSize: 22 + commentBytes.count
+        )
         output.append(centralDirectory)
 
         // End of central directory record.
@@ -155,14 +204,38 @@ enum ZipWriter {
         append(UInt16(0), to: &output)   // disk with the central directory
         append(UInt16(entries.count), to: &output)
         append(UInt16(entries.count), to: &output)
+        // Safe conversions: the call above proved the central directory fits 32
+        // bits, and `entries.count <= maximumEntries` is checked at the top.
         append(UInt32(centralDirectory.count), to: &output)
         append(centralDirectoryOffset, to: &output)
-        // The ZIP comment lives in the EOCD record and is capped at 64 KiB.
-        let commentBytes = Array((comment ?? "").utf8.prefix(0xFFFF))
         append(UInt16(commentBytes.count), to: &output)
         output.append(contentsOf: commentBytes)
 
         return output
+    }
+
+    // MARK: - 32-bit limits
+
+    /// The offset the EOCD names for the central directory, after checking every
+    /// 32-bit field that is about to carry part of the archive.
+    ///
+    /// `archiveSize` is the local-header+payload region (the EOCD's "offset of
+    /// central directory"), `centralDirectorySize` is its recorded size and
+    /// `trailerSize` the fixed EOCD record plus its comment. Each is small at
+    /// input, but a single entry payload can still have pushed the archive past
+    /// 4 GiB, which is exactly the case the in-loop guards do not cover.
+    static func centralDirectoryOffset(archiveSize: Int, centralDirectorySize: Int, trailerSize: Int) throws -> UInt32 {
+        guard UInt64(archiveSize) <= maximumSize else {
+            throw ZipWriterError.zip64Required("archive exceeds 4 GiB")
+        }
+        guard UInt64(centralDirectorySize) <= maximumSize else {
+            throw ZipWriterError.zip64Required("the central directory exceeds 4 GiB")
+        }
+        // Each addend is at most 0xFFFF_FFFF, so this sum cannot overflow UInt64.
+        guard UInt64(archiveSize) + UInt64(centralDirectorySize) + UInt64(trailerSize) <= maximumSize else {
+            throw ZipWriterError.zip64Required("archive exceeds 4 GiB")
+        }
+        return UInt32(archiveSize)
     }
 
     // MARK: - Entry preparation
@@ -175,6 +248,10 @@ enum ZipWriter {
         guard !name.split(separator: "/", omittingEmptySubsequences: false).contains("..") else {
             throw ZipWriterError.invalidEntryName(name)
         }
+        // NUL truncates the name in every C API below us and the extractor's
+        // `safeRelativePath` refuses it, so a name carrying one would describe
+        // an entry this app writes but cannot unpack.
+        guard !name.utf8.contains(0) else { throw ZipWriterError.invalidEntryName(name) }
         let bytes = Array(name.utf8)
         guard bytes.count <= 0xFFFF else { throw ZipWriterError.invalidEntryName(name) }
         return bytes

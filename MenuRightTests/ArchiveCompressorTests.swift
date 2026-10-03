@@ -33,7 +33,8 @@ final class ArchiveCompressorTests: XCTestCase {
         format: ArchiveFormat,
         name: String,
         conflictPolicy: ArchiveConflictPolicy = .keepBoth,
-        sizeLimitMB: Int = 64
+        sizeLimitMB: Int = 64,
+        mode: ArchiveCompressionMode = .standard
     ) throws -> ArchiveCompressor.Report {
         try ArchiveCompressor.compress(
             sources,
@@ -41,7 +42,8 @@ final class ArchiveCompressorTests: XCTestCase {
             preferredName: name,
             format: format,
             conflictPolicy: conflictPolicy,
-            sizeLimitMB: sizeLimitMB
+            sizeLimitMB: sizeLimitMB,
+            mode: mode
         )
     }
 
@@ -55,23 +57,116 @@ final class ArchiveCompressorTests: XCTestCase {
     // MARK: - Format table
 
     func testWritableFormatsAndTheirExtensions() {
-        XCTAssertEqual(ArchiveCompressor.writableFormats, [.zip, .tar, .gzip, .bzip2])
+        XCTAssertEqual(ArchiveCompressor.writableFormats, [.zip, .sevenZip, .tar, .gzip, .bzip2])
         XCTAssertEqual(ArchiveCompressor.fileNameExtension(for: .zip), "zip")
+        XCTAssertEqual(ArchiveCompressor.fileNameExtension(for: .sevenZip), "7z")
         XCTAssertEqual(ArchiveCompressor.fileNameExtension(for: .tar), "tar")
         XCTAssertEqual(ArchiveCompressor.fileNameExtension(for: .gzip), "tar.gz")
         XCTAssertEqual(ArchiveCompressor.fileNameExtension(for: .bzip2), "tar.bz2")
-        for format in [ArchiveFormat.sevenZip, .xz, .rar] {
+        for format in [ArchiveFormat.xz, .rar] {
             XCTAssertFalse(ArchiveCompressor.canWrite(format), "\(format.rawValue) must stay read-only")
         }
     }
 
     func testUnsupportedFormatsAreRefusedExplicitly() throws {
         let file = try makeFile("a.txt", "A")
-        for format in [ArchiveFormat.sevenZip, .xz, .rar] {
+        for format in [ArchiveFormat.xz, .rar] {
             XCTAssertThrowsError(try compress([file], format: format, name: "a.out")) { error in
                 guard case ArchiveError.unsupportedFormat = error else {
                     return XCTFail("expected unsupportedFormat for \(format.rawValue), got \(error)")
                 }
+            }
+        }
+    }
+
+    // MARK: - 7z
+
+    func testSevenZipCarriesTheMagicAndRoundTripsThroughOurOwnReader() throws {
+        let folder = try makeDirectory("Seven")
+        _ = try makeFile("Seven/one.txt", "one")
+        _ = try makeFile("Seven/deep/two.txt", "two")
+
+        let report = try compress([folder], format: .sevenZip, name: "Seven.7z")
+        let data = try Data(contentsOf: report.archiveURL)
+        XCTAssertEqual(Array(data.prefix(6)), [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C], "7z signature")
+
+        // The reader is the same one the app extracts with; if it opens the
+        // whole archive and finds both payloads, the container is well formed.
+        let summary = try extract(report.archiveURL, into: "seven-out")
+        XCTAssertEqual(summary.failed, 0)
+        XCTAssertEqual(
+            try String(contentsOf: root.appendingPathComponent("seven-out/Seven/one.txt"), encoding: .utf8),
+            "one"
+        )
+        XCTAssertEqual(
+            try String(contentsOf: root.appendingPathComponent("seven-out/Seven/deep/two.txt"), encoding: .utf8),
+            "two"
+        )
+
+        // And the archive has to satisfy an implementation that has never seen
+        // this code: libarchive's `bsdtar` lists 7z through its own reader.
+        let listed = try run("/usr/bin/bsdtar", ["-tf", report.archiveURL.path])
+        XCTAssertEqual(listed.status, 0, listed.output)
+        XCTAssertTrue(listed.output.contains("Seven/one.txt"), listed.output)
+        XCTAssertTrue(listed.output.contains("Seven/deep/two.txt"), listed.output)
+    }
+
+    func testSevenZipIsSmallerThanTheTarOfTheSameTree() throws {
+        // A highly compressible tree: the point is that LZMA2 is actually
+        // running, not that PLzmaSDK can write a container.
+        let folder = try makeDirectory("Squash")
+        let body = String(repeating: "MenuRight compresses this line over and over.\n", count: 400)
+        _ = try makeFile("Squash/big.txt", body)
+
+        let sevenZip = try compress([folder], format: .sevenZip, name: "Squash.7z", mode: .maximum)
+        let tar = try compress([folder], format: .tar, name: "Squash.tar")
+        let sevenZipSize = try Data(contentsOf: sevenZip.archiveURL).count
+        let tarSize = try Data(contentsOf: tar.archiveURL).count
+        XCTAssertLessThan(sevenZipSize, tarSize / 2, "7z (\(sevenZipSize) B) should beat tar (\(tarSize) B)")
+    }
+
+    func testSevenZipSkipsSymbolicLinksLikeTheOtherWritersDo() throws {
+        let folder = try makeDirectory("Links")
+        _ = try makeFile("Links/real.txt", "real")
+        let link = folder.appendingPathComponent("alias.txt")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: root.appendingPathComponent("Links/real.txt"))
+
+        let report = try compress([folder], format: .sevenZip, name: "Links.7z")
+        XCTAssertEqual(report.skippedSymbolicLinks, ["Links/alias.txt"])
+    }
+
+    func testSevenZipTakesAPasswordNowThatItCanEncrypt() throws {
+        let file = try makeFile("secret.txt", "s")
+        let report = try ArchiveCompressor.compress(
+            [file],
+            into: root,
+            preferredName: "secret.7z",
+            format: .sevenZip,
+            conflictPolicy: .overwrite,
+            sizeLimitMB: 1024,
+            password: "hunter2"
+        )
+        XCTAssertTrue(
+            SevenZipEncryption.needsPassword(archiveURL: report.archiveURL),
+            "a 7z written with a password must come back as encrypted"
+        )
+    }
+
+    func testTarRefusesAPasswordBecauseItCannotEncrypt() throws {
+        let file = try makeFile("secret.txt", "s")
+        XCTAssertThrowsError(
+            try ArchiveCompressor.compress(
+                [file],
+                into: root,
+                preferredName: "secret.tar",
+                format: .tar,
+                conflictPolicy: .overwrite,
+                sizeLimitMB: 1024,
+                password: "hunter2"
+            )
+        ) { error in
+            guard case ArchiveError.encryptionUnsupported = error else {
+                return XCTFail("tar must refuse a password rather than write a plain archive, got \(error)")
             }
         }
     }
@@ -482,10 +577,155 @@ final class ArchiveCompressorTests: XCTestCase {
         }
     }
 
+    /// A pause nobody can end must not block the worker forever: the registry
+    /// entry would leak, and the window that owns 继续/取消 is gone by then.
+    func testAPauseThatOutlivesItsBoundEndsAsACancel() {
+        let control = ArchiveOperationControl(maximumPauseDuration: 0.2)
+        control.pause()
+        XCTAssertThrowsError(try control.checkpoint()) { error in
+            XCTAssertEqual(error as? ArchiveError, .cancelled)
+        }
+        XCTAssertTrue(control.isCancelled, "the worker gave up on the pause")
+    }
+
+    /// Resuming before the bound keeps a pause a pause.
+    func testResumingWithinTheBoundLeavesTheOperationRunning() {
+        let control = ArchiveOperationControl(maximumPauseDuration: 5)
+        control.pause()
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { control.resume() }
+        XCTAssertNoThrow(try control.checkpoint())
+        XCTAssertFalse(control.isCancelled)
+    }
+
+    /// A cancel that arrives during a pause must release the worker right away,
+    /// not only after the pause bound.
+    func testCancelDuringAPauseReleasesTheWorkerImmediately() {
+        let control = ArchiveOperationControl(maximumPauseDuration: 30)
+        control.pause()
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { control.cancel() }
+
+        let started = Date()
+        XCTAssertThrowsError(try control.checkpoint()) { error in
+            XCTAssertEqual(error as? ArchiveError, .cancelled)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5, "cancel must not wait for the pause bound")
+    }
+
     func testUserCancellationMapsToItsOwnErrorCode() {
         // Not `.operationFailed`: the extension silences this code, because
         // popping an error dialog for something the user asked for is wrong.
         let dispatcherResponse = FileOperationContract.ErrorCode.cancelledByUser
         XCTAssertEqual(dispatcherResponse.rawValue, "cancelled_by_user")
+    }
+
+    // MARK: - 加密压缩 (ZipCrypto)
+
+    /// The whole point of ZIP encryption is that *other* tools can open it, so
+    /// every test here ends with a real `unzip` reading what we wrote.
+    func testEncryptingAZipIsReadableByInfoZip() throws {
+        let file = try makeFile("secret.txt", "top secret")
+        let report = try ArchiveCompressor.compress(
+            [file],
+            into: root,
+            preferredName: "secret.zip",
+            format: .zip,
+            conflictPolicy: .keepBoth,
+            sizeLimitMB: 64,
+            password: "hunter2"
+        )
+
+        // Without the password the entry must not be readable at all.
+        let refused = try run("/usr/bin/unzip", ["-t", report.archiveURL.path])
+        XCTAssertNotEqual(refused.status, 0, "an encrypted archive must not open without the password")
+        XCTAssertTrue(refused.output.lowercased().contains("password"), refused.output)
+
+        // With it, the plaintext comes back byte for byte.
+        let checked = try run("/usr/bin/unzip", ["-P", "hunter2", "-t", report.archiveURL.path])
+        XCTAssertEqual(checked.status, 0, checked.output)
+        XCTAssertTrue(checked.output.contains("No errors detected"), checked.output)
+
+        let out = root.appendingPathComponent("out", isDirectory: true)
+        let extracted = try run("/usr/bin/unzip", ["-P", "hunter2", "-o", report.archiveURL.path, "-d", out.path])
+        XCTAssertEqual(extracted.status, 0, extracted.output)
+        XCTAssertEqual(try String(contentsOf: out.appendingPathComponent("secret.txt"), encoding: .utf8), "top secret")
+    }
+
+    func testAnEmptyPasswordWritesAPlainArchive() throws {
+        let file = try makeFile("plain.txt", "A")
+        let report = try ArchiveCompressor.compress(
+            [file],
+            into: root,
+            preferredName: "plain.zip",
+            format: .zip,
+            conflictPolicy: .keepBoth,
+            sizeLimitMB: 64,
+            password: ""
+        )
+        let checked = try run("/usr/bin/unzip", ["-t", report.archiveURL.path])
+        XCTAssertEqual(checked.status, 0, "an empty password is 'do not encrypt', not 'fail': \(checked.output)")
+    }
+
+    func testEncryptionIsRefusedForFormatsThatCannotCarryIt() throws {
+        let file = try makeFile("a.txt", "A")
+        for format in [ArchiveFormat.tar, .gzip, .bzip2] {
+            let name = "a.\(ArchiveCompressor.fileNameExtension(for: format) ?? "out")"
+            XCTAssertThrowsError(
+                try ArchiveCompressor.compress(
+                    [file],
+                    into: root,
+                    preferredName: name,
+                    format: format,
+                    conflictPolicy: .keepBoth,
+                    sizeLimitMB: 64,
+                    password: "hunter2"
+                ),
+                "\(format.rawValue) has nowhere to store a password"
+            ) { error in
+                guard case .encryptionUnsupported = error as? ArchiveError else {
+                    return XCTFail("expected encryptionUnsupported for \(format.rawValue), got \(error)")
+                }
+            }
+        }
+    }
+
+    /// The password must land in the archive and nowhere else: no sidecar file,
+    /// and no copy of the contents in the clear.
+    func testThePasswordDoesNotLeakIntoTheDestinationDirectory() throws {
+        let file = try makeFile("secret.txt", "top secret")
+        let report = try ArchiveCompressor.compress(
+            [file],
+            into: root,
+            preferredName: "secret.zip",
+            format: .zip,
+            conflictPolicy: .keepBoth,
+            sizeLimitMB: 64,
+            password: "hunter2"
+        )
+        let siblings = try FileManager.default.contentsOfDirectory(atPath: root.path)
+            .filter { $0 != "secret.txt" && $0 != "secret.zip" }
+        XCTAssertEqual(siblings, [], "only the source file and the archive may exist: \(siblings)")
+
+        let bytes = try Data(contentsOf: report.archiveURL)
+        XCTAssertNil(
+            bytes.range(of: Data("top secret".utf8)),
+            "the payload is encrypted, so the plaintext must not appear in the file"
+        )
+        XCTAssertNil(bytes.range(of: Data("hunter2".utf8)), "the password is a key, not file content")
+    }
+
+    private func run(_ executable: String, _ arguments: [String]) throws -> (status: Int32, output: String) {
+        guard FileManager.default.isExecutableFile(atPath: executable) else {
+            throw XCTSkip("\(executable) is not available in this host")
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        try process.run()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (process.terminationStatus, String(decoding: data, as: UTF8.self))
     }
 }

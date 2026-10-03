@@ -165,6 +165,10 @@
 		ABSZP01 /* SevenZipWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASZP01 /* SevenZipWriter.swift */; };
 		ABAPRS01 /* ArchivePasswordResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAPRS01 /* ArchivePasswordResolver.swift */; };
 		ABAPRS02 /* ArchivePasswordResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAPRS01 /* ArchivePasswordResolver.swift */; };
+		ABVOL001 /* ArchiveVolumeSet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAVOL001 /* ArchiveVolumeSet.swift */; };
+		ABVOL002 /* ArchiveVolumeSet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAVOL001 /* ArchiveVolumeSet.swift */; };
+		ABGZW001 /* GzipWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAGZW001 /* GzipWriter.swift */; };
+		ABGZW002 /* GzipWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAGZW001 /* GzipWriter.swift */; };
 		ABSZPS01 /* SevenZipPasswordSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASZPS01 /* SevenZipPasswordSource.swift */; };
 		ABSZPS02 /* SevenZipPasswordSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASZPS01 /* SevenZipPasswordSource.swift */; };
 		ABSZP02 /* SevenZipWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AASZP01 /* SevenZipWriter.swift */; };
@@ -235,6 +239,9 @@
 		ABDLGT01 /* CustomCompressionDialogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AADLGT01 /* CustomCompressionDialogTests.swift */; };
 		ABAPRT01 /* ArchivePasswordResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAPRT01 /* ArchivePasswordResolverTests.swift */; };
 		ABPRMT01 /* ArchivePasswordPrompterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAPRMT01 /* ArchivePasswordPrompterTests.swift */; };
+		ABVST01 /* ArchiveVolumeSetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAVST01 /* ArchiveVolumeSetTests.swift */; };
+		ABGZT01 /* GzipWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAGZT01 /* GzipWriterTests.swift */; };
+		ABMZT01 /* ArchiveModeAndSevenZipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAMZT01 /* ArchiveModeAndSevenZipTests.swift */; };
 		ABSWC01 /* SWCompression in Frameworks */ = {isa = PBXBuildFile; productRef = AASWC01 /* SWCompression */; };
 		ABSWC02 /* SWCompression in Frameworks */ = {isa = PBXBuildFile; productRef = AASWC02 /* SWCompression */; };
 		ABPLZ01 /* PLzmaSDK in Frameworks */ = {isa = PBXBuildFile; productRef = AAPLZ01 /* PLzmaSDK */; };
@@ -375,6 +382,9 @@
 		AADLGT01 /* CustomCompressionDialogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomCompressionDialogTests.swift; sourceTree = "<group>"; };
 		AAAPRT01 /* ArchivePasswordResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivePasswordResolverTests.swift; sourceTree = "<group>"; };
 		AAPRMT01 /* ArchivePasswordPrompterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivePasswordPrompterTests.swift; sourceTree = "<group>"; };
+		AAVST01 /* ArchiveVolumeSetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveVolumeSetTests.swift; sourceTree = "<group>"; };
+		AAGZT01 /* GzipWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GzipWriterTests.swift; sourceTree = "<group>"; };
+		AAMZT01 /* ArchiveModeAndSevenZipTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveModeAndSevenZipTests.swift; sourceTree = "<group>"; };
 		AAFREF01 /* FinderMenuLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderMenuLanguage.swift; sourceTree = "<group>"; };
 		AAFREF02 /* FinderMenuLocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderMenuLocalizationTests.swift; sourceTree = "<group>"; };
 		AAONB01 /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
@@ -384,6 +394,8 @@
 		AAP6B01 /* ZipWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipWriter.swift; sourceTree = "<group>"; };
 		AASZP01 /* SevenZipWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SevenZipWriter.swift; sourceTree = "<group>"; };
 		AAAPRS01 /* ArchivePasswordResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivePasswordResolver.swift; sourceTree = "<group>"; };
+		AAVOL001 /* ArchiveVolumeSet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveVolumeSet.swift; sourceTree = "<group>"; };
+		AAGZW001 /* GzipWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GzipWriter.swift; sourceTree = "<group>"; };
 		AASZPS01 /* SevenZipPasswordSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SevenZipPasswordSource.swift; sourceTree = "<group>"; };
 		AAZCR01 /* ZipCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipCrypto.swift; sourceTree = "<group>"; };
 		AAP6B02 /* OOXMLDocumentFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OOXMLDocumentFactory.swift; sourceTree = "<group>"; };
@@ -590,6 +602,9 @@
 				AADLGT01 /* CustomCompressionDialogTests.swift */,
 				AAAPRT01 /* ArchivePasswordResolverTests.swift */,
 				AAPRMT01 /* ArchivePasswordPrompterTests.swift */,
+				AAVST01 /* ArchiveVolumeSetTests.swift */,
+				AAGZT01 /* GzipWriterTests.swift */,
+				AAMZT01 /* ArchiveModeAndSevenZipTests.swift */,
 				AA00000000000000000000B1 /* FileNameResolverTests.swift */,
 				AA00000000000000000000B2 /* CutPayloadTests.swift */,
 				AA00000000000000000000B3 /* FileMovePlannerTests.swift */,
@@ -744,6 +759,8 @@
 				AAARC10 /* ArchiveCompressor.swift */,
 				AASZP01 /* SevenZipWriter.swift */,
 				AAAPRS01 /* ArchivePasswordResolver.swift */,
+				AAVOL001 /* ArchiveVolumeSet.swift */,
+				AAGZW001 /* GzipWriter.swift */,
 				AASZPS01 /* SevenZipPasswordSource.swift */,
 				AACTL001 /* ArchiveOperationControl.swift */,
 				AAARC02 /* ArchiveExtractor.swift */,
@@ -1070,6 +1087,8 @@
 				ABARC12 /* ArchiveFormats.swift in Sources */,
 				ABARC13 /* ArchiveMemberSource.swift in Sources */,
 				ABARC14 /* ArchiveCompressor.swift in Sources */,
+				ABVOL001 /* ArchiveVolumeSet.swift in Sources */,
+				ABGZW001 /* GzipWriter.swift in Sources */,
 				ABSZPS01 /* SevenZipPasswordSource.swift in Sources */,
 				ABCTLAPP1 /* ArchiveOperationControl.swift in Sources */,
 				ABCPREV01 /* CodeLanguage.swift in Sources */,
@@ -1184,6 +1203,9 @@
 				ABDLGT01 /* CustomCompressionDialogTests.swift in Sources */,
 				ABAPRT01 /* ArchivePasswordResolverTests.swift in Sources */,
 				ABPRMT01 /* ArchivePasswordPrompterTests.swift in Sources */,
+				ABVST01 /* ArchiveVolumeSetTests.swift in Sources */,
+				ABGZT01 /* GzipWriterTests.swift in Sources */,
+				ABMZT01 /* ArchiveModeAndSevenZipTests.swift in Sources */,
 				ABFTST02 /* FinderMenuLocalizationTests.swift in Sources */,
 				ABONB02 /* OnboardingFlow.swift in Sources */,
 				ABONB03 /* OnboardingFlowTests.swift in Sources */,
@@ -1207,6 +1229,8 @@
 				ABARC15 /* ArchiveFormats.swift in Sources */,
 				ABARC16 /* ArchiveMemberSource.swift in Sources */,
 				ABARC17 /* ArchiveCompressor.swift in Sources */,
+				ABVOL002 /* ArchiveVolumeSet.swift in Sources */,
+				ABGZW002 /* GzipWriter.swift in Sources */,
 				ABSZPS02 /* SevenZipPasswordSource.swift in Sources */,
 				ABCTLTST1 /* ArchiveOperationControl.swift in Sources */,
 				ABARC07 /* FinderArchives.swift in Sources */,

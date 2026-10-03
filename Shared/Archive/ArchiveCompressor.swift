@@ -71,17 +71,18 @@ enum ArchiveCompressor {
     }
 
     /// The formats this build can write, in menu order.
-    static let writableFormats: [ArchiveFormat] = [.zip, .tar, .gzip, .bzip2]
+    static let writableFormats: [ArchiveFormat] = [.zip, .sevenZip, .tar, .gzip, .bzip2]
 
     /// File-name suffix produced per format. The compressed variants always wrap
     /// a TAR, which is what `.tar.gz` means.
     static func fileNameExtension(for format: ArchiveFormat) -> String? {
         switch format {
         case .zip: return "zip"
+        case .sevenZip: return "7z"
         case .tar: return "tar"
         case .gzip: return "tar.gz"
         case .bzip2: return "tar.bz2"
-        case .sevenZip, .xz, .rar: return nil
+        case .xz, .rar: return nil
         }
     }
 
@@ -101,6 +102,22 @@ enum ArchiveCompressor {
     /// Progress is reported in two phases, both determinate: reading the sources
     /// (by bytes, against a metadata-only pre-walk) and writing the container (by
     /// entries, straight out of `ZipWriter`'s deflate loop).
+    ///
+    /// - Parameter password: 加密压缩. Non-nil and non-empty encrypts the archive:
+    ///   PKWARE traditional ZIP encryption (see `ZipEncryption`) for ZIP, AES-256
+    ///   for 7z. Every other format refuses rather than writing what the user did
+    ///   not ask for. The password is never stored, never logged, and never leaves
+    ///   the process.
+    /// - Parameters:
+    ///   - solid: 固实压缩, 7z only. `true` (the default, and what 7-Zip does)
+    ///     compresses the whole archive as one block; `false` gives every file its
+    ///     own block, which is larger but lets a reader pull one file out without
+    ///     decompressing everything before it.
+    ///   - encryptsFileNames: 加密文件名, 7z only. Encrypts the header as well, so
+    ///     even the names inside need the password. Ignored without a password.
+    ///   - volumeSizeMB: 分卷压缩. Non-nil and positive cuts the finished image
+    ///     into `name.zip.001`, `.002`, … parts of at most this many MB, the
+    ///     naming 7-Zip/Keka/WinRAR use and this app also reads back.
     static func compress(
         _ sources: [URL],
         into directory: URL,
@@ -110,9 +127,13 @@ enum ArchiveCompressor {
         sizeLimitMB: Int,
         mode: ArchiveCompressionMode = .standard,
         label: String? = nil,
+        password: String? = nil,
+        solid: Bool = true,
+        encryptsFileNames: Bool = false,
+        volumeSizeMB: Int? = nil,
         control: ArchiveOperationControl? = nil
     ) throws -> Report {
-        guard !sources.isEmpty else { throw ArchiveError.readFailed("nothing to compress") }
+        guard !sources.isEmpty else { throw ArchiveError.writeFailed("nothing to compress") }
         guard let fileExtension = fileNameExtension(for: format) else {
             throw ArchiveError.unsupportedFormat("This build cannot create \(format.rawValue) archives")
         }
@@ -136,7 +157,7 @@ enum ArchiveCompressor {
 
         for source in sources {
             guard FileManager.default.fileExists(atPath: source.path) else {
-                throw ArchiveError.readFailed("“\(source.path)” does not exist")
+                throw ArchiveError.readFailed("“\(source.path)”: no such file")
             }
             try collect(
                 url: source,
@@ -162,19 +183,51 @@ enum ArchiveCompressor {
             fileExtension: fileExtension,
             mode: mode,
             label: label,
+            password: password,
+            solid: solid,
+            encryptsFileNames: encryptsFileNames,
             control: control,
             onEntry: { index in
                 control?.report(0.5 + 0.5 * Double(index) / Double(entryCount))
             }
         )
         control?.report(1)
-        let url = try destinationURL(in: directory, preferredName: preferredName, conflictPolicy: conflictPolicy)
+        let volumeMB = volumeSizeMB.flatMap { $0 > 0 ? $0 : nil }
+        let url = try destinationURL(
+            in: directory,
+            preferredName: preferredName,
+            conflictPolicy: conflictPolicy,
+            isSplit: volumeMB != nil
+        )
+        // The image is complete in memory by now, so this is the last chance to
+        // honour a cancel that arrived while the final entry was being
+        // compressed: past this point the destination would be written anyway.
+        try control?.checkpoint()
         do {
+            if let volumeMB {
+                // 分卷压缩: the image is cut into `name.zip.001`, `.002`, … —
+                // plain chunks, which is what makes the set readable by 7-Zip,
+                // Keka and WinRAR as well as by this app (`ArchiveVolumeSet`).
+                let parts = try ArchiveVolumeSet.write(
+                    archive,
+                    baseURL: url,
+                    volumeBytes: volumeMB * 1024 * 1024,
+                    overwrite: conflictPolicy == .overwrite
+                )
+                return Report(
+                    archiveURL: parts.first ?? url,
+                    entryCount: items.count,
+                    totalInputBytes: Int(min(total, Int64(Int.max))),
+                    skippedSymbolicLinks: skippedLinks
+                )
+            }
             if conflictPolicy == .overwrite {
                 try archive.write(to: url, options: [.atomic])
             } else {
                 try archive.write(to: url, options: [.withoutOverwriting])
             }
+        } catch let error as ArchiveError {
+            throw error
         } catch {
             throw ArchiveError.writeFailed(error.localizedDescription)
         }
@@ -263,7 +316,7 @@ enum ArchiveCompressor {
         do {
             contents = try Data(contentsOf: url, options: [.mappedIfSafe])
         } catch {
-            throw ArchiveError.readFailed("“\(entryName)” could not be read: \(error.localizedDescription)")
+            throw ArchiveError.readFailed("“\(entryName)”: \(error.localizedDescription)")
         }
         items.append(Item(entryName: entryName, url: url, isDirectory: false, contents: contents))
     }
@@ -276,9 +329,21 @@ enum ArchiveCompressor {
         fileExtension: String,
         mode: ArchiveCompressionMode,
         label: String?,
+        password: String? = nil,
+        solid: Bool = true,
+        encryptsFileNames: Bool = false,
         control: ArchiveOperationControl? = nil,
         onEntry: ((Int) -> Void)? = nil
     ) throws -> Data {
+        let wantsEncryption = !(password ?? "").isEmpty
+        // ZIP (traditional) and 7z (AES-256) are the containers this build can
+        // encrypt. Refusing beats writing a plain archive the dialog claimed was
+        // encrypted.
+        if wantsEncryption, format != .zip, format != .sevenZip {
+            throw ArchiveError.encryptionUnsupported(
+                "\(format.rawValue) archives cannot be encrypted by this build (ZIP and 7z can)"
+            )
+        }
         switch format {
         case .zip:
             let entries = items.map { item in
@@ -293,6 +358,7 @@ enum ArchiveCompressor {
                     entries,
                     comment: label,
                     level: mode.deflateLevel,
+                    encryption: wantsEncryption ? ZipEncryption(password: password ?? "") : nil,
                     // Reported from inside the deflate loop: this is the part the
                     // user actually waits on, and it is the only place with a
                     // per-entry view of it.
@@ -301,9 +367,38 @@ enum ArchiveCompressor {
                         try control?.checkpoint()
                     }
                 )
+            } catch let error as ZipWriterError {
+                // "the password is empty" / "no randomness" are user-facing
+                // reasons, not writer internals, so they keep their own case.
+                if case .encryptionFailed(let reason) = error {
+                    throw ArchiveError.encryptionUnsupported(reason)
+                }
+                throw ArchiveError.writeFailed(String(describing: error))
             } catch {
                 throw ArchiveError.writeFailed(String(describing: error))
             }
+        case .sevenZip:
+            // PLzmaSDK takes the files themselves, so the entries are the
+            // non-directory items of the walk. Directories become the prefixes
+            // of those names; see `SevenZipWriter` for why an empty folder
+            // cannot be stored in this container.
+            let entries = items.compactMap { item -> SevenZipWriter.Entry? in
+                guard !item.isDirectory else { return nil }
+                return SevenZipWriter.Entry(archivePath: item.entryName, url: item.url)
+            }
+            return try SevenZipWriter.archive(
+                entries: entries,
+                mode: mode,
+                password: password,
+                solid: solid,
+                encryptsFileNames: encryptsFileNames,
+                control: control,
+                // Reported while the entries are handed over (the writer
+                // checkpoints there, and throws on a pause or a cancel); the
+                // LZMA2 pass itself is one opaque call with no callback, so a
+                // cancel can only land between entries.
+                onEntry: { index in onEntry?(index) }
+            )
         case .tar, .gzip, .bzip2:
             // These containers have no per-entry hook; the whole tree is walked
             // once inside `makeTar`, so a cancel can only land before it starts.
@@ -315,18 +410,16 @@ enum ArchiveCompressor {
             case .tar:
                 return tar
             case .gzip:
-                do {
-                    return try GzipArchive.archive(data: tar, fileName: nil, modificationTime: nil)
-                } catch {
-                    throw ArchiveError.writeFailed("gzip: \(error)")
-                }
+                // Not SWCompression's `GzipArchive.archive`: that one has no
+                // level, so 压缩模式 would silently do nothing for `.tar.gz`.
+                return try GzipWriter.archive(tar, level: mode.deflateLevel)
             case .bzip2:
                 let blockSizes: [BZip2.BlockSize] = [.one, .two, .three, .four, .five, .six, .seven, .eight, .nine]
                 return BZip2.compress(data: tar, blockSize: blockSizes[mode.bzip2BlockSize - 1])
             default:
                 throw ArchiveError.unsupportedFormat(fileExtension)
             }
-        case .sevenZip, .xz, .rar:
+        case .xz, .rar:
             throw ArchiveError.unsupportedFormat("This build cannot create \(format.rawValue) archives")
         }
     }
@@ -349,20 +442,28 @@ enum ArchiveCompressor {
     private static func destinationURL(
         in directory: URL,
         preferredName: String,
-        conflictPolicy: ArchiveConflictPolicy
+        conflictPolicy: ArchiveConflictPolicy,
+        isSplit: Bool = false
     ) throws -> URL {
         let candidate = directory.appendingPathComponent(preferredName)
-        guard FileManager.default.fileExists(atPath: candidate.path) else { return candidate }
+        // A split set is recognised by its first part, so that is what a collision
+        // is detected on — and what `keepBoth` has to make unique.
+        let probe = isSplit
+            ? candidate.appendingPathExtension(ArchiveVolumeSet.partSuffix(1))
+            : candidate
+        guard FileManager.default.fileExists(atPath: probe.path) else { return candidate }
         switch conflictPolicy {
         case .overwrite:
             return candidate
         case .skip:
-            throw ArchiveError.conflict("“\(preferredName)” already exists")
+            throw ArchiveError.conflict("“\(probe.lastPathComponent)” already exists")
         case .keepBoth:
             let siblings = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
-            return directory.appendingPathComponent(
-                FileNameResolver.uniqueName(preferred: preferredName, existing: siblings)
-            )
+            let unique = FileNameResolver.uniqueName(preferred: probe.lastPathComponent, existing: siblings)
+            // `uniqueName` numbers the name it was handed; for a split set that
+            // carries the `.001` suffix, which the archive's base name must not.
+            let base = isSplit ? (unique as NSString).deletingPathExtension : unique
+            return directory.appendingPathComponent(base)
         }
     }
 
