@@ -1,6 +1,39 @@
 import Foundation
 import os
 
+/// A sensitive action the user can be asked to confirm before it runs
+/// (`FilePermissionSettings.confirmDestructiveActions`, P7).
+enum DestructiveAction: Equatable, Sendable {
+    case lock(count: Int)
+    case unlock(count: Int)
+    case cutMove(count: Int)
+
+    /// What the confirmation dialog names as the action.
+    var titleKey: StringKey {
+        switch self {
+        case .lock: return .confirmDestructiveLock
+        case .unlock: return .confirmDestructiveUnlock
+        case .cutMove: return .confirmDestructiveCut
+        }
+    }
+
+    var itemCount: Int {
+        switch self {
+        case .lock(let count), .unlock(let count), .cutMove(let count): return count
+        }
+    }
+}
+
+/// Asks the user to confirm a sensitive action.
+///
+/// Implemented by the main app (`DestructiveActionPrompter`); tests inject a
+/// script. Like `ArchivePasswordPrompting` this is an injected seam, so the
+/// dispatcher stays AppKit-free and headless-testable.
+protocol DestructiveActionConfirming: Sendable {
+    /// True when the user confirmed and the action may run.
+    func confirm(_ action: DestructiveAction) -> Bool
+}
+
 /// **P5-1** Main-App-side dispatcher for file-operation requests received over
 /// the App-Group Unix socket from the FinderSync extension.
 ///
@@ -39,10 +72,30 @@ public final class FileOperationDispatcher: @unchecked Sendable {
     /// Archive policy (P9) — conflict handling, size limit, metadata skipping.
     /// Injectable so a test never has to write the user's real settings.
     private let archiveSettings: () -> ArchiveSettings
+    /// 文件权限 (`allowedActions` is consumed by the extension; the two safety
+    /// switches are enforced here). Same closure seam as `archiveSettings` so
+    /// tests inject a policy instead of writing the user's real settings.
+    private let filePermissions: () -> FilePermissionSettings
+    /// 终端应用 (P6): which terminal 打开终端 launches, and through which Finder
+    /// service. Read per request so a settings change applies to the next action.
+    private let generalSettings: () -> GeneralSettings
+    /// 新建文件 (P6/P7): base name, enabled kinds and the optional template
+    /// folder override.
+    private let newFileSettings: () -> NewFileSettings
+    /// Asks the user to confirm a sensitive action (`confirmDestructiveActions`).
+    /// `nil` means "nobody can ask" — the setting only adds a prompt, so the
+    /// action still runs.
+    private let destructiveConfirmation: (any DestructiveActionConfirming)?
     /// "解压到指定位置…" needs a folder picker. It is a closure so this type
     /// stays Foundation-only and headless-testable; the app injects the AppKit
     /// panel (see `MainAppIPCServer`), tests inject a temp directory.
     private let folderChooser: () -> URL?
+    /// Where an encrypted archive's password comes from. Like `folderChooser`,
+    /// this is an injected seam: the main app hooks up the prompt + password book
+    /// (`ArchivePasswordPrompter`), tests inject a script, and nothing here touches
+    /// AppKit. `nil` means "nobody can ask", which reports an encrypted archive
+    /// honestly instead of guessing a password.
+    private let archivePasswordPrompting: (any ArchivePasswordPrompting)?
 
     init(
         store: FolderAuthorizationStore? = FolderAuthorizationStore.appGroupDefault(),
@@ -50,14 +103,119 @@ public final class FileOperationDispatcher: @unchecked Sendable {
         opener: SystemOpener = .system,
         templateDirectory: URL? = DocumentTemplateCatalog.bundledDirectory,
         archiveSettings: @escaping () -> ArchiveSettings = { SettingsStore.shared.settings.archives },
-        folderChooser: @escaping () -> URL? = { nil }
+        filePermissions: @escaping () -> FilePermissionSettings = { SettingsStore.shared.settings.filePermissions },
+        generalSettings: @escaping () -> GeneralSettings = { SettingsStore.shared.settings.general },
+        newFileSettings: @escaping () -> NewFileSettings = { SettingsStore.shared.settings.newFile },
+        folderChooser: @escaping () -> URL? = { nil },
+        archivePasswordPrompting: (any ArchivePasswordPrompting)? = nil,
+        destructiveConfirmation: (any DestructiveActionConfirming)? = nil
     ) {
         self.store = store
         self.scopedConfig = scopedConfig
         self.opener = opener
         self.templateDirectory = templateDirectory
         self.archiveSettings = archiveSettings
+        self.filePermissions = filePermissions
+        self.generalSettings = generalSettings
+        self.newFileSettings = newFileSettings
         self.folderChooser = folderChooser
+        self.archivePasswordPrompting = archivePasswordPrompting
+        self.destructiveConfirmation = destructiveConfirmation
+    }
+
+    // MARK: - Settings-driven seams
+
+    /// `restrictToAuthorizedFolders` (P7 — "仅在已授权的文件夹内创建或修改文件").
+    ///
+    /// On (the default) every mutating request must name a path covered by an
+    /// authorized folder. Off means MenuRight stops refusing those paths up
+    /// front: it attempts the operation, still going through a bookmark when one
+    /// covers the target, and otherwise lets the macOS sandbox decide — which is
+    /// exactly what the settings pane's footer says.
+    private var restrictsToAuthorizedFolders: Bool {
+        filePermissions().restrictToAuthorizedFolders
+    }
+
+    /// The terminal `打开终端` should use: the configured app and service, or
+    /// `SystemOpener.system` (Terminal) when the user kept the default.
+    private func terminalOpener() -> SystemOpener {
+        let general = generalSettings()
+        guard general.usesCustomTerminal else { return opener }
+        let configuredURL = general.terminalApplicationURL
+        // A configured-but-missing app (moved to the trash) falls back to the
+        // built-in default rather than failing the click.
+        if let configuredURL, !FileManager.default.fileExists(atPath: configuredURL.path) {
+            Self.log.info("DISPATCH terminal app missing path=\(configuredURL.path, privacy: .public) — using default")
+            return opener
+        }
+        return opener.reconfigured(
+            terminalURL: configuredURL,
+            serviceName: general.effectiveTerminalServiceName
+        )
+    }
+
+    /// Runs `body` with the template folder for this request: the user's override
+    /// (with its security-scoped access held for the whole call) when it is
+    /// reachable, otherwise the injected default (the app bundle's copy).
+    ///
+    /// The override folder is outside the container, so the access has to be held
+    /// across the read *and* the copy — an "is it usable" check that stopped the
+    /// access again would leave the copy unauthorized and fail the request with a
+    /// sandbox error instead of falling back.
+    private func withTemplateDirectory<T>(
+        of settings: NewFileSettings,
+        _ body: (URL?) -> T
+    ) -> T {
+        if let scoped = DocumentTemplateCatalog.withOverrideDirectory(for: settings, body) {
+            return scoped
+        }
+        return body(templateDirectory)
+    }
+
+    /// The shared `NOT_AUTHORIZED` pre-check (P7).
+    ///
+    /// Returns a failure when `restrictToAuthorizedFolders` is on and any target
+    /// is not covered by an authorized folder; returns nil when the request may
+    /// proceed. With the restriction off, MenuRight does not refuse the request
+    /// here — `withAuthorization(s)` still uses a bookmark when one covers the
+    /// target and otherwise lets the operation (and the sandbox) decide.
+    private func scopeFailure(
+        for targets: [URL],
+        folders: [AuthorizedFolder],
+        operation: String,
+        cid: String?
+    ) -> FileOperationContract.Response? {
+        guard restrictsToAuthorizedFolders else {
+            Self.log.info("DISPATCH \(operation, privacy: .public) scope-precheck-skipped (restrictToAuthorizedFolders=off) cid=\(cid ?? "<none>", privacy: .public)")
+            return nil
+        }
+        for target in targets {
+            if AuthorizedURLResolver.folderMatching(target, folders: folders) == nil {
+                Self.log.info("DISPATCH \(operation, privacy: .public) NOT_AUTHORIZED target=\(target.path, privacy: .public) cid=\(cid ?? "<none>", privacy: .public)")
+                return .failure(
+                    code: .pathOutsideAuthorizedScope,
+                    message: "Path outside any authorized folder: \(target.path)"
+                )
+            }
+        }
+        return nil
+    }
+
+    /// The confirmation gate (P7). Returns a failure when the user cancelled a
+    /// sensitive action, nil when it may run.
+    ///
+    /// A cancelled confirmation is reported as `.cancelledByUser`, which the
+    /// extension treats as a silent no-op in every handler that can reach here
+    /// (see the `cancelledByUser` guards in `FinderSync`).
+    private func confirmationFailure(for action: DestructiveAction) -> FileOperationContract.Response? {
+        guard filePermissions().confirmDestructiveActions, let confirmation = destructiveConfirmation else {
+            return nil
+        }
+        guard confirmation.confirm(action) else {
+            Self.log.info("DISPATCH \(String(describing: action), privacy: .public) CANCELLED by user confirmation")
+            return .failure(code: .cancelledByUser, message: "The user cancelled this action.")
+        }
+        return nil
     }
 
     // MARK: - Dispatch entry point
@@ -226,9 +384,37 @@ public final class FileOperationDispatcher: @unchecked Sendable {
                 message: "“\(rawKind)” is not a template-backed kind (expected pages, numbers or keynote)"
             )
         }
-        guard let template = DocumentTemplateCatalog.templateURL(for: type, in: templateDirectory) else {
+        // P7: the user may point the template folder at their own copy, which lives
+        // outside the app's container. Everything that reads it — the "is the
+        // template there" check and the copy in `createFile` — runs inside
+        // `withTemplateDirectory`, so the override's security-scoped access is held
+        // for the whole read. The app bundle's Templates folder is the fallback.
+        return withTemplateDirectory(of: newFileSettings()) { directoryForTemplates in
+            createTemplateBackedFile(
+                type: type,
+                rawKind: rawKind,
+                name: name,
+                directoryRaw: directoryRaw,
+                directoryForTemplates: directoryForTemplates,
+                request: request
+            )
+        }
+    }
+
+    /// The tail of `createFromTemplate`, split out so it can run while the
+    /// override folder's security-scoped access is held (see
+    /// `withTemplateDirectory(of:_:)`).
+    private func createTemplateBackedFile(
+        type: NewFileType,
+        rawKind: String,
+        name: String,
+        directoryRaw: String,
+        directoryForTemplates: URL?,
+        request: FileOperationContract.Request
+    ) -> FileOperationContract.Response {
+        guard let template = DocumentTemplateCatalog.templateURL(for: type, in: directoryForTemplates) else {
             let expected = DocumentTemplateCatalog.templateFileName(for: type) ?? "<unknown>"
-            Self.log.error("DISPATCH createFromTemplate TEMPLATE_MISSING kind=\(rawKind, privacy: .public) expected=\(expected, privacy: .public) directory=\(self.templateDirectory?.path ?? "<none>", privacy: .public)")
+            Self.log.error("DISPATCH createFromTemplate TEMPLATE_MISSING kind=\(rawKind, privacy: .public) expected=\(expected, privacy: .public) directory=\(directoryForTemplates?.path ?? "<none>", privacy: .public)")
             return .failure(
                 code: .templateMissing,
                 message: "This build has no blank template for “\(rawKind)” (expected \(expected) in the app's Templates folder)."
@@ -337,7 +523,7 @@ public final class FileOperationDispatcher: @unchecked Sendable {
         guard let format = ArchiveFormat(rawValue: rawFormat), ArchiveCompressor.canWrite(format) else {
             return .failure(
                 code: .archiveUnsupported,
-                message: "This build cannot create “\(rawFormat)” archives (ZIP, TAR, TAR.GZ and TAR.BZ2 are supported)."
+                message: "This build cannot create “\(rawFormat)” archives (ZIP, 7Z, TAR, TAR.GZ and TAR.BZ2 are supported)."
             )
         }
 
@@ -365,11 +551,9 @@ public final class FileOperationDispatcher: @unchecked Sendable {
         }
 
         let folders = currentFolders()
-        let scopeTargets = Array(Set(([destination] + sources.map { $0.deletingLastPathComponent() }).map(\.path)))
-            .map { URL(fileURLWithPath: $0) }
-        for target in scopeTargets where AuthorizedURLResolver.folderMatching(target, folders: folders) == nil {
-            Self.log.info("DISPATCH compressItems NOT_AUTHORIZED target=\(target.path, privacy: .public)")
-            return .failure(code: .pathOutsideAuthorizedScope, message: "Path outside any authorized folder: \(target.path)")
+        let scopeTargets = Self.scopeTargets(sources: sources, destination: destination)
+        if let failure = scopeFailure(for: scopeTargets, folders: folders, operation: "compressItems", cid: request.clientRequestId) {
+            return failure
         }
 
         if request.args.customize == true {
@@ -429,6 +613,100 @@ public final class FileOperationDispatcher: @unchecked Sendable {
         }
     }
 
+    /// A deferred write that failed before anything was written, with a reason
+    /// the dialog can show as-is.
+    ///
+    /// `handleCompressItems` answers the extension with a `Response`, but the
+    /// dialog's write happens minutes later from a button action, where there is
+    /// no `ErrorCode` to map into text.
+    struct CustomCompressionFailure: Error {
+        let message: String
+    }
+
+    /// Runs the write the custom-compression dialog owns.
+    ///
+    /// `handleCompressItems` only *parks* the request (`ArchiveRequestCenter`), so
+    /// the security-scoped access it validated is long gone by the time 确定 is
+    /// pressed. Without taking it again here the sandbox refuses to read the
+    /// sources — "you don't have permission to view it" — for every folder the
+    /// user had authorized (reported 2026-10-03 for the dialog; the plain menu
+    /// path always went through `withAuthorizations`).
+    ///
+    /// Throws `CustomCompressionFailure` for authorization problems and the
+    /// `ArchiveError` from the compressor itself (including `.cancelled`).
+    func performCustomCompression(
+        sources: [URL],
+        into destination: URL,
+        preferredName: String,
+        format: ArchiveFormat,
+        mode: ArchiveCompressionMode,
+        label: String?,
+        password: String?,
+        solid: Bool = true,
+        encryptsFileNames: Bool = false,
+        volumeSizeMB: Int? = nil,
+        settings: ArchiveSettings,
+        control: ArchiveOperationControl?
+    ) throws -> ArchiveCompressor.Report {
+        let folders = currentFolders()
+        let scopeTargets = Self.scopeTargets(sources: sources, destination: destination)
+        if restrictsToAuthorizedFolders {
+            for target in scopeTargets where AuthorizedURLResolver.folderMatching(target, folders: folders) == nil {
+                Self.log.info("DISPATCH customCompression NOT_AUTHORIZED target=\(target.path, privacy: .public)")
+                throw CustomCompressionFailure(message: "Path outside any authorized folder: \(target.path)")
+            }
+        } else {
+            Self.log.info("DISPATCH customCompression scope-precheck-skipped (restrictToAuthorizedFolders=off)")
+        }
+        // With the restriction off, hold only the bookmarks that cover a target;
+        // when none does, compress without scoped access and let the sandbox decide.
+        let accessTargets = restrictsToAuthorizedFolders
+            ? scopeTargets
+            : scopeTargets.filter { AuthorizedURLResolver.folderMatching($0, folders: folders) != nil }
+        let compress: () throws -> ArchiveCompressor.Report = {
+            let report = try ArchiveCompressor.compress(
+                sources,
+                into: destination,
+                preferredName: preferredName,
+                format: format,
+                conflictPolicy: settings.conflictPolicy,
+                sizeLimitMB: settings.sizeLimitMB,
+                mode: mode,
+                label: label,
+                password: password,
+                solid: solid,
+                encryptsFileNames: encryptsFileNames,
+                volumeSizeMB: volumeSizeMB,
+                control: control
+            )
+            Self.log.info(
+                "DISPATCH customCompression SUCCESS path=\(report.archiveURL.path, privacy: .public) format=\(format.rawValue, privacy: .public) entries=\(report.entryCount, privacy: .public)"
+            )
+            return report
+        }
+        do {
+            guard !accessTargets.isEmpty else { return try compress() }
+            return try FolderAuthorizationAccess.withAccesses(
+                to: accessTargets,
+                folders: folders,
+                configuration: scopedConfig,
+                persistRefreshedBookmark: persistenceHook()
+            ) {
+                try compress()
+            }
+        } catch let error as FolderAuthorizationError {
+            Self.log.info("DISPATCH customCompression AUTH_FAILED error=\(String(describing: error), privacy: .public)")
+            throw CustomCompressionFailure(message: Self.describe(error))
+        }
+    }
+
+    /// The directories an archive write touches: the destination plus the parent
+    /// of every source. Each one needs its own security-scoped access.
+    static func scopeTargets(sources: [URL], destination: URL) -> [URL] {
+        Array(Set(([destination] + sources.map { $0.deletingLastPathComponent() }).map(\.path)))
+            .map { URL(fileURLWithPath: $0) }
+    }
+
     /// Extracts one or more archives, each into its own folder unless a
     /// destination is given. Per-archive results: one bad archive must not stop
     /// the others.
@@ -469,17 +747,58 @@ public final class FileOperationDispatcher: @unchecked Sendable {
         let folders = currentFolders()
         let scopeTargets = Array(Set((archives.map { $0.deletingLastPathComponent() } + destinations).map(\.path)))
             .map { URL(fileURLWithPath: $0) }
-        for target in scopeTargets where AuthorizedURLResolver.folderMatching(target, folders: folders) == nil {
-            Self.log.info("DISPATCH extractArchive NOT_AUTHORIZED target=\(target.path, privacy: .public)")
-            return .failure(code: .pathOutsideAuthorizedScope, message: "Path outside any authorized folder: \(target.path)")
+        if let failure = scopeFailure(for: scopeTargets, folders: folders, operation: "extractArchive", cid: request.clientRequestId) {
+            return failure
         }
 
         let settings = archiveSettings()
         return withAuthorizations(to: scopeTargets, folders: folders, cid: request.clientRequestId) {
+            // Unlock every archive BEFORE writing anything. An encrypted archive
+            // needs a password (from the password book, or from the user), and a
+            // prompt dismissed halfway through a batch must not leave the earlier
+            // archives half-extracted.
+            var passwords: [Result<String?, ArchiveError>] = []
+            passwords.reserveCapacity(archives.count)
+            for archive in archives {
+                do {
+                    switch try ArchivePasswordResolver.resolve(
+                        archiveURL: archive,
+                        prompting: archivePasswordPrompting
+                    ) {
+                    case .notNeeded:
+                        passwords.append(.success(nil))
+                    case .resolved(let password):
+                        passwords.append(.success(password))
+                    case .abandoned:
+                        Self.log.info("DISPATCH extractArchive CANCELLED archive=\(archive.path, privacy: .public) reason=password-prompt-abandoned")
+                        // The extension treats this as "user changed their mind"
+                        // and stays quiet — see the `cancelledByUser` guards in
+                        // `FinderSync`.
+                        return .failure(code: .cancelledByUser, message: "No password was given; nothing was extracted.")
+                    }
+                } catch let error as ArchiveError {
+                    passwords.append(.failure(error))
+                } catch {
+                    passwords.append(.failure(.readFailed(error.localizedDescription)))
+                }
+            }
+
             var items: [FileOperationContract.ItemResult] = []
             items.reserveCapacity(archives.count)
             for (index, archive) in archives.enumerated() {
                 let destination = destinations[index]
+                guard case .success(let password) = passwords[index] else {
+                    guard case .failure(let error) = passwords[index] else { continue }
+                    Self.log.info("DISPATCH extractArchive FAILURE archive=\(archive.path, privacy: .public) \(String(describing: error), privacy: .public)")
+                    items.append(FileOperationContract.ItemResult(
+                        sourcePath: archive.path,
+                        destinationPath: destination.path,
+                        success: false,
+                        errorCode: Self.mapArchiveError(error),
+                        message: Self.describe(error)
+                    ))
+                    continue
+                }
                 do {
                     // Each archive owns an equal slice of the request's bar.
                     let sliceStart = Double(index) / Double(max(archives.count, 1))
@@ -488,6 +807,7 @@ public final class FileOperationDispatcher: @unchecked Sendable {
                         archiveURL: archive,
                         to: destination,
                         settings: settings,
+                        password: password,
                         control: control,
                         progressRange: sliceStart...sliceEnd
                     )
@@ -495,15 +815,21 @@ public final class FileOperationDispatcher: @unchecked Sendable {
                         if case .failed = result.outcome { return true }
                         return false
                     }
-                    let wroteNothing = summary.written == 0 && summary.skipped > 0
+                    // "Nothing was written" only means "failed" when the names were
+                    // taken: that is the one case where the user asked for files and
+                    // got none of them. An archive that carried nothing but
+                    // `__MACOSX/` noise, symlinks or names the planner refuses is a
+                    // success — it used to be reported as a `.nameCollision`, which
+                    // sent the user looking for a conflict that never existed.
+                    let conflictsOnly = Self.wroteNothingOnConflictsOnly(summary, results)
                     Self.log.info(
                         "DISPATCH extractArchive DONE archive=\(archive.path, privacy: .public) written=\(summary.written, privacy: .public) skipped=\(summary.skipped, privacy: .public) failed=\(summary.failed, privacy: .public)"
                     )
                     items.append(FileOperationContract.ItemResult(
                         sourcePath: archive.path,
                         destinationPath: destination.path,
-                        success: summary.failed == 0 && !wroteNothing,
-                        errorCode: summary.failed > 0 ? .archiveFailed : (wroteNothing ? .nameCollision : nil),
+                        success: summary.failed == 0 && !conflictsOnly,
+                        errorCode: summary.failed > 0 ? .archiveFailed : (conflictsOnly ? .nameCollision : nil),
                         message: Self.summaryMessage(summary, unresolvable: unresolvable)
                     ))
                 } catch let error as ArchiveError {
@@ -530,6 +856,24 @@ public final class FileOperationDispatcher: @unchecked Sendable {
         }
     }
 
+    /// True when the archive carried entries, none was written, none failed, and
+    /// every entry was left behind because its name was already taken.
+    ///
+    /// Deliberately strict: a mixture that includes a metadata or unsafe-path skip
+    /// is not a collision, and calling it one would be a wrong error code. The
+    /// caller only uses this to choose between "success" and `.nameCollision`;
+    /// `summary.failed` already covers the failures.
+    private static func wroteNothingOnConflictsOnly(
+        _ summary: ArchiveExtractionSummary,
+        _ results: [ArchiveEntryResult]
+    ) -> Bool {
+        guard summary.written == 0, summary.failed == 0, summary.skipped > 0 else { return false }
+        return !results.isEmpty && results.allSatisfy { result in
+            if case .skipped(.conflict) = result.outcome { return true }
+            return false
+        }
+    }
+
     private static func summaryMessage(_ summary: ArchiveExtractionSummary, unresolvable: ArchiveEntryResult?) -> String? {
         guard summary.written == 0 || summary.failed > 0 || summary.skipped > 0 else { return nil }
         var parts = ["\(summary.written) written"]
@@ -544,12 +888,16 @@ public final class FileOperationDispatcher: @unchecked Sendable {
     /// Maps an archive failure onto the stable wire codes.
     static func mapArchiveError(_ error: ArchiveError) -> FileOperationContract.ErrorCode {
         switch error {
-        case .unsupportedFormat, .notAnArchive: return .archiveUnsupported
+        case .unsupportedFormat, .notAnArchive, .encryptionUnsupported: return .archiveUnsupported
         case .unsafePath: return .archiveUnsafePath
         case .tooLarge: return .archiveTooLarge
         case .conflict: return .nameCollision
         case .cancelled: return .cancelledByUser
         case .readFailed, .writeFailed: return .archiveFailed
+        // `passwordRequired` only escapes when nothing could ask for a password,
+        // and `badPassword` when the user's answer was wrong; both are archive
+        // problems from the extension's point of view.
+        case .passwordRequired, .badPassword: return .archiveFailed
         }
     }
 
@@ -643,14 +991,12 @@ public final class FileOperationDispatcher: @unchecked Sendable {
         // so we can reject path-escape attempts cleanly.
         let folders = currentFolders()
         let scopeTargets = [destination] + sources.map { $0.deletingLastPathComponent() }
-        for target in scopeTargets {
-            if AuthorizedURLResolver.folderMatching(target, folders: folders) == nil {
-                Self.log.info("DISPATCH moveItems NOT_AUTHORIZED target=\(target.path, privacy: .public) cid=\(request.clientRequestId ?? "<none>", privacy: .public)")
-                return .failure(
-                    code: .pathOutsideAuthorizedScope,
-                    message: "Path outside any authorized folder: \(target.path)"
-                )
-            }
+        if let failure = scopeFailure(for: scopeTargets, folders: folders, operation: "moveItems", cid: request.clientRequestId) {
+            return failure
+        }
+        // 剪切/移动 is a sensitive action: ask first when the user wants that.
+        if let cancelled = confirmationFailure(for: .cutMove(count: sources.count)) {
+            return cancelled
         }
 
         return withAuthorizations(to: scopeTargets, folders: folders, cid: request.clientRequestId) {
@@ -707,13 +1053,19 @@ public final class FileOperationDispatcher: @unchecked Sendable {
         }
 
         let folders = currentFolders()
-        let aliasDirectories = destination.map { _ in sources.map { _ in destination! } }
-            ?? sources.map { $0.deletingLastPathComponent() }
+        // With a destination the alias of every source is written into it,
+        // otherwise each alias lands next to its own source. Either way every one
+        // of those directories is a write target and needs scope.
+        let aliasDirectories: [URL]
+        if let destination {
+            aliasDirectories = Array(repeating: destination, count: sources.count)
+        } else {
+            aliasDirectories = sources.map { $0.deletingLastPathComponent() }
+        }
         let scopeTargets = Array(Set((aliasDirectories + sources.map { $0.deletingLastPathComponent() }).map(\.path)))
             .map { URL(fileURLWithPath: $0) }
-        for target in scopeTargets where AuthorizedURLResolver.folderMatching(target, folders: folders) == nil {
-            Self.log.info("DISPATCH createAlias NOT_AUTHORIZED target=\(target.path, privacy: .public)")
-            return .failure(code: .pathOutsideAuthorizedScope, message: "Path outside any authorized folder: \(target.path)")
+        if let failure = scopeFailure(for: scopeTargets, folders: folders, operation: "createAlias", cid: request.clientRequestId) {
+            return failure
         }
 
         return withAuthorizations(to: scopeTargets, folders: folders, cid: request.clientRequestId) {
@@ -766,9 +1118,12 @@ public final class FileOperationDispatcher: @unchecked Sendable {
         let folders = currentFolders()
         let scopeTargets = Array(Set(targets.map { $0.deletingLastPathComponent().path }))
             .map { URL(fileURLWithPath: $0) }
-        for target in scopeTargets where AuthorizedURLResolver.folderMatching(target, folders: folders) == nil {
-            Self.log.info("DISPATCH setLocked NOT_AUTHORIZED target=\(target.path, privacy: .public)")
-            return .failure(code: .pathOutsideAuthorizedScope, message: "Path outside any authorized folder: \(target.path)")
+        if let failure = scopeFailure(for: scopeTargets, folders: folders, operation: "setLocked", cid: request.clientRequestId) {
+            return failure
+        }
+        // 锁定/解锁 is a sensitive action: ask first when the user wants that.
+        if let cancelled = confirmationFailure(for: locked ? .lock(count: targets.count) : .unlock(count: targets.count)) {
+            return cancelled
         }
 
         return withAuthorizations(to: scopeTargets, folders: folders, cid: request.clientRequestId) {
@@ -816,7 +1171,7 @@ public final class FileOperationDispatcher: @unchecked Sendable {
               isDirectory.boolValue else {
             return .failure(code: .invalidDestination, message: "“\(directory.path)” is not a folder.")
         }
-        if let error = opener.openTerminal(directory) {
+        if let error = terminalOpener().openTerminal(directory) {
             Self.log.error("DISPATCH openTerminal FAILED path=\(directory.path, privacy: .public) error=\(String(describing: error), privacy: .public)")
             return .failure(code: .openFailed, message: error.localizedDescription)
         }
@@ -829,12 +1184,21 @@ public final class FileOperationDispatcher: @unchecked Sendable {
     /// Run `body` while holding security-scoped access for the authorized
     /// folder covering `target`. Catches `FolderAuthorizationError` and maps
     /// it to the wire error model.
+    ///
+    /// With `restrictToAuthorizedFolders` off and no bookmark covering the
+    /// target, this skips the scoped access entirely and runs `body()` — the
+    /// sandbox is then the only thing deciding whether the write is allowed.
     private func withAuthorization(
         to target: URL,
         folders: [AuthorizedFolder],
         cid: String?,
         _ body: () -> FileOperationContract.Response
     ) -> FileOperationContract.Response {
+        if !restrictsToAuthorizedFolders,
+           AuthorizedURLResolver.folderMatching(target, folders: folders) == nil {
+            Self.log.info("DISPATCH auth bypassed (restrict off, no bookmark) target=\(target.path, privacy: .public) cid=\(cid ?? "<none>", privacy: .public)")
+            return body()
+        }
         do {
             return try FolderAuthorizationAccess.withAccess(
                 to: target,
@@ -844,7 +1208,11 @@ public final class FileOperationDispatcher: @unchecked Sendable {
             ) { _ in body() }
         } catch let error as FolderAuthorizationError {
             Self.log.info("DISPATCH auth FAILED target=\(target.path, privacy: .public) error=\(String(describing: error), privacy: .public) cid=\(cid ?? "<none>", privacy: .public)")
-            return .failure(code: Self.mapAuthError(error), message: String(describing: error))
+            // The friendly text, not `String(describing:)`: the extension shows this
+            // message as-is, and `authorizationRequired(URL: file:///…)` is not
+            // something to put in front of a user. The log line above keeps the
+            // exact case for diagnosis.
+            return .failure(code: Self.mapAuthError(error), message: Self.describe(error))
         } catch {
             Self.log.error("DISPATCH auth UNEXPECTED target=\(target.path, privacy: .public) error=\(String(describing: error), privacy: .public)")
             return .failure(code: .operationFailed, message: String(describing: error))
@@ -852,6 +1220,25 @@ public final class FileOperationDispatcher: @unchecked Sendable {
     }
 
     private func withAuthorizations(
+        to targets: [URL],
+        folders: [AuthorizedFolder],
+        cid: String?,
+        _ body: () -> FileOperationContract.Response
+    ) -> FileOperationContract.Response {
+        // Restriction off: hold the bookmarks that do cover a target, and run
+        // the rest without one (see `withAuthorization`).
+        if !restrictsToAuthorizedFolders {
+            let covered = targets.filter { AuthorizedURLResolver.folderMatching($0, folders: folders) != nil }
+            if covered.isEmpty {
+                Self.log.info("DISPATCH multi-auth bypassed (restrict off, no bookmark) count=\(targets.count, privacy: .public) cid=\(cid ?? "<none>", privacy: .public)")
+                return body()
+            }
+            return performWithAuthorizations(to: covered, folders: folders, cid: cid, body)
+        }
+        return performWithAuthorizations(to: targets, folders: folders, cid: cid, body)
+    }
+
+    private func performWithAuthorizations(
         to targets: [URL],
         folders: [AuthorizedFolder],
         cid: String?,
@@ -866,7 +1253,7 @@ public final class FileOperationDispatcher: @unchecked Sendable {
             ) { body() }
         } catch let error as FolderAuthorizationError {
             Self.log.info("DISPATCH multi-auth FAILED error=\(String(describing: error), privacy: .public) cid=\(cid ?? "<none>", privacy: .public)")
-            return .failure(code: Self.mapAuthError(error), message: String(describing: error))
+            return .failure(code: Self.mapAuthError(error), message: Self.describe(error))
         } catch {
             Self.log.error("DISPATCH multi-auth UNEXPECTED error=\(String(describing: error), privacy: .public)")
             return .failure(code: .operationFailed, message: String(describing: error))
@@ -952,6 +1339,20 @@ public final class FileOperationDispatcher: @unchecked Sendable {
             return s
         }
         return String(describing: error)
+    }
+
+    /// Text for the dialog, which has no `ErrorCode` mapping to fall back on.
+    static func describe(_ error: FolderAuthorizationError) -> String {
+        switch error {
+        case .authorizationRequired(let url):
+            return "Path outside any authorized folder: \(url.path)"
+        case .bookmarkResolveFailed(let url):
+            return "The saved permission for “\(url.path)” could not be resolved; authorize the folder again."
+        case .staleBookmarkNeedsReauthorization(let url):
+            return "The saved permission for “\(url.path)” is stale; authorize the folder again."
+        case .accessStartFailed(let url):
+            return "“\(url.path)” could not be opened; authorize the folder again."
+        }
     }
 
     private static func describe(_ summary: FileOperationBatchSummary) -> String {

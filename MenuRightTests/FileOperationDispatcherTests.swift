@@ -24,9 +24,24 @@ final class FileOperationDispatcherTests: XCTestCase {
         stopped = []
         stale = false
         startOK = true
+        // The `customize` path can build the real dialog, which renders the 密码本.
+        // That book lives in the keychain, and a test process reading it can block
+        // forever on an authorization prompt nobody answers (2026-10-03), so hand
+        // the dialog an in-memory book.
+        CustomCompressionDialogWindow.shared.passwordBookProvider = {
+            MainActor.assumeIsolated { ArchivePasswordBook(storage: InMemoryArchivePasswordBookStorage()) }
+        }
     }
 
     override func tearDownWithError() throws {
+        // The `customize` path parks its request on the process-wide center, and
+        // with no presenter injected that center builds the real dialog window —
+        // neither may leak into the next test.
+        ArchiveRequestCenter.shared.presenter = nil
+        ArchiveRequestCenter.shared.dismiss()
+        CustomCompressionDialogWindow.shared.passwordBookProvider = {
+            MainActor.assumeIsolated { ArchivePasswordBook.shared }
+        }
         // Undo any permission tightening done by a test.
         try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
         // A locked (UF_IMMUTABLE) item cannot be deleted, so clear the flag
@@ -87,7 +102,12 @@ final class FileOperationDispatcherTests: XCTestCase {
         openApplicationError: Error? = nil,
         templateDirectory: URL? = nil,
         archiveSettings: ArchiveSettings = ArchiveSettings(),
-        folderChooser: (() -> URL?)? = nil
+        folderChooser: (() -> URL?)? = nil,
+        passwordPrompting: (any ArchivePasswordPrompting)? = nil,
+        filePermissions: FilePermissionSettings = FilePermissionSettings(),
+        generalSettings: GeneralSettings = GeneralSettings(),
+        newFileSettings: NewFileSettings = NewFileSettings(),
+        destructiveConfirmation: (any DestructiveActionConfirming)? = nil
     ) -> FileOperationDispatcher {
         FileOperationDispatcher(
             store: injectedStore ?? store,
@@ -112,8 +132,33 @@ final class FileOperationDispatcherTests: XCTestCase {
             ),
             templateDirectory: templateDirectory,
             archiveSettings: { archiveSettings },
-            folderChooser: folderChooser ?? { nil }
+            filePermissions: { filePermissions },
+            generalSettings: { generalSettings },
+            newFileSettings: { newFileSettings },
+            folderChooser: folderChooser ?? { nil },
+            archivePasswordPrompting: passwordPrompting,
+            destructiveConfirmation: destructiveConfirmation
         )
+    }
+
+    /// Records what it was asked and answers with a fixed verdict.
+    final class StubConfirmer: DestructiveActionConfirming, @unchecked Sendable {
+        let answer: Bool
+        private let lock = NSLock()
+        private var seen: [DestructiveAction] = []
+
+        init(answer: Bool) { self.answer = answer }
+
+        var actions: [DestructiveAction] {
+            lock.lock(); defer { lock.unlock() }
+            return seen
+        }
+
+        func confirm(_ action: DestructiveAction) -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            seen.append(action)
+            return answer
+        }
     }
 
     private func payload(
@@ -1124,6 +1169,115 @@ final class FileOperationDispatcherTests: XCTestCase {
         XCTAssertTrue(isSuccess(response), "the dialog owns the format choice")
     }
 
+    /// The dialog writes long after `dispatch` returned, so the parked request's
+    /// security-scoped access is already gone: the write has to take its own.
+    ///
+    /// Without that, every dialog write failed with “you don't have permission to
+    /// view it” for sources inside a folder the user had authorized, which is the
+    /// 2026-10-03 report (it looked like an encryption bug; it was not).
+    func testTheDialogWriteTakesItsOwnScopedAccess() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let file = authorized.appendingPathComponent("a.txt")
+        try Data("A".utf8).write(to: file)
+        let dispatcher = dispatcher()
+
+        // Park the request exactly the way 自定义压缩… does …
+        XCTAssertTrue(isSuccess(dispatcher.dispatch(payload: payload(
+            .compressItems,
+            FileOperationContract.OperationArgs(
+                name: "dialog.zip",
+                sourcePaths: [file.path],
+                destinationDirectory: authorized.path,
+                archiveFormat: "zip",
+                customize: true
+            )
+        ))))
+        let pending = try XCTUnwrap(ArchiveRequestCenter.shared.pending)
+
+        // … then let 确定 do the write, with no scope left over from the dispatch.
+        started = []
+        stopped = []
+        let report = try dispatcher.performCustomCompression(
+            sources: pending.sources,
+            into: pending.directory,
+            preferredName: pending.name,
+            format: pending.format,
+            mode: pending.mode,
+            label: pending.label,
+            password: nil,
+            settings: ArchiveSettings(),
+            control: nil
+        )
+
+        XCTAssertEqual(report.archiveURL.path, authorized.appendingPathComponent("dialog.zip").path)
+        XCTAssertEqual(started, [authorized.path], "the dialog write must start its own scoped access")
+        XCTAssertEqual(stopped, [authorized.path], "… and stop it again")
+    }
+
+    func testTheDialogWriteRefusesAPathOutsideAnyAuthorizedFolder() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        let other = root.appendingPathComponent("Other", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let file = other.appendingPathComponent("a.txt")
+        try Data("A".utf8).write(to: file)
+
+        started = []
+        XCTAssertThrowsError(try dispatcher().performCustomCompression(
+            sources: [file],
+            into: other,
+            preferredName: "dialog.zip",
+            format: .zip,
+            mode: .standard,
+            label: nil,
+            password: nil,
+            settings: ArchiveSettings(),
+            control: nil
+        )) { error in
+            guard let failure = error as? FileOperationDispatcher.CustomCompressionFailure else {
+                return XCTFail("expected a dialog failure, got \(error)")
+            }
+            XCTAssertTrue(
+                failure.message.contains("Path outside any authorized folder"),
+                "the dialog shows this verbatim: \(failure.message)"
+            )
+        }
+        XCTAssertTrue(started.isEmpty, "no scoped access may be started for an unauthorized path")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: other.appendingPathComponent("dialog.zip").path))
+    }
+
+    /// 取消 must stay `ArchiveError.cancelled`: the sheet treats that as “the
+    /// user asked for this”, not as something to show in red.
+    func testTheDialogWriteKeepsTheCancellationIdentity() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let file = authorized.appendingPathComponent("a.txt")
+        try Data("A".utf8).write(to: file)
+        let control = ArchiveOperationControl()
+        control.cancel()
+
+        XCTAssertThrowsError(try dispatcher().performCustomCompression(
+            sources: [file],
+            into: authorized,
+            preferredName: "dialog.zip",
+            format: .zip,
+            mode: .standard,
+            label: nil,
+            password: nil,
+            settings: ArchiveSettings(),
+            control: control
+        )) { error in
+            guard case ArchiveError.cancelled = error else {
+                return XCTFail("a cancelled dialog write must keep its identity, got \(error)")
+            }
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: authorized.appendingPathComponent("dialog.zip").path))
+    }
+
     func testExtractArchiveExtractsIntoTheArchivesOwnFolderByDefault() throws {
         let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
         try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
@@ -1255,6 +1409,335 @@ final class FileOperationDispatcherTests: XCTestCase {
         )
     }
 
+    // MARK: - Encrypted archives (the password never leaves the main app)
+
+    /// The password book already knows the password: extraction just works, and
+    /// nobody is asked anything.
+    func testExtractArchiveUsesThePasswordFromThePasswordBook() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let archive = authorized.appendingPathComponent("secret.zip")
+        try EncryptedZipFixture.archive(contents: "top secret\n", password: "hunter2").write(to: archive)
+        let prompt = ScriptedPasswordPrompt(automatic: ["hunter2"])
+
+        let response = dispatcher(passwordPrompting: prompt)
+            .dispatch(payload: extractPayload(archives: [archive]))
+
+        guard case .batchSuccess(let items) = response else { return XCTFail("expected a batch response, got \(response)") }
+        XCTAssertTrue(items[0].success, items[0].message ?? "")
+        XCTAssertEqual(prompt.askCount, 0)
+        XCTAssertEqual(
+            try String(contentsOf: authorized.appendingPathComponent("secret.txt"), encoding: .utf8),
+            "top secret\n"
+        )
+        XCTAssertEqual(started, stopped, "scoped access must be balanced")
+    }
+
+    /// A password the user cancels is a quiet no-op: the extension reports the
+    /// user's cancel, so nothing is written and no error dialog appears.
+    func testExtractArchiveCancelsQuietlyWhenThePasswordPromptIsDismissed() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let archive = authorized.appendingPathComponent("secret.zip")
+        try EncryptedZipFixture.archive(contents: "top secret\n", password: "hunter2").write(to: archive)
+        let prompt = ScriptedPasswordPrompt(automatic: ["wrong"], answers: [nil])
+
+        let response = dispatcher(passwordPrompting: prompt)
+            .dispatch(payload: extractPayload(archives: [archive]))
+
+        XCTAssertEqual(failureCode(response), .cancelledByUser)
+        XCTAssertEqual(prompt.askCount, 1)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: authorized.appendingPathComponent("secret.txt").path),
+            "nothing may be written before the password is settled"
+        )
+    }
+
+    /// With no prompter wired up (a build without the UI, or a test), the archive
+    /// is reported honestly instead of pretending it is corrupt.
+    func testExtractArchiveWithoutAPasswordPromptReportsTheProtection() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let archive = authorized.appendingPathComponent("secret.zip")
+        try EncryptedZipFixture.archive(contents: "top secret\n", password: "hunter2").write(to: archive)
+
+        let response = dispatcher().dispatch(payload: extractPayload(archives: [archive]))
+
+        guard case .batchSuccess(let items) = response else { return XCTFail("expected a batch response, got \(response)") }
+        XCTAssertFalse(items[0].success)
+        XCTAssertEqual(items[0].errorCode, .archiveFailed)
+        XCTAssertTrue(items[0].message?.contains("password-protected") == true, items[0].message ?? "no message")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: authorized.appendingPathComponent("secret.txt").path))
+    }
+
+    /// The password is resolved for every archive **before** the first byte is
+    /// written, so cancelling the second prompt does not leave the first archive
+    /// half-extracted.
+    func testExtractArchiveSettlesEveryPasswordBeforeWritingAnything() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let first = authorized.appendingPathComponent("first.zip")
+        let second = authorized.appendingPathComponent("second.zip")
+        try RawZipBuilder.archive([("one.txt", "one")]).write(to: first)
+        try EncryptedZipFixture.archive(name: "two.txt", contents: "two", password: "hunter2").write(to: second)
+        let prompt = ScriptedPasswordPrompt(automatic: [], answers: [nil])
+
+        let response = dispatcher(passwordPrompting: prompt)
+            .dispatch(payload: extractPayload(archives: [first, second]))
+
+        XCTAssertEqual(failureCode(response), .cancelledByUser)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: authorized.appendingPathComponent("one.txt").path),
+            "the first archive must not have been extracted while the second was still locked"
+        )
+    }
+
+
+    // MARK: - 7z and tar.gz through the menu, not only ZIP
+
+    /// Before 2026-10-03 the password resolver probed **every** archive with the
+    /// ZIP reader, so a 7z, tar or tar.gz picked in Finder came back as
+    /// “Not a readable archive”. The test corpus was all ZIP, so nothing caught it.
+    func testExtractArchiveReadsASevenZipThroughTheMenu() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let source = authorized.appendingPathComponent("notes.txt")
+        try Data("seven zip contents\n".utf8).write(to: source)
+        let archive = try ArchiveCompressor.compress(
+            [source],
+            into: authorized,
+            preferredName: "notes.7z",
+            format: .sevenZip,
+            conflictPolicy: .keepBoth,
+            sizeLimitMB: 64
+        ).archiveURL
+        try FileManager.default.removeItem(at: source)
+
+        let response = dispatcher().dispatch(payload: extractPayload(archives: [archive]))
+
+        guard case .batchSuccess(let items) = response else { return XCTFail("expected a batch response, got \(response)") }
+        XCTAssertTrue(items[0].success, items[0].message ?? "")
+        XCTAssertEqual(
+            try String(contentsOf: authorized.appendingPathComponent("notes.txt"), encoding: .utf8),
+            "seven zip contents\n"
+        )
+    }
+
+    func testExtractArchiveReadsATarGzThroughTheMenu() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let source = authorized.appendingPathComponent("notes.txt")
+        try Data("tarball contents\n".utf8).write(to: source)
+        let archive = try ArchiveCompressor.compress(
+            [source],
+            into: authorized,
+            preferredName: "notes.tar.gz",
+            format: .gzip,
+            conflictPolicy: .keepBoth,
+            sizeLimitMB: 64
+        ).archiveURL
+        try FileManager.default.removeItem(at: source)
+
+        let response = dispatcher().dispatch(payload: extractPayload(archives: [archive]))
+
+        guard case .batchSuccess(let items) = response else { return XCTFail("expected a batch response, got \(response)") }
+        XCTAssertTrue(items[0].success, items[0].message ?? "")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: authorized.appendingPathComponent("notes.txt").path))
+    }
+
+    /// The 密码本 path for 7z: the password is checked against a real AES
+    /// archive, so nothing is written before the key is proven.
+    func testExtractArchiveUnlocksAnEncryptedSevenZipFromThePasswordBook() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let source = authorized.appendingPathComponent("secret.txt")
+        try Data("top secret\n".utf8).write(to: source)
+        let archive = try ArchiveCompressor.compress(
+            [source],
+            into: authorized,
+            preferredName: "locked.7z",
+            format: .sevenZip,
+            conflictPolicy: .keepBoth,
+            sizeLimitMB: 64,
+            password: "hunter2"
+        ).archiveURL
+        try FileManager.default.removeItem(at: source)
+        let prompt = ScriptedPasswordPrompt(automatic: ["hunter2"])
+
+        let response = dispatcher(passwordPrompting: prompt).dispatch(payload: extractPayload(archives: [archive]))
+
+        guard case .batchSuccess(let items) = response else { return XCTFail("expected a batch response, got \(response)") }
+        XCTAssertTrue(items[0].success, items[0].message ?? "")
+        XCTAssertEqual(prompt.askCount, 0, "a remembered password must not open a dialog")
+        XCTAssertEqual(
+            try String(contentsOf: authorized.appendingPathComponent("secret.txt"), encoding: .utf8),
+            "top secret\n"
+        )
+    }
+
+    func testExtractArchiveAsksForAnUnknownSevenZipPassword() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let source = authorized.appendingPathComponent("secret.txt")
+        try Data("top secret\n".utf8).write(to: source)
+        let archive = try ArchiveCompressor.compress(
+            [source],
+            into: authorized,
+            preferredName: "locked.7z",
+            format: .sevenZip,
+            conflictPolicy: .keepBoth,
+            sizeLimitMB: 64,
+            password: "hunter2"
+        ).archiveURL
+        try FileManager.default.removeItem(at: source)
+        let prompt = ScriptedPasswordPrompt(answers: ["hunter2"])
+
+        let response = dispatcher(passwordPrompting: prompt).dispatch(payload: extractPayload(archives: [archive]))
+
+        guard case .batchSuccess(let items) = response else { return XCTFail("expected a batch response, got \(response)") }
+        XCTAssertTrue(items[0].success, items[0].message ?? "")
+        XCTAssertEqual(prompt.askCount, 1)
+        XCTAssertEqual(prompt.askedAbout, ["locked.7z"])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: authorized.appendingPathComponent("secret.txt").path))
+    }
+
+    func testExtractArchiveCancelsQuietlyWhenTheSevenZipPromptIsDismissed() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let source = authorized.appendingPathComponent("secret.txt")
+        try Data("top secret\n".utf8).write(to: source)
+        let archive = try ArchiveCompressor.compress(
+            [source],
+            into: authorized,
+            preferredName: "locked.7z",
+            format: .sevenZip,
+            conflictPolicy: .keepBoth,
+            sizeLimitMB: 64,
+            password: "hunter2"
+        ).archiveURL
+        try FileManager.default.removeItem(at: source)
+        let prompt = ScriptedPasswordPrompt(answers: [nil])
+
+        let response = dispatcher(passwordPrompting: prompt).dispatch(payload: extractPayload(archives: [archive]))
+
+        XCTAssertEqual(failureCode(response), .cancelledByUser)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: authorized.appendingPathComponent("secret.txt").path),
+            "a cancelled password writes nothing, not even a partial file"
+        )
+    }
+
+    // MARK: - The dialog's three new options, through the dispatcher it calls
+
+    func testTheDialogCanWriteASplitArchive() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let source = authorized.appendingPathComponent("bytes.bin")
+        try Data((0..<1_200_000).map { _ in UInt8.random(in: 0...255) }).write(to: source)
+
+        let report = try dispatcher().performCustomCompression(
+            sources: [source],
+            into: authorized,
+            preferredName: "split.zip",
+            format: .zip,
+            mode: .standard,
+            label: nil,
+            password: nil,
+            solid: true,
+            encryptsFileNames: false,
+            volumeSizeMB: 1,
+            settings: ArchiveSettings(),
+            control: nil
+        )
+
+        XCTAssertEqual(report.archiveURL.lastPathComponent, "split.zip.001")
+        let parts = ArchiveVolumeSet.existingParts(firstPart: report.archiveURL)
+        XCTAssertGreaterThan(parts.count, 1, "1.2 MB at 1 MB per part has to produce more than one part")
+        XCTAssertEqual(started, stopped, "scoped access must be balanced")
+    }
+
+    func testTheDialogCanWriteAnEncryptedSevenZipAndTheMenuCanReadItBack() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let source = authorized.appendingPathComponent("secret.txt")
+        try Data("top secret\n".utf8).write(to: source)
+
+        let report = try dispatcher().performCustomCompression(
+            sources: [source],
+            into: authorized,
+            preferredName: "locked.7z",
+            format: .sevenZip,
+            mode: .maximum,
+            label: nil,
+            password: "hunter2",
+            solid: false,
+            encryptsFileNames: true,
+            volumeSizeMB: nil,
+            settings: ArchiveSettings(),
+            control: nil
+        )
+
+        XCTAssertEqual(report.archiveURL.lastPathComponent, "locked.7z")
+        // The archive is what the user keeps; the source goes the way it would
+        // after a real 压缩 (the dialog does not delete it, the test does).
+        try FileManager.default.removeItem(at: source)
+        // No password anywhere: the menu path must refuse, not write a broken file.
+        let withoutPassword = dispatcher().dispatch(payload: extractPayload(archives: [report.archiveURL]))
+        guard case .batchSuccess(let refused) = withoutPassword else {
+            return XCTFail("expected a batch response, got \(withoutPassword)")
+        }
+        XCTAssertFalse(refused[0].success)
+        XCTAssertEqual(refused[0].errorCode, .archiveFailed)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: authorized.appendingPathComponent("secret.txt").path))
+
+        // With the right password the same archive extracts.
+        let prompt = ScriptedPasswordPrompt(automatic: ["hunter2"])
+        let unlocked = dispatcher(passwordPrompting: prompt).dispatch(payload: extractPayload(archives: [report.archiveURL]))
+        guard case .batchSuccess(let items) = unlocked else {
+            return XCTFail("expected a batch response, got \(unlocked)")
+        }
+        XCTAssertTrue(items[0].success, items[0].message ?? "")
+        XCTAssertEqual(
+            try String(contentsOf: authorized.appendingPathComponent("secret.txt"), encoding: .utf8),
+            "top secret\n"
+        )
+    }
+
+    func testTheDialogRefusesToEncryptAFormatThatCannotCarryAPassword() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let source = authorized.appendingPathComponent("a.txt")
+        try Data("A".utf8).write(to: source)
+
+        XCTAssertThrowsError(try dispatcher().performCustomCompression(
+            sources: [source],
+            into: authorized,
+            preferredName: "a.tar",
+            format: .tar,
+            mode: .standard,
+            label: nil,
+            password: "hunter2",
+            settings: ArchiveSettings(),
+            control: nil
+        )) { error in
+            guard case ArchiveError.encryptionUnsupported = error else {
+                return XCTFail("expected encryptionUnsupported, got \(error)")
+            }
+        }
+    }
+
     // MARK: - P6 helpers
 
     func testAliasNameConvention() {
@@ -1264,5 +1747,220 @@ final class FileOperationDispatcherTests: XCTestCase {
 
     func testIsLockedIsFalseForAMissingPath() {
         XCTAssertFalse(FileOperationService.isLocked(root.appendingPathComponent("nope.txt")))
+    }
+
+    // MARK: - P7: 文件权限 switches that used to be inert
+
+    private func permissivePermissions(confirm: Bool = false) -> FilePermissionSettings {
+        FilePermissionSettings(
+            allowedActions: Set(FileAction.allCases),
+            restrictToAuthorizedFolders: false,
+            confirmDestructiveActions: confirm
+        )
+    }
+
+    /// 关闭「仅在已授权的文件夹内创建或修改文件」后，MenuRight 自己的预检放行；
+    /// 沙盒仍然是最终裁判，但在测试进程里写入会成功。
+    func testRestrictOffLetsACreateIntoAnUnauthorizedFolderThrough() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        let other = root.appendingPathComponent("Other", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try authorize(authorized)
+
+        let response = dispatcher(filePermissions: permissivePermissions())
+            .dispatch(payload: createFilePayload(directory: other, name: "loose.txt", contents: "x"))
+
+        XCTAssertNil(failureCode(response), "expected success, got \(response)")
+        XCTAssertEqual(
+            try String(contentsOf: other.appendingPathComponent("loose.txt"), encoding: .utf8),
+            "x"
+        )
+    }
+
+    /// 同样的请求在开关打开（默认）时仍被拒绝 —— 证明这个开关真的在起作用。
+    func testRestrictOnStillRejectsACreateIntoAnUnauthorizedFolder() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        let other = root.appendingPathComponent("Other", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try authorize(authorized)
+
+        let response = dispatcher().dispatch(payload: createFilePayload(directory: other, name: "loose.txt", contents: "x"))
+
+        // Creates never had a scope pre-check: they run inside
+        // `withAuthorization`, which reports `notAuthorized` when no bookmark
+        // covers the target. Restrict-on therefore keeps exactly the old code.
+        XCTAssertEqual(failureCode(response), .notAuthorized)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: other.appendingPathComponent("loose.txt").path))
+    }
+
+    /// 关闭后移动也不再被预检拦截（目标仍在已授权目录内，只是多目标场景）。
+    func testRestrictOffLetsAnUnauthorizedMoveThrough() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        let other = root.appendingPathComponent("Authorized/Destination", isDirectory: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let source = root.appendingPathComponent("Outside/Source.txt")
+        try FileManager.default.createDirectory(at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("s".utf8).write(to: source)
+
+        let response = dispatcher(filePermissions: permissivePermissions())
+            .dispatch(payload: movePayload(sources: [source], destination: other))
+
+        guard case .batchSuccess(let items) = response else {
+            return XCTFail("expected batchSuccess, got \(response)")
+        }
+        XCTAssertTrue(items[0].success, "move failed: \(items[0].message ?? "")")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: other.appendingPathComponent("Source.txt").path))
+    }
+
+    /// 二次确认被拒绝：锁定不生效，返回 cancelledByUser（扩展把这一码当作静默取消）。
+    func testRefusedLockConfirmationLeavesTheItemUnlocked() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let item = authorized.appendingPathComponent("keep.txt")
+        try Data("x".utf8).write(to: item)
+        let confirmer = StubConfirmer(answer: false)
+
+        let response = dispatcher(destructiveConfirmation: confirmer)
+            .dispatch(payload: payload(.setLocked, .init(sourcePaths: [item.path], locked: true)))
+
+        XCTAssertEqual(failureCode(response), .cancelledByUser)
+        XCTAssertFalse(FileOperationService.isLocked(item))
+        XCTAssertEqual(confirmer.actions, [.lock(count: 1)])
+    }
+
+    /// 确认后照常执行。
+    func testAcceptedLockConfirmationLocksTheItem() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let item = authorized.appendingPathComponent("keep.txt")
+        try Data("x".utf8).write(to: item)
+        let confirmer = StubConfirmer(answer: true)
+
+        let response = dispatcher(destructiveConfirmation: confirmer)
+            .dispatch(payload: payload(.setLocked, .init(sourcePaths: [item.path], locked: true)))
+
+        guard case .batchSuccess(let items) = response else {
+            return XCTFail("expected batchSuccess, got \(response)")
+        }
+        XCTAssertTrue(items[0].success)
+        XCTAssertTrue(FileOperationService.isLocked(item))
+        XCTAssertEqual(confirmer.actions, [.lock(count: 1)])
+    }
+
+    /// 关闭「敏感操作前二次确认」后，即使注入了确认器也不会被询问。
+    func testConfirmSwitchOffSkipsTheInjectedConfirmer() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let item = authorized.appendingPathComponent("keep.txt")
+        try Data("x".utf8).write(to: item)
+        let confirmer = StubConfirmer(answer: false)
+
+        let response = dispatcher(
+            filePermissions: permissivePermissions(confirm: false),
+            destructiveConfirmation: confirmer
+        ).dispatch(payload: payload(.setLocked, .init(sourcePaths: [item.path], locked: true)))
+
+        guard case .batchSuccess(let items) = response else {
+            return XCTFail("expected batchSuccess, got \(response)")
+        }
+        XCTAssertTrue(items[0].success)
+        XCTAssertTrue(FileOperationService.isLocked(item))
+        XCTAssertTrue(confirmer.actions.isEmpty, "the switch is off, so nobody may ask")
+    }
+
+    /// 剪切（移动）也走二次确认；拒绝时文件原地不动。
+    func testRefusedCutConfirmationLeavesTheSourcesInPlace() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        let destination = root.appendingPathComponent("Authorized/Destination", isDirectory: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let source = authorized.appendingPathComponent("a.txt")
+        try Data("a".utf8).write(to: source)
+        let confirmer = StubConfirmer(answer: false)
+
+        let response = dispatcher(destructiveConfirmation: confirmer)
+            .dispatch(payload: movePayload(sources: [source], destination: destination))
+
+        XCTAssertEqual(failureCode(response), .cancelledByUser)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertEqual(confirmer.actions, [.cutMove(count: 1)])
+    }
+
+    /// 配置的终端 App 不存在时回退到内置 opener，而不是让「打开终端」失败。
+    func testMissingConfiguredTerminalFallsBackToTheBuiltInOpener() throws {
+        let directory = root.appendingPathComponent("AnyFolder", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var general = GeneralSettings()
+        general.terminalApplicationPath = "/Applications/Definitely-Not-Installed-\(UUID().uuidString).app"
+
+        let response = dispatcher(generalSettings: general)
+            .dispatch(payload: payload(.openTerminal, .init(directory: directory.path)))
+
+        XCTAssertNil(failureCode(response))
+        XCTAssertEqual(openedDirectories, [directory.path])
+    }
+
+    // MARK: - P7: 模板目录覆盖
+
+    /// 覆盖目录优先于注入的内置目录，并且真的从覆盖目录复制。
+    func testTemplateOverrideDirectoryIsPreferredOverTheInjectedDirectory() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let override = root.appendingPathComponent("CustomTemplates", isDirectory: true)
+        try FileManager.default.createDirectory(at: override, withIntermediateDirectories: true)
+        try Data("custom-key".utf8).write(to: override.appendingPathComponent("blank.key"))
+        var newFile = NewFileSettings()
+        newFile.templateDirectoryPath = override.path
+
+        let response = dispatcher(newFileSettings: newFile).dispatch(payload: documentPayload(
+            .createFromTemplate, directory: authorized, name: "Deck.key", kind: "keynote"
+        ))
+
+        let path = try XCTUnwrap(successPath(response))
+        XCTAssertEqual(path, authorized.appendingPathComponent("Deck.key").path)
+        XCTAssertEqual(try String(contentsOfFile: path, encoding: .utf8), "custom-key")
+    }
+
+    /// 覆盖目录里缺少的那种模板报 templateMissing，而不是偷偷回退到内置目录。
+    func testTemplateOverrideMissingKindReportsTemplateMissing() throws {
+        let authorized = root.appendingPathComponent("Authorized", isDirectory: true)
+        try FileManager.default.createDirectory(at: authorized, withIntermediateDirectories: true)
+        try authorize(authorized)
+        let override = root.appendingPathComponent("CustomTemplates", isDirectory: true)
+        try FileManager.default.createDirectory(at: override, withIntermediateDirectories: true)
+        try Data("custom-key".utf8).write(to: override.appendingPathComponent("blank.key"))
+        var newFile = NewFileSettings()
+        newFile.templateDirectoryPath = override.path
+
+        let response = dispatcher(newFileSettings: newFile).dispatch(payload: documentPayload(
+            .createFromTemplate, directory: authorized, name: "Budget.numbers", kind: "numbers"
+        ))
+
+        XCTAssertEqual(failureCode(response), .templateMissing)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: authorized.path).isEmpty)
+    }
+
+    // MARK: - P7: 确认话术
+
+    func testDestructiveActionLabelsCarryTheirCountOnlyWhenPlural() {
+        let text: (StringKey) -> String = { key in
+            switch key {
+            case .confirmDestructiveLock: return "LOCK"
+            case .confirmDestructiveUnlock: return "UNLOCK"
+            case .confirmDestructiveCut: return "CUT"
+            default: return "?"
+            }
+        }
+        XCTAssertEqual(DestructiveActionPrompter.describe(.lock(count: 1), text: text), "LOCK")
+        XCTAssertEqual(DestructiveActionPrompter.describe(.cutMove(count: 4), text: text), "CUT (4)")
+        XCTAssertEqual(DestructiveActionPrompter.describe(.unlock(count: 2), text: text), "UNLOCK (2)")
+        XCTAssertEqual(DestructiveAction.lock(count: 3).itemCount, 3)
     }
 }

@@ -9,6 +9,10 @@ import zlib
 struct ZipEntryRecord: Equatable {
     let name: String
     let compressionMethod: UInt16
+    /// General-purpose bit 0: the payload carries a 12-byte ZipCrypto header and
+    /// the compressed bytes are encrypted. The CRC here is the **plaintext** CRC,
+    /// which is why it can be used to verify a password.
+    let isEncrypted: Bool
     let crc32: UInt32
     let compressedSize: Int
     let uncompressedSize: Int
@@ -26,19 +30,27 @@ enum ZipReaderError: Error, Equatable {
     /// size guard rejects payloads that large before this could matter.
     case zip64Unsupported
     case unsupportedCompression(UInt16)
-    /// The archive is password-protected (`ZipError.encryptionNotSupported` in
-    /// SWCompression); this build never handles encrypted entries.
-    case encryptedNotSupported
+    /// The entry is encrypted (general-purpose bit 0) and no password was given.
+    /// A password is asked for by the main app, which is the only process that
+    /// extracts; it never travels over the extension's IPC.
+    case passwordRequired(String)
+    /// A password was given, but it did not decrypt this entry.
+    case badPassword(String)
     case corruptEntry(String)
     case crcMismatch(String)
     case inflateFailed(String)
+    /// The DEFLATE output grew past the limit. Since `contents(of:)` later
+    /// requires the output to equal the entry's declared size exactly, exceeding
+    /// it proves the header lied — the signature of a zip bomb, not corruption.
+    case inflateExceedsLimit(String)
 }
 
 /// Minimal ZIP **reader** for the extraction path.
 ///
 /// Scope mirrors `ZipWriter`: the shapes this app creates plus what ordinary
-/// tools produce for them (STORED + DEFLATE, no ZIP64, no encryption). Anything
-/// else fails with a typed error instead of guessing.
+/// tools produce for them (STORED + DEFLATE, no ZIP64, PKWARE traditional
+/// encryption when a password is supplied). Anything else fails with a typed
+/// error instead of guessing.
 ///
 /// The archive is kept as `Data`, and callers are expected to open it with
 /// `.mappedIfSafe`, so a large archive is paged in rather than duplicated; the
@@ -130,10 +142,11 @@ struct ZipReader {
                 }
                 let method = try u16(cursor + 10)
                 let flags = try u16(cursor + 8)
-                // General-purpose bit 0: the entry is encrypted. Refusing here
-                // is the honest answer — the payload would otherwise fail as a
-                // confusing CRC/inflate error.
-                if flags & 0x0001 != 0 { throw ZipReaderError.encryptedNotSupported }
+                // General-purpose bit 0: the entry is encrypted. The header is
+                // still parsed — the sizes, the CRC and the name are all in the
+                // clear — so the extractor can ask for a password instead of
+                // refusing the whole archive up front.
+                let isEncrypted = flags & 0x0001 != 0
                 let crc = try u32(cursor + 16)
                 let rawCompressedSize = try u32(cursor + 20)
                 let rawUncompressedSize = try u32(cursor + 24)
@@ -161,6 +174,7 @@ struct ZipReader {
                 parsed.append(ZipEntryRecord(
                     name: name,
                     compressionMethod: method,
+                    isEncrypted: isEncrypted,
                     crc32: crc,
                     compressedSize: Int(rawCompressedSize),
                     uncompressedSize: Int(rawUncompressedSize),
@@ -177,9 +191,45 @@ struct ZipReader {
         comment = archiveComment
     }
 
+    /// True when at least one entry needs a password: encrypted **and** carrying a
+    /// method this reader can inflate. A WinZip-AES entry (method 99) is
+    /// encrypted too, but no password would ever help, so it must not make the
+    /// app ask for one — the planner refuses it with a method error instead.
+    var needsPassword: Bool {
+        entries.contains { entry in
+            entry.isEncrypted
+                && !entry.isDirectory
+                && (entry.compressionMethod == 0 || entry.compressionMethod == 8)
+        }
+    }
+
+    /// The entry a password is checked against. Verifying on the smallest entry
+    /// keeps a wrong-password guess cheap.
+    private var passwordProbe: ZipEntryRecord? {
+        entries
+            .filter { $0.isEncrypted && !$0.isDirectory && ($0.compressionMethod == 0 || $0.compressionMethod == 8) }
+            .min { $0.compressedSize < $1.compressedSize }
+    }
+
+    /// Whether `password` decrypts this archive. Non-encrypted archives accept any
+    /// password (there is nothing to unlock).
+    func validates(password: String) -> Bool {
+        guard let probe = passwordProbe else { return true }
+        return (try? contents(of: probe, password: password)) != nil
+    }
+
     /// Inflates (or copies) one entry and verifies its CRC and size.
-    func contents(of entry: ZipEntryRecord) throws -> Data {
-        let payload: Data = try data.withUnsafeBytes { raw in
+    ///
+    /// - Parameter password: the ZipCrypto password for an encrypted entry. It is
+    ///   ignored for plain ones; an encrypted entry without it fails with
+    ///   `passwordRequired` rather than the confusing CRC/inflate error the raw
+    ///   bytes would produce.
+    /// - Parameter maximumOutputBytes: the caller's (extractor's) hard cap on the
+    ///   inflated payload. The entry's own declared size is also an absolute cap
+    ///   here: the size check below demands an exact match, so a stream that
+    ///   grows past it has already been disqualified.
+    func contents(of entry: ZipEntryRecord, password: String? = nil, maximumOutputBytes: Int64 = .max) throws -> Data {
+        let stored: Data = try data.withUnsafeBytes { raw in
             let bytes = raw.bindMemory(to: UInt8.self)
             let offset = entry.localHeaderOffset
             guard offset >= 0, offset + 30 <= bytes.count else { throw ZipReaderError.truncated }
@@ -197,13 +247,55 @@ struct ZipReader {
             return Data(bytes[start..<(start + entry.compressedSize)])
         }
 
+        // An encrypted entry stores its 12-byte ZipCrypto header in front of the
+        // (encrypted) compressed bytes, and `compressedSize` counts both.
+        let payload: Data
+        if entry.isEncrypted {
+            guard let password, !password.isEmpty else {
+                throw ZipReaderError.passwordRequired(entry.name)
+            }
+            do {
+                // The check byte the header carries is a fast "yes" but not a
+                // reliable "no": a streaming writer (general-purpose bit 3) puts a
+                // timestamp there instead of the CRC's top byte. So the verdict is
+                // the plaintext CRC check at the end of this method.
+                payload = try ZipCrypto.decrypt(stored, password: password).payload
+            } catch {
+                throw ZipReaderError.badPassword(entry.name)
+            }
+        } else {
+            payload = stored
+        }
+
         let contents: Data
         switch entry.compressionMethod {
         case 0:
             contents = payload
         case 8:
-            guard let inflated = Self.rawInflate(payload, expectedSize: entry.uncompressedSize) else {
-                throw ZipReaderError.inflateFailed(entry.name)
+            let inflated: Data?
+            do {
+                inflated = try Self.rawInflate(
+                    payload,
+                    expectedSize: entry.uncompressedSize,
+                    maximumBytes: maximumOutputBytes
+                )
+            } catch let error as ZipReaderError {
+                // 对加密条目来说，「解出来超过了声明长度」和「长度不对」一样，
+                // 绝大多数时候是密码错了，而不是归档在说谎——只有明文条目
+                // 才把超限当 zip bomb 报上去（带上条目名与两边的大小）。
+                if case .inflateExceedsLimit(let detail) = error {
+                    if entry.isEncrypted { throw ZipReaderError.badPassword(entry.name) }
+                    throw ZipReaderError.inflateExceedsLimit(
+                        "\(entry.name) (declared \(entry.uncompressedSize), \(detail))"
+                    )
+                }
+                throw error
+            }
+            guard let inflated else {
+                // Garbage from the wrong password almost always dies here.
+                throw entry.isEncrypted
+                    ? ZipReaderError.badPassword(entry.name)
+                    : ZipReaderError.inflateFailed(entry.name)
             }
             contents = inflated
         default:
@@ -211,16 +303,35 @@ struct ZipReader {
         }
 
         guard contents.count == entry.uncompressedSize else {
-            throw ZipReaderError.corruptEntry("\(entry.name) (size \(contents.count) ≠ \(entry.uncompressedSize))")
+            // For an encrypted entry both of these mean "that password was wrong"
+            // far more often than they mean "the archive is damaged": a STORED
+            // entry decrypts to the right *length* and the wrong *bytes*.
+            throw entry.isEncrypted
+                ? ZipReaderError.badPassword(entry.name)
+                : ZipReaderError.corruptEntry("\(entry.name) (size \(contents.count) ≠ \(entry.uncompressedSize))")
         }
         guard ZipWriter.crc32(contents) == entry.crc32 else {
-            throw ZipReaderError.crcMismatch(entry.name)
+            throw entry.isEncrypted
+                ? ZipReaderError.badPassword(entry.name)
+                : ZipReaderError.crcMismatch(entry.name)
         }
         return contents
     }
 
     /// Raw (header-less) DEFLATE, the stream shape a ZIP entry stores.
-    static func rawInflate(_ payload: Data, expectedSize: Int) -> Data? {
+    ///
+    /// `maximumBytes` 是调用方（解压限额）给的上限；条目自己声明的
+    /// `expectedSize` 也是硬上限——`contents(of:)` 最后要求两者精确相等，
+    /// 所以过程中一旦超过它，就已经证明这个头部在说谎，不必再解完。
+    ///
+    /// `expectedSize` 是攻击者可控的声明值，绝不能只拿它做预分配：压缩炸弹
+    /// 正是靠伪造一个 4 GiB 的声明让 `reserveCapacity` 先把内存吃掉。
+    static func rawInflate(
+        _ payload: Data,
+        expectedSize: Int,
+        maximumBytes: Int64 = .max
+    ) throws -> Data? {
+        let limit = min(Int64(clamping: expectedSize), maximumBytes)
         guard !payload.isEmpty else { return expectedSize == 0 ? Data() : nil }
 
         var stream = z_stream()
@@ -229,12 +340,12 @@ struct ZipReader {
         defer { inflateEnd(&stream) }
 
         var output = Data()
-        if expectedSize > 0 { output.reserveCapacity(expectedSize) }
+        output.reserveCapacity(min(max(expectedSize, 0), 16 * 1024 * 1024))
         var buffer = [UInt8](repeating: 0, count: 64 * 1024)
         let chunkSize = buffer.count
         var status: Int32 = Z_OK
 
-        payload.withUnsafeBytes { raw in
+        try payload.withUnsafeBytes { raw in
             stream.next_in = UnsafeMutablePointer<Bytef>(mutating: raw.bindMemory(to: Bytef.self).baseAddress!)
             stream.avail_in = uInt(raw.count)
             repeat {
@@ -245,7 +356,15 @@ struct ZipReader {
                     status = zlib.inflate(&stream, Z_NO_FLUSH)
                     produced = chunkSize - Int(stream.avail_out)
                 }
-                if produced > 0 { output.append(contentsOf: buffer[0..<produced]) }
+                if produced > 0 {
+                    // 先判上限再 append：超出的那一块连进 output 的机会都没有。
+                    guard Int64(output.count) + Int64(produced) <= limit else {
+                        throw ZipReaderError.inflateExceedsLimit(
+                            "produced \(output.count + produced) bytes, limit \(limit)"
+                        )
+                    }
+                    output.append(contentsOf: buffer[0..<produced])
+                }
             } while status == Z_OK
         }
 

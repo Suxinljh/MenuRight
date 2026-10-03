@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import os
+import Darwin
 
 /// **Phase P5-0.6 + P5-1** — App-Group Unix domain socket IPC server running
 /// in the main app process.
@@ -58,6 +59,17 @@ final class MainAppIPCServer: NSObject, @unchecked Sendable {
     private let acceptQueue = DispatchQueue(label: "MenuRight.IPC.accept")
     private let connectionQueue = DispatchQueue(label: "MenuRight.IPC.connection", attributes: .concurrent)
 
+    /// Bounds how many accepted connections may sit in verification at once.
+    ///
+    /// Any same-user process can connect to the 0700 App-Group socket, and
+    /// verification is the one step that has to run off the accept thread
+    /// (it does disk I/O). Without a bound, a flood of connects would occupy one
+    /// `connectionQueue` thread and one fd each while they verify — a local
+    /// thread/fd exhaustion vector. 8 matches `listenBacklog`, the kernel's own
+    /// queue depth for this listener.
+    private static let maxUnverifiedConnections = 8
+    private let unverifiedGate = UnverifiedConnectionGate(limit: MainAppIPCServer.maxUnverifiedConnections)
+
     /// Confined to `acceptQueue`.
     private var listenSource: DispatchSourceRead?
     /// Confined to `acceptQueue`.
@@ -86,7 +98,15 @@ final class MainAppIPCServer: NSObject, @unchecked Sendable {
     /// temporary socket path, and a stub peer verifier.
     init(
         socketURL: URL? = MenuRightIPC.socketFileURL(),
-        fileOpDispatcher: FileOperationDispatcher = FileOperationDispatcher(folderChooser: FolderChooser.chooseDirectory),
+        fileOpDispatcher: FileOperationDispatcher = FileOperationDispatcher(
+            folderChooser: FolderChooser.chooseDirectory,
+            // Extracting an encrypted archive needs a password, and a password
+            // must never travel over this socket: the app asks here, in-process.
+            archivePasswordPrompting: ArchivePasswordPrompter.shared,
+            // P7: 锁定 / 剪切 ask for confirmation in-process when the user turned
+            // that on; the dispatcher returns `.cancelledByUser` on refusal.
+            destructiveConfirmation: DestructiveActionPrompter.shared
+        ),
         peerVerifier: @escaping (Int32) -> PeerIdentity.Result = { PeerIdentity.verify(fd: $0) }
     ) {
         self.socketURL = socketURL
@@ -205,7 +225,18 @@ final class MainAppIPCServer: NSObject, @unchecked Sendable {
         listenSource = nil
         listenFD = -1
         if let socketURL {
-            try? FileManager.default.removeItem(at: socketURL)
+            // Not `try?`: failing to remove the socket file leaves the next
+            // bind pointed at a dead listener (or a file we no longer own), so
+            // the failure must be visible. "Already gone" is the expected case
+            // and stays silent.
+            do {
+                try FileManager.default.removeItem(at: socketURL)
+            } catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileNoSuchFileError {
+                // Nothing to remove.
+            } catch {
+                Self.log.notice("MAIN-IPC could not remove socket file \(socketURL.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                LifecycleDiagnostics.record("stop: could not remove socket file: \(error.localizedDescription)", from: "main-app")
+            }
         }
         isRunning = false
         bindAttempts = 0
@@ -231,6 +262,31 @@ final class MainAppIPCServer: NSObject, @unchecked Sendable {
             _ = UnixSocketTransport.setBlocking(fd: clientFD)
             _ = UnixSocketTransport.setSocketTimeouts(fd: clientFD)
 
+            // Front-load the cheapest part of identity verification: read the
+            // peer's credentials now, before spending a worker thread or a
+            // verification slot. Only this user's processes can be the
+            // FinderSync extension, and the socket's 0700 directory already
+            // excludes other users — this is a cheap sanity gate, not the
+            // signature check (which still runs first thing in the handler).
+            var peerUID: uid_t = 0
+            var peerGID: gid_t = 0
+            if getpeereid(clientFD, &peerUID, &peerGID) != 0 || peerUID != geteuid() {
+                Self.log.notice("MAIN-IPC dropping connection from uid=\(peerUID) (expected \(geteuid())); no worker slot spent")
+                LifecycleDiagnostics.record("connection dropped: peer uid \(peerUID) != \(geteuid())", from: "main-app")
+                Darwin.close(clientFD)
+                continue
+            }
+
+            // Cap concurrent *unverified* connections. The slot is released as
+            // soon as verification finishes in `handleConnection`, so verified
+            // work is never throttled by this.
+            guard unverifiedGate.tryAcquire() else {
+                Self.log.notice("MAIN-IPC \(Self.maxUnverifiedConnections, privacy: .public) connections already awaiting verification; closing new connection immediately")
+                LifecycleDiagnostics.record("connection dropped: unverified connection cap reached", from: "main-app")
+                Darwin.close(clientFD)
+                continue
+            }
+
             // Each connection gets its own queue so a slow client doesn't block
             // other clients.
             connectionQueue.async { [weak self] in
@@ -246,6 +302,9 @@ final class MainAppIPCServer: NSObject, @unchecked Sendable {
 
         // Peer identity verification. If rejected, close without replying.
         let peer = peerVerifier(fd)
+        // Verification is done: free the bounded slot immediately, before any
+        // frame reading or dispatch that could take time.
+        unverifiedGate.release()
         switch peer {
         case .rejected(let reason):
             Self.log.notice("MAIN-IPC peer REJECTED: \(reason, privacy: .public)")
@@ -411,5 +470,45 @@ final class IPCStatusCenter: ObservableObject, @unchecked Sendable {
     var isHealthy: Bool {
         if case .listening = state { return true }
         return false
+    }
+}
+
+/// Bounds a resource: at most `limit` reservations may be outstanding at once.
+///
+/// Deliberately a tiny, dependency-free counter rather than a
+/// `DispatchSemaphore`, so it is a pure-logic unit under test: proving the
+/// connection cap by opening hundreds of real sockets would be slow and flaky,
+/// while the accounting is the only part that can be wrong.
+final class UnverifiedConnectionGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var inFlight = 0
+    let limit: Int
+
+    init(limit: Int) {
+        self.limit = max(1, limit)
+    }
+
+    /// Reserves a slot. Returns `false` when `limit` are already reserved.
+    func tryAcquire() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard inFlight < limit else { return false }
+        inFlight += 1
+        return true
+    }
+
+    /// Frees one reservation. Extra releases are ignored rather than driving the
+    /// count negative, so a double-release cannot silently widen the cap.
+    func release() {
+        lock.lock()
+        defer { lock.unlock() }
+        if inFlight > 0 { inFlight -= 1 }
+    }
+
+    /// Current reservations. Tests only.
+    var current: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return inFlight
     }
 }

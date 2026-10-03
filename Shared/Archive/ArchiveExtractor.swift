@@ -14,6 +14,15 @@ enum ArchiveError: Error, Equatable {
     case conflict(String)
     case readFailed(String)
     case writeFailed(String)
+    /// The archive is encrypted and no password was available. Raised only when
+    /// nothing could ask for one (no prompting hooked up); the normal path asks
+    /// the user in the main app and reports `cancelledByUser` if they give up.
+    case passwordRequired(String)
+    /// The password did not decrypt the archive.
+    case badPassword(String)
+    /// Encryption was asked for in a way this build cannot honour: a format
+    /// other than ZIP, an empty password, or no source of randomness.
+    case encryptionUnsupported(String)
     /// The user cancelled the running compression. Not a failure: the archive
     /// is assembled in memory and only written at the very end, so cancelling
     /// cannot leave a half-written file behind.
@@ -220,6 +229,9 @@ enum ArchiveExtractor {
         settings: ArchiveSettings,
         conflictPolicy: ArchiveConflictPolicy? = nil,
         sizeLimitMB: Int? = nil,
+        /// The password for an encrypted ZIP, resolved by the caller before the
+        /// extraction starts (`ArchivePasswordResolver`). Plain archives ignore it.
+        password: String? = nil,
         control: ArchiveOperationControl? = nil,
         /// Where this archive's own `0...1` belongs inside the whole request.
         /// One request can extract several archives (the menu is multi-select)
@@ -236,14 +248,34 @@ enum ArchiveExtractor {
             throw ArchiveError.writeFailed("“\(destinationDirectory.path)” is not a folder")
         }
 
-        let format = ArchiveFormats.detect(at: archiveURL)
-        let source = try ArchiveMemberSourceFactory.make(url: archiveURL, format: format)
+        // A split set (`name.zip.001`, `.002`, …) is one archive spread over
+        // several files: the bytes are stitched into a scratch copy that lives
+        // only as long as this call, because every reader below opens a single
+        // stream. A single-file archive passes straight through.
+        let volumes = try ArchiveVolumeSet.resolve(archiveURL)
+        defer { volumes.discard() }
+        let sourceURL = volumes.url
+
+        let format = ArchiveFormats.detect(at: sourceURL)
+        let source = try ArchiveMemberSourceFactory.make(
+            url: sourceURL,
+            format: format,
+            password: password,
+            // Decompression is capped by the same limit the planner applies to the
+            // declared sizes: the header's own numbers are attacker-controlled, so
+            // the limit has to be enforced while the bytes are produced, not only
+            // read out of the archive.
+            maximumPayloadBytes: limit
+        )
+        // 7z reads through a scratch extraction directory that has to be cleaned
+        // up even when a later step throws.
+        defer { (source as? ArchiveMemberSourceClosing)?.close() }
 
         // These containers state no payload size, so the guard has to happen on
         // the compressed file (and, for gzip, on its trailing ISIZE) before the
         // single payload is materialized.
         if let single = source as? SingleMemberSource {
-            let fileSize = (try? FileManager.default.attributesOfItem(atPath: archiveURL.path)[.size] as? Int64) ?? 0
+            let fileSize = (try? FileManager.default.attributesOfItem(atPath: sourceURL.path)[.size] as? Int64) ?? 0
             if fileSize > limit {
                 throw ArchiveError.tooLarge("“\(archiveURL.lastPathComponent)” is larger than the \(limit / 1024 / 1024) MB limit")
             }
@@ -353,7 +385,11 @@ enum ArchiveExtractor {
             return false
         }
         if settings.deletesArchiveAfterExtraction, summary.failed == 0, !leftOutContent {
-            try? manager.removeItem(at: archiveURL)
+            // A split set is several files, and the user asked for "the archive"
+            // to be deleted — that means every part, not just the first one.
+            for part in volumes.sourceFiles {
+                try? manager.removeItem(at: part)
+            }
         }
 
         return (results, summary)
@@ -442,8 +478,19 @@ enum ArchiveExtractor {
             return .notAnArchive("“\(archive.lastPathComponent)”: \(describe(error))")
         case .zip64Unsupported:
             return .unsupportedFormat("ZIP64 archives are not supported (over 4 GiB or more than 65535 entries)")
-        case .unsupportedCompression, .encryptedNotSupported:
+        case .unsupportedCompression:
             return .unsupportedFormat(describe(error))
+        case .passwordRequired:
+            return .passwordRequired(archive.lastPathComponent)
+        case .badPassword:
+            return .badPassword(archive.lastPathComponent)
+        case .inflateExceedsLimit:
+            // The one reader failure that is not "this archive is broken": the
+            // entries are fine, the declared output is simply more than the limit.
+            // `ZipMemberSource` already maps it to `.tooLarge` on the normal path;
+            // this keeps the other `ZipReader.contents` callers (the password probe)
+            // reporting the same thing instead of "not an archive".
+            return .tooLarge(describe(error))
         }
     }
 
@@ -455,8 +502,13 @@ enum ArchiveExtractor {
         case .unsafePath(let detail): return "Refused an entry that escapes the destination folder: \(detail)"
         case .tooLarge(let detail): return "Archive exceeds the size limit: \(detail)"
         case .conflict(let detail): return "A file with that name already exists: \(detail)"
-        case .readFailed(let detail): return "Could not read the archive: \(detail)"
+        // A source file, not an archive: compression reads the files it stores,
+        // and calling that "the archive" sent a 2026-10-03 bug hunt the wrong way.
+        case .readFailed(let detail): return "Could not read \(detail)"
         case .writeFailed(let detail): return "Could not write the archive: \(detail)"
+        case .passwordRequired(let name): return "“\(name)” is password-protected — enter its password to extract it"
+        case .badPassword(let name): return "The password did not unlock “\(name)”"
+        case .encryptionUnsupported(let detail): return "Could not encrypt the archive: \(detail)"
         case .cancelled: return "Cancelled"
         }
     }
@@ -467,10 +519,12 @@ enum ArchiveExtractor {
         case .truncated: return "the archive is truncated"
         case .zip64Unsupported: return "ZIP64 is not supported"
         case .unsupportedCompression(let method): return "unsupported compression method \(method)"
-        case .encryptedNotSupported: return "the archive is password-protected, which this build does not support"
+        case .passwordRequired(let name): return "“\(name)” is password-protected and no password was given"
+        case .badPassword(let name): return "the password did not unlock “\(name)”"
         case .corruptEntry(let name): return "corrupt entry \(name)"
         case .crcMismatch(let name): return "CRC mismatch in \(name)"
         case .inflateFailed(let name): return "could not decompress \(name)"
+        case .inflateExceedsLimit(let detail): return "“\(detail)” expands past the size limit"
         }
     }
 }
