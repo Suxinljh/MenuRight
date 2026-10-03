@@ -93,15 +93,180 @@ final class StatusMenuTests: XCTestCase {
         )
     }
 
-    func testDelegateAndSceneActuallyUseThoseRules() throws {
-        let source = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("MenuRight/App/MenuRightApp.swift"),
-            encoding: .utf8
+    // MARK: - Quit semantics
+
+    func testOnlyAnIntentionalQuitMayEndTheApp() {
+        // The Dock icon's 退出 and ⌘Q arrive as terminate requests without the
+        // mark, and they must not end the process: it is the IPC peer every
+        // Finder menu item talks to.
+        XCTAssertFalse(
+            AppLifecycle.shouldTerminate(
+                intentionalQuitRequested: false,
+                systemIsPoweringOff: false
+            ),
+            "a terminate request that did not come from the menu bar item would stop the service"
         )
-        // Comments must go first: this file's own documentation names both the
-        // delegate method and MenuBarExtra, and a guard a comment can satisfy is
-        // no guard at all.
-        let code = strippingComments(from: source)
+        XCTAssertTrue(
+            AppLifecycle.shouldTerminate(
+                intentionalQuitRequested: true,
+                systemIsPoweringOff: false
+            ),
+            "退出 in the menu bar item must be able to end the app"
+        )
+        // Logging out / restarting / shutting down must never be refused.
+        XCTAssertTrue(
+            AppLifecycle.shouldTerminate(
+                intentionalQuitRequested: false,
+                systemIsPoweringOff: true
+            ),
+            "refusing the system's power-off request would stall the shutdown"
+        )
+    }
+
+    func testTheDelegateGuardsAgainstEveryQuitButTheMenuBars() throws {
+        let code = try sourceCode(at: "MenuRight/App/MenuRightApp.swift")
+
+        XCTAssertTrue(
+            code.contains("func applicationShouldTerminate("),
+            "without applicationShouldTerminate the Dock's 退出 ends the whole app again"
+        )
+        XCTAssertTrue(
+            code.contains("AppLifecycle.shouldTerminate("),
+            "the delegate no longer forwards to the tested rule"
+        )
+        XCTAssertTrue(
+            code.contains("return .terminateCancel"),
+            """
+            a refused terminate request must be answered with .terminateCancel; \
+            anything else quits the app the rule just decided to keep
+            """
+        )
+        XCTAssertTrue(
+            code.contains("willPowerOffNotification"),
+            "logout/shutdown must be let through, otherwise the system is told the app refused to quit"
+        )
+        XCTAssertTrue(
+            code.contains("MainAppGateRegistry.gate = self"),
+            """
+            the delegate no longer publishes itself on MainAppGateRegistry; \
+            NSApp.delegate holds SwiftUI's own SwiftUI.AppDelegate, so nothing \
+            else can reach it — that silent nil cast is what disabled 退出 once \
+            already (2026-10-03)
+            """
+        )
+    }
+
+    func testTheGateEndsTheAppWithoutAppKit() throws {
+        let code = try sourceCode(at: "MenuRight/App/MenuRightApp.swift")
+
+        // `NSApp.terminate(nil)` does not reach this app's delegate (SwiftUI
+        // installs its own), so `quit()` has to finish the exit by hand. Without
+        // that, 退出 would leave a background app that cannot be quit at all.
+        XCTAssertTrue(code.contains("func quit()"), "the menu bar item's quit entry point is gone")
+        XCTAssertTrue(
+            code.contains("quitRequested = true"),
+            "a quit that is not marked as intentional is cancelled by the gate itself"
+        )
+        XCTAssertTrue(code.contains("NSApp.terminate(nil)"), "quit no longer asks AppKit first")
+        XCTAssertTrue(
+            code.contains("finishQuitDirectly()"),
+            "quit no longer has a path that works when AppKit does not answer"
+        )
+        XCTAssertTrue(
+            code.contains("ipcServer.stop()"),
+            """
+            the fallback must stop the IPC listener the way applicationWillTerminate \
+            does, otherwise the extension keeps talking to a dead socket file
+            """
+        )
+        XCTAssertTrue(code.contains("exit(0)"), "the fallback no longer leaves the process")
+    }
+
+    func testNothingReachesTheDelegateThroughNSAppDelegate() throws {
+        // The bug this guards against: `SwiftUI.AppDelegate` is what sits in
+        // `NSApp.delegate`, so every `as? AppDelegate` on it answers nil and the
+        // caller silently does nothing (measured 2026-10-03: the settings window
+        // was never registered, so a refused 退出 closed nothing).
+        let files = [
+            "MenuRight/App/MenuRightApp.swift",
+            "MenuRight/App/StatusMenu/StatusMenuView.swift",
+            "MenuRight/App/Settings/SettingsRootView.swift",
+            "MenuRight/App/Settings/CustomCompressionDialogWindow.swift",
+        ]
+        for file in files {
+            let code = try sourceCode(at: file)
+            XCTAssertFalse(
+                code.contains("NSApp.delegate as? AppDelegate"),
+                "\(file) casts NSApp.delegate to AppDelegate again — use MainAppGateRegistry"
+            )
+        }
+    }
+
+    func testTheStatusMenuItemQuitsThroughTheGate() throws {
+        let code = try sourceCode(at: "MenuRight/App/StatusMenu/StatusMenuView.swift")
+
+        XCTAssertTrue(
+            code.contains("MainAppGateRegistry.gate?.quit()"),
+            """
+            退出 in the menu bar item must go through the gate: the mark makes the \
+            request intentional, and `quit()` is the only path that really ends \
+            this app
+            """
+        )
+    }
+
+    func testTheRelaunchPathAlsoQuitsThroughTheGate() throws {
+        let code = try sourceCode(at: "MenuRight/App/Settings/SettingsRootView.swift")
+
+        // 重启应用 starts the replacement first and then quits this process: with
+        // the request cancelled the old instance would stay alive and both would
+        // fight over the IPC socket.
+        XCTAssertTrue(
+            code.contains("MainAppGateRegistry.gate?.quit()"),
+            "重启应用 no longer quits through the gate"
+        )
+    }
+
+    // MARK: - The refused-quit rule
+
+    func testARefusedQuitKeepsTheMenuBarItemAndClosesTheOtherWindows() {
+        let statusBar = NSWindow.Level.statusBar.rawValue
+
+        // The regression this rule exists for: the menu bar item's window sits at
+        // `.statusBar`, is a plain NSWindow, and closing it leaves the icon visible
+        // but deaf.
+        XCTAssertFalse(AppLifecycle.mayDismiss(windowLevel: statusBar, isVisible: true, isPanel: false))
+        XCTAssertFalse(
+            AppLifecycle.mayDismiss(windowLevel: statusBar - 1, isVisible: true, isPanel: false),
+            "level 24 is .mainMenu — a menu window, which the app must never close"
+        )
+        XCTAssertFalse(
+            AppLifecycle.mayDismiss(windowLevel: NSWindow.Level.popUpMenu.rawValue, isVisible: true, isPanel: false)
+        )
+
+        // The windows a refused 退出 does dismiss.
+        XCTAssertTrue(
+            AppLifecycle.mayDismiss(windowLevel: NSWindow.Level.normal.rawValue, isVisible: true, isPanel: false),
+            "the settings window is the window a refused 退出 closes"
+        )
+        XCTAssertTrue(
+            AppLifecycle.mayDismiss(windowLevel: NSWindow.Level.floating.rawValue, isVisible: true, isPanel: false),
+            "the custom-compression dialog floats above the settings window and goes down with it"
+        )
+
+        // Windows that must not be touched.
+        XCTAssertFalse(
+            AppLifecycle.mayDismiss(windowLevel: NSWindow.Level.normal.rawValue, isVisible: false, isPanel: false),
+            "an invisible window has nothing to dismiss"
+        )
+        XCTAssertFalse(
+            AppLifecycle.mayDismiss(windowLevel: NSWindow.Level.normal.rawValue, isVisible: true, isPanel: true),
+            "an alert or password prompt is a decision in flight, not UI to dismiss"
+        )
+    }
+
+    func testDelegateAndSceneActuallyUseThoseRules() throws {
+        let code = try sourceCode(at: "MenuRight/App/MenuRightApp.swift")
 
         XCTAssertTrue(
             code.contains("func applicationShouldTerminateAfterLastWindowClosed"),
@@ -181,5 +346,19 @@ final class StatusMenuTests: XCTestCase {
                 return line[line.startIndex..<comment.lowerBound]
             }
             .joined(separator: "\n")
+    }
+
+    /// One repository file's source with its `//` comments dropped.
+    ///
+    /// Comments must go first: these files document the very API names the guards
+    /// below look for (this file's own doc comment names the delegate method, and
+    /// `MenuRightApp.swift` names `MenuBarExtra`), and a guard a comment can
+    /// satisfy is no guard at all.
+    private func sourceCode(at path: String) throws -> String {
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(path),
+            encoding: .utf8
+        )
+        return strippingComments(from: source)
     }
 }

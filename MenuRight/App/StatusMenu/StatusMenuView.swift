@@ -43,9 +43,18 @@ struct StatusMenuView: View {
         case .quit:
             // The one place that ends the main app for real. The extension is
             // not ours to stop: Finder owns that process.
-            Button(store.text(command.titleKey)) { NSApp.terminate(nil) }
+            Button(store.text(command.titleKey)) { quit() }
                 .keyboardShortcut("q", modifiers: .command)
         }
+    }
+
+    /// 退出 here is the only *intentional* quit: marking it first is what makes
+    /// `applicationShouldTerminate` let the request through. The Dock icon's 退出
+    /// and ⌘Q arrive without that mark, so they only dismiss the settings window
+    /// and the service — which the Finder extension needs — keeps running.
+    private func quit() {
+        MainAppGateRegistry.gate?.quit()
+        NSApp.terminate(nil)
     }
 
     /// Brings the settings window back — `openWindow` on the WindowGroup's id
