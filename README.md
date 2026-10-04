@@ -88,7 +88,6 @@ MenuRight/
 ├─ MenuRightTests/           单元测试（xcodebuild test）
 ├─ Config/Version.xcconfig   版本号唯一来源
 ├─ Scripts/                  版本、发布、验证脚本
-├─ landing/                  单文件落地页
 ├─ MenuRight.xcodeproj       Xcode 工程
 ├─ LICENSE                   MIT 许可证
 ├─ README.md
