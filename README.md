@@ -10,6 +10,10 @@ MenuRight 由两部分组成：一个 **Finder 扩展**（负责在右键菜单�
 （负责所有真正的文件操作、授权与设置界面）。扩展没有文件写入权限，只发送请求；所有副作用都由主应用
 在你已授权的文件夹范围内执行。
 
+<p align="center">
+  <img src="MenuRight/Resources/images/mr-all.webp" alt="MenuRight 总览：Finder 右键菜单、空格代码预览与主应用设置界面" width="720">
+</p>
+
 ## 功能
 
 ### 右键菜单
@@ -19,6 +23,12 @@ MenuRight 由两部分组成：一个 **Finder 扩展**（负责在右键菜单�
 | 文件 / 文件夹 | 创建别名、锁定、解锁、复制文件名、复制路径、复制文件 URL、剪切、压缩 ▸ |
 | 压缩包 | 上面全部，外加 解压 ▸ |
 | 文件夹空白处 | 打开终端、复制文件夹名、复制文件夹路径、新建文件 ▸、新建文件夹、粘贴到这里、常用文件夹 / 软件 / 网页 ▸ |
+
+<p align="center">
+  <img src="MenuRight/Resources/images/mr-file.webp" alt="文件 / 文件夹右键菜单：创建别名、锁定、解锁、复制文件名、复制路径、复制文件 URL、剪切、压缩" height="420">
+  &nbsp;&nbsp;&nbsp;
+  <img src="MenuRight/Resources/images/mr-kong.webp" alt="文件夹空白处右键菜单：打开终端、复制文件夹名称 / 路径、新建文件、新建文件夹、粘贴到这里、常用软件 / 网页 / 文件夹" height="420">
+</p>
 
 - **压缩 ▸**：ZIP / 7Z / TAR / TAR.GZ / TAR.BZ2，或「自定义压缩…」。列出的格式由设置里的「允许的压缩格式」决定，
   全部取消勾选时仍保留「自定义压缩…」。
@@ -38,12 +48,24 @@ MenuRight 由两部分组成：一个 **Finder 扩展**（负责在右键菜单�
   Markdown 直接渲染；其余类型回退系统预览。
 - 配色与字体跟随设置里的「代码主题」（9 套，含跟随系统）。
 
+<p align="center">
+  <img src="MenuRight/Resources/images/mr-quicklook.webp" alt="Quick Look 代码预览：Swift 语法高亮" height="320">
+  &nbsp;&nbsp;&nbsp;
+  <img src="MenuRight/Resources/images/mr-code-theme.webp" alt="设置 → 代码主题：主题、字体、字号、显示行号与实时预览" height="320">
+</p>
+
 ### 设置与菜单栏
 
 - **设置**：文件夹授权、文件权限开关、新建文件类型与模板目录、常用收藏、代码主题、
   解压缩管理（格式 / 解压位置 / 同名文件策略 / 体积上限）、语言、登录时自动启动、终端应用、更新检查。
 - **菜单栏图标**：打开设置 / 检查更新 / 退出 MenuRight。关闭设置窗口不会退出主应用——
   主应用不在时右键菜单每一项都不可用，所以菜单栏图标是常驻的，只有它上面的「退出」才真正结束服务。
+
+<p align="center">
+  <img src="MenuRight/Resources/images/mr-general.webp" alt="通用设置：界面语言、登录时自动启动、Finder 扩展状态、文件操作通道与更新检查" height="300">
+  &nbsp;&nbsp;&nbsp;
+  <img src="MenuRight/Resources/images/mr-permissions.webp" alt="文件权限：逐项开关右键菜单里允许执行的操作" height="300">
+</p>
 
 ## 文件树
 
@@ -52,7 +74,7 @@ MenuRight/
 ├─ MenuRight/                主应用
 │  ├─ App/                   界面、设置面板、状态栏、更新检查
 │  ├─ IPC/                   与扩展的套接字通信（服务端）
-│  └─ Resources/             图标资源、内置模板、第三方许可
+│  └─ Resources/             图标资源、内置模板、第三方许可、README 截图
 ├─ MenuRightFinder/          Finder 扩展（右键菜单）
 │  └─ IPC/                   通信客户端
 ├─ MenuRightCodePreview/     Quick Look 扩展（代码 / Markdown 预览）
